@@ -25,7 +25,7 @@
 #define MAX_MAC 0xffffffffffffL
 
 #define valid_mac(mac) (mac <= MAX_MAC)
-#define INVALID_MAC (MAX_MAC+1)
+#define INVALID_MAC (MAX_MAC + 1)
 
 // error if return 0xFFFFFFFFFFFFFFFFL
 uint64_t parse_mac(const char *mac);

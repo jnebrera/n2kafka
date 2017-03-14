@@ -23,5 +23,7 @@
 struct http_handler;
 struct json_t;
 struct listener *create_http_listener(struct json_t *config,
-            decoder_callback cb,int cb_flags,void *cb_opaque);
+				      decoder_callback cb,
+				      int cb_flags,
+				      void *cb_opaque);
 #endif

@@ -18,8 +18,8 @@
 
 #pragma once
 
-#include <string.h>
-#include <netinet/in.h>
 #include <arpa/inet.h>
+#include <netinet/in.h>
+#include <string.h>
 
 const char *sockaddr2str(char *buf, size_t buf_size, struct sockaddr *sockaddr);

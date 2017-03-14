@@ -21,19 +21,19 @@
 #pragma once
 
 #include "rb_database.h"
-#include "rb_http2k_sync_thread.h"
 #include "rb_http2k_curl_handler.h"
+#include "rb_http2k_sync_thread.h"
 
 #include "util/pair.h"
 
-#include <librdkafka/rdkafka.h>
+#include <jansson.h>
 #include <librd/rdavl.h>
 #include <librd/rdsysqueue.h>
-#include <jansson.h>
+#include <librdkafka/rdkafka.h>
 
+#include <pthread.h>
 #include <stdint.h>
 #include <string.h>
-#include <pthread.h>
 
 #ifndef NDEBUG
 /// MAGIC to check rb_config between void * conversions
@@ -73,13 +73,15 @@ struct rb_config {
 
 #ifdef RB_CONFIG_MAGIC
 /// Checks that rb_config magic field has the right value
-#define assert_rb_config(cfg) do{ \
-	assert(RB_CONFIG_MAGIC==(cfg)->magic);} while(0)
+#define assert_rb_config(cfg)                                                  \
+	do {                                                                   \
+		assert(RB_CONFIG_MAGIC == (cfg)->magic);                       \
+	} while (0)
 #else
 #define assert_rb_config(cfg)
 #endif
 
-int parse_rb_config(void *_db,const struct json_t *rb_config);
+int parse_rb_config(void *_db, const struct json_t *rb_config);
 /** Release all resources used */
 void rb_decoder_done(void *rb_config);
 /** Does nothing, since this decoder does not save anything related to
@@ -87,8 +89,11 @@ void rb_decoder_done(void *rb_config);
     */
 int rb_decoder_reload(void *_db, const struct json_t *rb_config);
 
-int rb_opaque_creator(struct json_t *config,void **opaque);
-int rb_opaque_reload(struct json_t *config,void *opaque);
+int rb_opaque_creator(struct json_t *config, void **opaque);
+int rb_opaque_reload(struct json_t *config, void *opaque);
 void rb_opaque_done(void *opaque);
-void rb_decode(char *buffer,size_t buf_size,const keyval_list_t *props,
-                void *listener_callback_opaque,void **decoder_sessionp);
+void rb_decode(char *buffer,
+	       size_t buf_size,
+	       const keyval_list_t *props,
+	       void *listener_callback_opaque,
+	       void **decoder_sessionp);

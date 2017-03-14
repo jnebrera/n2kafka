@@ -28,11 +28,10 @@
 #include "tommylist.h"
 #include "tommychain.h"
 
-void tommy_list_concat(tommy_list* first, tommy_list* second)
-{
-	tommy_node* first_head;
-	tommy_node* first_tail;
-	tommy_node* second_head;
+void tommy_list_concat(tommy_list *first, tommy_list *second) {
+	tommy_node *first_head;
+	tommy_node *first_tail;
+	tommy_node *second_head;
 
 	if (tommy_list_empty(second))
 		return;
@@ -57,17 +56,16 @@ void tommy_list_concat(tommy_list* first, tommy_list* second)
 /** \internal
  * Setup a list.
  */
-tommy_inline void tommy_list_set(tommy_list* list, tommy_node* head, tommy_node* tail)
-{
+tommy_inline void
+tommy_list_set(tommy_list *list, tommy_node *head, tommy_node *tail) {
 	head->prev = tail;
 	tail->next = 0;
 	*list = head;
 }
 
-void tommy_list_sort(tommy_list* list, tommy_compare_func* cmp)
-{
+void tommy_list_sort(tommy_list *list, tommy_compare_func *cmp) {
 	tommy_chain chain;
-	tommy_node* head;
+	tommy_node *head;
 
 	if (tommy_list_empty(list))
 		return;
@@ -83,4 +81,3 @@ void tommy_list_sort(tommy_list* list, tommy_compare_func* cmp)
 	/* restore the list */
 	tommy_list_set(list, chain.head, chain.tail);
 }
-

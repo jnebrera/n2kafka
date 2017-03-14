@@ -1,4 +1,4 @@
- /*
+/*
 ** Copyright (C) 2016 Eneo Tecnologia S.L.
 ** Author: Eugenio Perez <eupm90@gmail.com>
 **
@@ -19,8 +19,8 @@
 #pragma once
 
 #include <signal.h>
-#include <time.h>
 #include <sys/queue.h>
+#include <time.h>
 
 /// Internal - single timer
 struct rb_timer;
@@ -42,13 +42,15 @@ typedef struct rb_timers_list_s {
   @param errsize Size of err
   @return 0 is success, !0 and errno if error
   */
-int rb_timer_set_interval0(rb_timer_t *timer, int flags,
-		const struct itimerspec *ts, char *err, size_t errsize);
+int rb_timer_set_interval0(rb_timer_t *timer,
+			   int flags,
+			   const struct itimerspec *ts,
+			   char *err,
+			   size_t errsize);
 
 /** Convenience macro */
-#define rb_timer_set_interval(timer, timerspec, err, errsize) \
+#define rb_timer_set_interval(timer, timerspec, err, errsize)                  \
 	rb_timer_set_interval0(timer, 0, timerspec, err, errsize)
-
 
 /** Gets timer interval
   @param timer timer to get the interval
@@ -90,8 +92,11 @@ void rb_timers_run(rb_timers_list_t *list);
   @return new timer if successful
   */
 rb_timer_t *rb_timer_create(rb_timers_list_t *tlist,
-	const struct itimerspec *interval, void (*cb)(void *), void *cb_ctx,
-	char *err, size_t errsize);
+			    const struct itimerspec *interval,
+			    void (*cb)(void *),
+			    void *cb_ctx,
+			    char *err,
+			    size_t errsize);
 
 /// Need to call this function if a registered timer calls SIGALRM
 void rb_timer_sigaction(int signum, siginfo_t *siginfo, void *ucontext);

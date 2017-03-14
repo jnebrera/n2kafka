@@ -18,8 +18,8 @@
 
 #pragma once
 
-#include <sys/queue.h>
 #include <netinet/in.h>
+#include <sys/queue.h>
 
 typedef struct in_addr_list_s in_addr_list_t; /* FW DECLARATION */
 
@@ -27,10 +27,11 @@ typedef struct in_addr_list_s in_addr_list_t; /* FW DECLARATION */
 in_addr_list_t *in_addr_list_new();
 
 /// Add an address to list.
-void in_addr_list_add(in_addr_list_t *list,const struct in_addr *addr);
+void in_addr_list_add(in_addr_list_t *list, const struct in_addr *addr);
 
 /// Check if an addr is in list.
-int in_addr_list_contains(const in_addr_list_t *list,const struct in_addr *addr);
+int in_addr_list_contains(const in_addr_list_t *list,
+			  const struct in_addr *addr);
 
 /// Deallocate a list.
 void in_addr_list_done(in_addr_list_t *list);

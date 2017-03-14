@@ -2,24 +2,26 @@
 
 #include "../src/decoder/mse/rb_mse.c"
 
+#include <setjmp.h> // This needs to be before cmocka.h
+
+#include <cmocka.h>
+
 #include <stdarg.h>
 #include <stddef.h>
-#include <setjmp.h>
-#include <cmocka.h>
 
 /// @TODO keep in sync with testMSE10Decoder
 
 static void testMSE10Decoder(const char *mse_array_str,
-                             const char *_listener_config,
-                             const char *mse_input,
-                             const time_t now,
-                             void (*check_result)(struct mse_array *))
-__attribute__((unused));
+			     const char *_listener_config,
+			     const char *mse_input,
+			     const time_t now,
+			     void (*check_result)(struct mse_array *))
+		__attribute__((unused));
 static void testMSE10Decoder(const char *mse_array_str,
-                             const char *_listener_config,
-                             const char *mse_input,
-                             const time_t now,
-                             void (*check_result)(struct mse_array *)) {
+			     const char *_listener_config,
+			     const char *mse_input,
+			     const time_t now,
+			     void (*check_result)(struct mse_array *)) {
 	json_error_t jerr;
 	size_t i;
 	const char *topic_name;
@@ -30,8 +32,8 @@ static void testMSE10Decoder(const char *mse_array_str,
 	mse_decoder_info_create(&decoder_info);
 
 	json_t *listener_config = json_loads(_listener_config, 0, &jerr);
-	const int opaque_creator_rc = parse_decoder_info(&decoder_info,
-		listener_config,&topic_name);
+	const int opaque_creator_rc = parse_decoder_info(
+			&decoder_info, listener_config, &topic_name);
 
 	assert_true(0 == opaque_creator_rc);
 	json_decref(listener_config);
@@ -42,16 +44,16 @@ static void testMSE10Decoder(const char *mse_array_str,
 	json_t *mse_array = json_loads(mse_array_str, 0, &jerr);
 	assert_true(mse_array);
 	const int parse_rc = parse_mse_array(&decoder_info.mse_config->database,
-		mse_array);
+					     mse_array);
 	assert_true(parse_rc == 0);
 
 	char *aux = strdup(mse_input);
-	struct mse_array *notifications_array = process_mse_buffer(
-	        aux,
-	        strlen(mse_input),
-	        "127.0.0.1",
-	        &decoder_info,
-	        now);
+	struct mse_array *notifications_array =
+			process_mse_buffer(aux,
+					   strlen(mse_input),
+					   "127.0.0.1",
+					   &decoder_info,
+					   now);
 
 	check_result(notifications_array);
 

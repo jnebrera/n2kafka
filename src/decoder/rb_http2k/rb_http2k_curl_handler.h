@@ -21,20 +21,20 @@
 
 #pragma once
 
-#include <pthread.h>
-#include <librd/rdqueue.h>
 #include <curl/curl.h>
+#include <librd/rdqueue.h>
+#include <pthread.h>
 
 /** CURL handler to send PUT messages */
 typedef struct rb_http2k_curl_handler_s {
 #ifndef NDEBUG
 #define RB_HTTP2K_CURL_HANDLER_MAGIC 0xB112C3A1CB112C3AL
-	uint64_t magic; 		///< Magic to assert coherence
+	uint64_t magic; ///< Magic to assert coherence
 #endif
-	volatile int run;		///< Keep running
-	pthread_t thread;		///< Thread handler
-	rd_fifoq_t msg_queue;		///< MSG queue
-	CURLM *curl_multi_handler;	///< Curl handler
+	volatile int run;	  ///< Keep running
+	pthread_t thread;	  ///< Thread handler
+	rd_fifoq_t msg_queue;      ///< MSG queue
+	CURLM *curl_multi_handler; ///< Curl handler
 } rb_http2k_curl_handler_t;
 
 /** Creates a rb_http2k_curl_handler
@@ -43,7 +43,7 @@ typedef struct rb_http2k_curl_handler_s {
   @return 0 if success, !0 in other case
   */
 int rb_http2k_curl_handler_init(rb_http2k_curl_handler_t *handler,
-							int max_msgs_size);
+				int max_msgs_size);
 
 /** Free rb_curl handler resources
   @param handler Handler to be freed
@@ -56,4 +56,4 @@ void rb_http2k_curl_handler_done(rb_http2k_curl_handler_t *handler);
   @return 0 if OK, ENOBUFS if queue is full
   */
 void rb_http2k_curl_handler_put_empty(rb_http2k_curl_handler_t *handler,
-							const char *url);
+				      const char *url);

@@ -21,8 +21,8 @@
 #include "config.h"
 
 #include "rb_http2k_organizations_database.h"
-#include "rb_http2k_sync_common.h"
 #include "rb_http2k_parser.h"
+#include "rb_http2k_sync_common.h"
 #include "util/util.h"
 
 #include <librd/rdlog.h>
@@ -32,8 +32,8 @@
 #include <limits.h>
 
 /// This macro does trick stringfication!
-#define X(M,A) M(A)
-#define ULONG_MAX_STR X(RD_STRINGIFY,ULONG_MAX)
+#define X(M, A) M(A)
+#define ULONG_MAX_STR X(RD_STRINGIFY, ULONG_MAX)
 /** Max unsigned long string size
   @note Not exactly right, the result is a bit bigger BC preprocessor
   does not do arithmetic
@@ -42,7 +42,7 @@
 
 /** Assert that argument is a valid organization */
 static void organizations_db_entry_assert(
-			const organization_db_entry_t *organization_entry) {
+		const organization_db_entry_t *organization_entry) {
 #ifdef ORGANIZATION_DB_ENTRY_MAGIC
 	assert(ORGANIZATION_DB_ENTRY_MAGIC == organization_entry->magic);
 #else
@@ -51,7 +51,7 @@ static void organizations_db_entry_assert(
 }
 
 void organizations_db_entry_decref(organization_db_entry_t *entry) {
-	if (0 == ATOMIC_OP(sub,fetch,&entry->refcnt,1)) {
+	if (0 == ATOMIC_OP(sub, fetch, &entry->refcnt, 1)) {
 		if (entry->enrichment) {
 			json_decref(entry->enrichment);
 		}
@@ -60,8 +60,8 @@ void organizations_db_entry_decref(organization_db_entry_t *entry) {
 	}
 }
 
-static bool organization_limit_reached0(organization_db_entry_t *org,
-								bool lock) {
+static bool
+organization_limit_reached0(organization_db_entry_t *org, bool lock) {
 	if (lock) {
 		pthread_mutex_lock(&org->mutex);
 	}
@@ -79,30 +79,35 @@ bool organization_limit_reached(organization_db_entry_t *org) {
 	return organization_limit_reached0(org, true);
 }
 
-
 /** Update database entry with new information (if needed)
   @param entry Entry to be updated
   @param new_config New config
   @return 0 if success, !0 in other case (reason printed)
   */
-static int update_organization(organization_db_entry_t *entry,
-				json_t *new_config) {
+static int
+update_organization(organization_db_entry_t *entry, json_t *new_config) {
 	int rc = 0;
 	json_error_t jerr;
 	json_int_t bytes_limit = 0;
 	json_t *aux_enrichment = NULL;
 
-	const int unpack_rc = json_unpack_ex(new_config, &jerr,
-		JSON_STRICT,
-		"{s?O,s?{s?I}}",
-		"enrichment",&aux_enrichment,
-		"limits","bytes",&bytes_limit);
+	const int unpack_rc = json_unpack_ex(new_config,
+					     &jerr,
+					     JSON_STRICT,
+					     "{s?O,s?{s?I}}",
+					     "enrichment",
+					     &aux_enrichment,
+					     "limits",
+					     "bytes",
+					     &bytes_limit);
 
 	if (0 != unpack_rc) {
 		const char *organization_uuid =
-			organization_db_entry_get_uuid(entry);
-		rdlog(LOG_ERR,"Couldn't unpack organization %s limits: %s",
-						organization_uuid, jerr.text);
+				organization_db_entry_get_uuid(entry);
+		rdlog(LOG_ERR,
+		      "Couldn't unpack organization %s limits: %s",
+		      organization_uuid,
+		      jerr.text);
 		rc = -1;
 		goto unpack_err;
 	}
@@ -125,21 +130,25 @@ unpack_err:
   @param sensor_config Client config
   @return Generated uuid entry
   */
-static organization_db_entry_t *create_organization_db_entry(
-		const char *organization_uuid, json_t *organization_config) {
+static organization_db_entry_t *
+create_organization_db_entry(const char *organization_uuid,
+			     json_t *organization_config) {
 	assert(organization_uuid);
 	assert(organization_config);
 
 	organization_db_entry_t *entry = NULL;
 
-	rd_calloc_struct(&entry, sizeof(*entry),
-		-1, organization_uuid, &entry->uuid_entry.uuid,
-		RD_MEM_END_TOKEN);
+	rd_calloc_struct(&entry,
+			 sizeof(*entry),
+			 -1,
+			 organization_uuid,
+			 &entry->uuid_entry.uuid,
+			 RD_MEM_END_TOKEN);
 
 	if (NULL == entry) {
 		rdlog(LOG_ERR,
-			"Couldn't create uuid %s entry (out of memory?).",
-			organization_uuid);
+		      "Couldn't create uuid %s entry (out of memory?).",
+		      organization_uuid);
 		goto err;
 	}
 
@@ -152,7 +161,7 @@ static organization_db_entry_t *create_organization_db_entry(
 	entry->refcnt = 1;
 	entry->uuid_entry.data = entry;
 
-	const int rc = update_organization(entry,organization_config);
+	const int rc = update_organization(entry, organization_config);
 	if (rc != 0) {
 		goto err_update;
 	}
@@ -171,17 +180,19 @@ err:
   @param org Organziation to warn about
   */
 static void produce_organization_warning(const organization_db_entry_t *org) {
-	rdlog(LOG_INFO, "Organization %s has reached it's bytes quota",
-			organization_db_entry_get_uuid(org));
+	rdlog(LOG_INFO,
+	      "Organization %s has reached it's bytes quota",
+	      organization_db_entry_get_uuid(org));
 
 	if (org->db->limit_reached_cb) {
-		org->db->limit_reached_cb(org->db, org,
-						org->db->limit_reached_cb_ctx);
+		org->db->limit_reached_cb(
+				org->db, org, org->db->limit_reached_cb_ctx);
 	}
 }
 
 uint64_t organization_add_consumed_bytes0(organization_db_entry_t *org,
-					uint64_t bytes, bool reported_bytes) {
+					  uint64_t bytes,
+					  bool reported_bytes) {
 	pthread_mutex_lock(&org->mutex);
 
 	org->bytes_limit.consumed += bytes;
@@ -212,8 +223,8 @@ int organizations_db_init(organizations_db_t *organizations_db) {
   @param entry uuid entry
   @return result db_entry
   */
-static organization_db_entry_t *uuid_db_entry2organization(
-						uuid_entry_t *entry) {
+static organization_db_entry_t *
+uuid_db_entry2organization(uuid_entry_t *entry) {
 	assert(entry);
 	organization_db_entry_t *ret = entry->data;
 	assert(ret);
@@ -226,8 +237,8 @@ static organization_db_entry_t *uuid_db_entry2organization(
   @param uuid UUID
   @return sensor from db
   */
-static organization_db_entry_t *organizations_db_get0(organizations_db_t *db,
-							const char *uuid) {
+static organization_db_entry_t *
+organizations_db_get0(organizations_db_t *db, const char *uuid) {
 	uuid_entry_t *ret_entry = uuid_db_search(&db->uuid_db, uuid);
 	return ret_entry ? uuid_db_entry2organization(ret_entry) : NULL;
 }
@@ -237,9 +248,9 @@ static organization_db_entry_t *organizations_db_get0(organizations_db_t *db,
   @param entry Entry to check
   */
 static void check_and_purge_organization(const json_t *new_orgs,
-					organization_db_entry_t *entry) {
+					 organization_db_entry_t *entry) {
 	const char *uuid = organization_db_entry_get_uuid(entry);
-	if (NULL == json_object_get(new_orgs,uuid)) {
+	if (NULL == json_object_get(new_orgs, uuid)) {
 		/* This entry is not in the new db, we need to delete it */
 		uuid_db_remove(&entry->db->uuid_db, &entry->uuid_entry);
 		organizations_db_entry_decref(entry);
@@ -261,10 +272,11 @@ static void void_check_and_purge_organization(void *vnew_orgs, void *ventry) {
   @param db Database
   @param organizations New organizations config
   */
-static void purge_old_organizations(organizations_db_t *db,
-						json_t *organizations) {
+static void
+purge_old_organizations(organizations_db_t *db, json_t *organizations) {
 	tommy_hashdyn_foreach_arg(&db->uuid_db,
-		void_check_and_purge_organization, organizations);
+				  void_check_and_purge_organization,
+				  organizations);
 }
 
 void organizations_db_reload(organizations_db_t *db, json_t *organizations) {
@@ -272,37 +284,37 @@ void organizations_db_reload(organizations_db_t *db, json_t *organizations) {
 	json_t *organization;
 
 	/* 1st step: Delete all organziations that are not in the new config */
-	purge_old_organizations(db,organizations);
+	purge_old_organizations(db, organizations);
 
 	/* 2nd step: Update/create new ones */
 	json_object_foreach(organizations, organization_uuid, organization) {
-		organization_db_entry_t *entry = organizations_db_get0(db,
-							organization_uuid);
-		if(NULL == entry) {
+		organization_db_entry_t *entry =
+				organizations_db_get0(db, organization_uuid);
+		if (NULL == entry) {
 			entry = create_organization_db_entry(organization_uuid,
-								organization);
+							     organization);
 			if (NULL != entry) {
 				entry->db = db;
 				uuid_db_insert(&db->uuid_db,
-							&entry->uuid_entry);
+					       &entry->uuid_entry);
 			}
 		} else {
-			update_organization(entry,organization);
+			update_organization(entry, organization);
 		}
-
 	}
 }
 
-organization_db_entry_t *organizations_db_get(organizations_db_t *db, const char *uuid) {
-	organization_db_entry_t *ret = organizations_db_get0(db,uuid);
+organization_db_entry_t *
+organizations_db_get(organizations_db_t *db, const char *uuid) {
+	organization_db_entry_t *ret = organizations_db_get0(db, uuid);
 	if (ret) {
-		ATOMIC_OP(add,fetch,&ret->refcnt,1);
+		ATOMIC_OP(add, fetch, &ret->refcnt, 1);
 	}
 	return ret;
 }
 
 int organizations_db_exists(organizations_db_t *db, const char *uuid) {
-	return NULL != organizations_db_get0(db,uuid);
+	return NULL != organizations_db_get0(db, uuid);
 }
 
 /** Frees an element that is suppose to be an uuid_entry
@@ -316,7 +328,7 @@ static void void_organizations_db_entry_decref(void *vuuid_entry) {
 }
 
 void organizations_db_done(organizations_db_t *db) {
-	uuid_db_foreach(&db->uuid_db,void_organizations_db_entry_decref);
+	uuid_db_foreach(&db->uuid_db, void_organizations_db_entry_decref);
 	uuid_db_done(&db->uuid_db);
 }
 
@@ -330,8 +342,7 @@ struct reports_ctx {
 	uint64_t magic;
 #endif
 
-	enum {
-		REPORTS_CTX_F__CLEAN=0x01, /// Clean consumed bytes
+	enum { REPORTS_CTX_F__CLEAN = 0x01, /// Clean consumed bytes
 	} flags;
 
 	struct {
@@ -360,20 +371,28 @@ static void assert_reports_ctx(const struct reports_ctx *reports_ctx) {
   @param fmt Format as snprint
   @return Same error code as internal snprintf
   */
-static int verbose_snprintf(const char *key, char *buf, size_t bufsize,
-							const char *fmt, ...) {
+static int verbose_snprintf(const char *key,
+			    char *buf,
+			    size_t bufsize,
+			    const char *fmt,
+			    ...) {
 	char errbuf[BUFSIZ];
 	va_list args;
 	va_start(args, fmt);
 
-	const int rc = vsnprintf(buf,bufsize,fmt,args);
+	const int rc = vsnprintf(buf, bufsize, fmt, args);
 	if (rc < 0) {
-		rdlog(LOG_ERR, "Couldn't write %s report JSON: %s",
-			key, mystrerror(errno, errbuf, sizeof(errbuf)));
+		rdlog(LOG_ERR,
+		      "Couldn't write %s report JSON: %s",
+		      key,
+		      mystrerror(errno, errbuf, sizeof(errbuf)));
 	} else if (rc > (int)bufsize) {
 		rdlog(LOG_ERR,
-			"Couldn't write %s report JSON: %d bytes needed, "
-					"%zu provided", key, rc, bufsize);
+		      "Couldn't write %s report JSON: %d bytes needed, "
+		      "%zu provided",
+		      key,
+		      rc,
+		      bufsize);
 	}
 
 	va_end(args);
@@ -382,7 +401,7 @@ static int verbose_snprintf(const char *key, char *buf, size_t bufsize,
 }
 
 /// message key information
-struct key_info{
+struct key_info {
 	/// Organization uuid
 	const char *organization_uuid;
 	/// N2kafka id
@@ -408,15 +427,25 @@ struct key_info{
   @return key len if success, negative number if fail
   */
 static int organizations_db_entry_report_key(const struct key_info *key_info,
-						char *buf, size_t buf_size) {
+					     char *buf,
+					     size_t buf_size) {
 	/// Time elapsed from last clean
 	const time_t last_clean_elapsed_time =
-		key_info->now % key_info->clean_interval->it_interval.tv_sec;
+			key_info->now %
+			key_info->clean_interval->it_interval.tv_sec;
 	/// Floor it to report_timestamp, so log compaction can work
-	const time_t key_timestamp = last_clean_elapsed_time -
-		key_info->now % key_info->report_interval->it_interval.tv_sec;
-	return snprintf(buf, buf_size, "%s%c%s%c%tu",
-		key_info->n2kafka_id, '\0', key_info->organization_uuid, '\0',
+	const time_t key_timestamp =
+			last_clean_elapsed_time -
+			key_info->now %
+					key_info->report_interval->it_interval
+							.tv_sec;
+	return snprintf(buf,
+			buf_size,
+			"%s%c%s%c%tu",
+			key_info->n2kafka_id,
+			'\0',
+			key_info->organization_uuid,
+			'\0',
 			key_timestamp);
 }
 
@@ -427,12 +456,13 @@ static int organizations_db_entry_report_key(const struct key_info *key_info,
   @TODO error treatment
   */
 static int organizations_db_entry_report(organization_db_entry_t *org,
-		const struct reports_ctx *ctx) {
+					 const struct reports_ctx *ctx) {
 	char err[BUFSIZ];
-	size_t i=0,len=0;
+	size_t i = 0, len = 0;
 	unsigned char value_buf[ULONG_MAX_STR_SIZE],
-		limit_buf[ULONG_MAX_STR_SIZE],total_buf[ULONG_MAX_STR_SIZE];
-	int value_buf_rc,limit_buf_rc,total_buf_rc;
+			limit_buf[ULONG_MAX_STR_SIZE],
+			total_buf[ULONG_MAX_STR_SIZE];
+	int value_buf_rc, limit_buf_rc, total_buf_rc;
 	const unsigned char *gen_payload = NULL;
 	char *payload = NULL;
 
@@ -442,29 +472,32 @@ static int organizations_db_entry_report(organization_db_entry_t *org,
 		json_incref(enrichment);
 	}
 	const uint64_t bytes_consumed = org->bytes_limit.consumed;
-	const uint64_t interval_bytes_consumed
-			= bytes_consumed - org->bytes_limit.reported;
+	const uint64_t interval_bytes_consumed =
+			bytes_consumed - org->bytes_limit.reported;
 
 	/* Let's assume the report will reach the destination */
 	if (ctx->flags & REPORTS_CTX_F__CLEAN) {
 		org->bytes_limit.consumed = 0;
 	}
-	org->bytes_limit.reported =
-		(ctx->flags & REPORTS_CTX_F__CLEAN) ? 0 : bytes_consumed;
+	org->bytes_limit.reported = (ctx->flags & REPORTS_CTX_F__CLEAN)
+						    ? 0
+						    : bytes_consumed;
 	pthread_mutex_unlock(&org->mutex);
 
 	struct key_info key_info = {
-		.organization_uuid = organization_db_entry_get_uuid(org),
-		.n2kafka_id        = ctx->n2kafka_id,
-		.now               = ctx->timestamp.value,
-		.report_interval   = ctx->timestamp.reports_interval,
-		.clean_interval    = ctx->timestamp.clean_interval,
+			.organization_uuid =
+					organization_db_entry_get_uuid(org),
+			.n2kafka_id = ctx->n2kafka_id,
+			.now = ctx->timestamp.value,
+			.report_interval = ctx->timestamp.reports_interval,
+			.clean_interval = ctx->timestamp.clean_interval,
 	};
-	const int key_len = organizations_db_entry_report_key(&key_info, NULL,
-									0);
+	const int key_len =
+			organizations_db_entry_report_key(&key_info, NULL, 0);
 	if (key_len < 0) {
-		rdlog(LOG_ERR, "Couldn't get kafka message key: %s",
-			mystrerror(errno, err, sizeof(err)));
+		rdlog(LOG_ERR,
+		      "Couldn't get kafka message key: %s",
+		      mystrerror(errno, err, sizeof(err)));
 	}
 
 	if (0 == interval_bytes_consumed) {
@@ -479,44 +512,66 @@ static int organizations_db_entry_report(organization_db_entry_t *org,
 	}
 
 // Convenience macro
-#define safe_verbose_snprintf(rc,key,buf,fmt,...) do {                        \
-	rc = verbose_snprintf(key,(char *)buf,sizeof(buf),fmt,__VA_ARGS__);   \
-	if (rc < 0 || rc > (int)sizeof(buf)) return -1;                       \
-	} while(0)
-#define MY_KEY(k) .key=((const unsigned char *)k), .k_size=(strlen(k))
-#define MY_VAL0(v,s) .val=((const unsigned char *)v), .v_size=((size_t)s)
-#define MY_VAL(v) MY_VAL0(v,strlen(v))
-#define MY_NTYPE .type=JSON_INTEGER
-#define MY_STYPE .type=JSON_STRING
+#define safe_verbose_snprintf(rc, key, buf, fmt, ...)                          \
+	do {                                                                   \
+		rc = verbose_snprintf(key,                                     \
+				      (char *)buf,                             \
+				      sizeof(buf),                             \
+				      fmt,                                     \
+				      __VA_ARGS__);                            \
+		if (rc < 0 || rc > (int)sizeof(buf))                           \
+			return -1;                                             \
+	} while (0)
+#define MY_KEY(k) .key = ((const unsigned char *)k), .k_size = (strlen(k))
+#define MY_VAL0(v, s) .val = ((const unsigned char *)v), .v_size = ((size_t)s)
+#define MY_VAL(v) MY_VAL0(v, strlen(v))
+#define MY_NTYPE .type = JSON_INTEGER
+#define MY_STYPE .type = JSON_STRING
 
-	safe_verbose_snprintf(value_buf_rc, "value", value_buf,
-		"%"PRIu64, interval_bytes_consumed);
-	safe_verbose_snprintf(limit_buf_rc, "client_limit_bytes", limit_buf,
-		"%"PRIu64, organization_get_max_bytes(org));
-	safe_verbose_snprintf(total_buf_rc, "client_total_bytes_consumed",
-		total_buf, "%"PRIu64, bytes_consumed);
+	safe_verbose_snprintf(value_buf_rc,
+			      "value",
+			      value_buf,
+			      "%" PRIu64,
+			      interval_bytes_consumed);
+	safe_verbose_snprintf(limit_buf_rc,
+			      "client_limit_bytes",
+			      limit_buf,
+			      "%" PRIu64,
+			      organization_get_max_bytes(org));
+	safe_verbose_snprintf(total_buf_rc,
+			      "client_total_bytes_consumed",
+			      total_buf,
+			      "%" PRIu64,
+			      bytes_consumed);
 
 	struct {
-		const unsigned char *key,*val;
-		size_t k_size,v_size;
+		const unsigned char *key, *val;
+		size_t k_size, v_size;
 		json_type type;
 	} json[] = {
-		{MY_KEY(MONITOR_MSG_TIMESTAMP_KEY), MY_VAL0(ctx->timestamp.buf,
-				ctx->timestamp.size), MY_NTYPE},
-		{MY_KEY("client_total_bytes_consumed"),
-				MY_VAL0(total_buf, total_buf_rc), MY_NTYPE},
-		{MY_KEY("client_limit_bytes"), MY_VAL0(limit_buf,limit_buf_rc),
-								MY_NTYPE},
-		{MY_KEY(MONITOR_MSG_MONITOR_KEY),
-			MY_VAL("organization_received_bytes"), MY_STYPE},
-		{MY_KEY(MONITOR_MSG_VALUE_KEY),
-				MY_VAL0(value_buf,value_buf_rc), MY_STYPE},
-		{MY_KEY(MONITOR_MSG_ORGANIZATION_UUID_KEY),
-				MY_VAL(key_info.organization_uuid), MY_STYPE},
-		{MY_KEY(MONITOR_MSG_N2KAFKA_ID_KEY), MY_VAL(ctx->n2kafka_id),
-								MY_STYPE},
-		{MY_KEY("type"), MY_VAL("data"), MY_STYPE},
-		{MY_KEY("unit"), MY_VAL("bytes"), MY_STYPE},
+			{MY_KEY(MONITOR_MSG_TIMESTAMP_KEY),
+			 MY_VAL0(ctx->timestamp.buf, ctx->timestamp.size),
+			 MY_NTYPE},
+			{MY_KEY("client_total_bytes_consumed"),
+			 MY_VAL0(total_buf, total_buf_rc),
+			 MY_NTYPE},
+			{MY_KEY("client_limit_bytes"),
+			 MY_VAL0(limit_buf, limit_buf_rc),
+			 MY_NTYPE},
+			{MY_KEY(MONITOR_MSG_MONITOR_KEY),
+			 MY_VAL("organization_received_bytes"),
+			 MY_STYPE},
+			{MY_KEY(MONITOR_MSG_VALUE_KEY),
+			 MY_VAL0(value_buf, value_buf_rc),
+			 MY_STYPE},
+			{MY_KEY(MONITOR_MSG_ORGANIZATION_UUID_KEY),
+			 MY_VAL(key_info.organization_uuid),
+			 MY_STYPE},
+			{MY_KEY(MONITOR_MSG_N2KAFKA_ID_KEY),
+			 MY_VAL(ctx->n2kafka_id),
+			 MY_STYPE},
+			{MY_KEY("type"), MY_VAL("data"), MY_STYPE},
+			{MY_KEY("unit"), MY_VAL("bytes"), MY_STYPE},
 	};
 
 #undef safe_verbose_snprintf
@@ -530,11 +585,12 @@ static int organizations_db_entry_report(organization_db_entry_t *org,
 
 	yajl_gen_map_open(ctx->gen);
 
-	for (i=0; i<RD_ARRAYSIZE(json); ++i) {
+	for (i = 0; i < RD_ARRAYSIZE(json); ++i) {
 		yajl_gen_string(ctx->gen, json[i].key, json[i].k_size);
 		if (json[i].type == JSON_INTEGER) {
 			yajl_gen_number(ctx->gen,
-				(const char *)json[i].val, json[i].v_size);
+					(const char *)json[i].val,
+					json[i].v_size);
 		} else {
 			yajl_gen_string(ctx->gen, json[i].val, json[i].v_size);
 		}
@@ -549,20 +605,24 @@ static int organizations_db_entry_report(organization_db_entry_t *org,
 	}
 
 	yajl_gen_map_close(ctx->gen);
-	yajl_gen_get_buf(ctx->gen,&gen_payload,&len);
+	yajl_gen_get_buf(ctx->gen, &gen_payload, &len);
 
-	payload = calloc(1,len + (size_t)key_len + 1);
+	payload = calloc(1, len + (size_t)key_len + 1);
 	if (NULL == payload) {
 		rdlog(LOG_ERR, "Couldn't calloc buffer");
 		yajl_gen_free(ctx->gen);
 		return -1;
 	}
 	memcpy(payload, gen_payload, len);
-	organizations_db_entry_report_key(&key_info, &payload[len],
-							(size_t)key_len + 1);
+	organizations_db_entry_report_key(
+			&key_info, &payload[len], (size_t)key_len + 1);
 
-	save_kafka_msg_key_in_array(ctx->ret, &payload[len], (size_t)key_len,
-		payload, len, NULL);
+	save_kafka_msg_key_in_array(ctx->ret,
+				    &payload[len],
+				    (size_t)key_len,
+				    payload,
+				    len,
+				    NULL);
 
 	return 0;
 }
@@ -574,7 +634,7 @@ static void void_organizations_db_entry_report(void *arg, void *obj) {
 	organization_db_entry_t *org = uuid_db_entry2organization(entry);
 	assert_reports_ctx(ctx);
 	organizations_db_entry_assert(org);
-	organizations_db_entry_report(org,ctx);
+	organizations_db_entry_report(org, ctx);
 }
 
 /// Aux function to print timestamp
@@ -583,13 +643,15 @@ static int print_timestamp(time_t timestamp, char *buf, size_t buf_size) {
 	const int snprintf_rc = snprintf(buf, buf_size, "%tu", timestamp);
 	if (snprintf_rc > (int)buf_size) {
 		rdlog(LOG_ERR,
-			"Couldn't print organization report timestamp: needed"
-			"%d, provided %zu", snprintf_rc, buf_size);
+		      "Couldn't print organization report timestamp: needed"
+		      "%d, provided %zu",
+		      snprintf_rc,
+		      buf_size);
 		return -1;
 	} else if (snprintf_rc < 0) {
 		rdlog(LOG_ERR,
-			"Couldn't print organization report timestamp: %s",
-			mystrerror(errno, err, sizeof(err)));
+		      "Couldn't print organization report timestamp: %s",
+		      mystrerror(errno, err, sizeof(err)));
 		return -1;
 	}
 
@@ -600,35 +662,36 @@ static int print_timestamp(time_t timestamp, char *buf, size_t buf_size) {
   @param db Database
   @return Reports
   */
-struct kafka_message_array *organization_db_interval_consumed0(
-				organizations_db_t *db, time_t now,
-				const struct itimerspec *interval,
-				const struct itimerspec *clean_interval,
-				const char *n2kafka_id, int clean) {
+struct kafka_message_array *
+organization_db_interval_consumed0(organizations_db_t *db,
+				   time_t now,
+				   const struct itimerspec *interval,
+				   const struct itimerspec *clean_interval,
+				   const char *n2kafka_id,
+				   int clean) {
 	static const char n2kafka_safe_id[] = "unknown_n2kafka";
 	char timestamp_buf[ULONG_MAX_STR_SIZE];
 
 	struct reports_ctx ctx = {
 #ifdef REPORTS_CTX_MAGIC
-		.magic = REPORTS_CTX_MAGIC,
+			.magic = REPORTS_CTX_MAGIC,
 #endif
-		.ret = NULL,
-		.gen = yajl_gen_alloc(NULL),
-		.n2kafka_id = n2kafka_id ? n2kafka_id : n2kafka_safe_id,
-		.flags = (clean ? REPORTS_CTX_F__CLEAN : 0),
-		.timestamp = {
-			.value = now,
-			.reports_interval = interval,
-			.clean_interval   = clean_interval,
-		}
-	};
+			.ret = NULL,
+			.gen = yajl_gen_alloc(NULL),
+			.n2kafka_id = n2kafka_id ? n2kafka_id : n2kafka_safe_id,
+			.flags = (clean ? REPORTS_CTX_F__CLEAN : 0),
+			.timestamp = {
+					.value = now,
+					.reports_interval = interval,
+					.clean_interval = clean_interval,
+			}};
 
-	const int print_rc = print_timestamp(now, timestamp_buf,
-							sizeof(timestamp_buf));
+	const int print_rc = print_timestamp(
+			now, timestamp_buf, sizeof(timestamp_buf));
 
 	if (print_rc > 0) {
 		ctx.timestamp.size = (size_t)print_rc;
-		ctx.timestamp.buf  = timestamp_buf;
+		ctx.timestamp.buf = timestamp_buf;
 	} else {
 		goto timestamp_err;
 	}
@@ -642,16 +705,19 @@ struct kafka_message_array *organization_db_interval_consumed0(
 	ctx.ret = new_kafka_message_array(entries);
 
 	if (NULL == ctx.ret) {
-		rdlog(LOG_ERR, "Couldn't allocate kafka message array"
-			"(out of memory?)");
+		rdlog(LOG_ERR,
+		      "Couldn't allocate kafka message array"
+		      "(out of memory?)");
 		goto ret_err;
 	}
 
-	rdlog(LOG_DEBUG, "Reporting %sabout %zu entries",
-		clean ? "and cleaning " : "", entries);
+	rdlog(LOG_DEBUG,
+	      "Reporting %sabout %zu entries",
+	      clean ? "and cleaning " : "",
+	      entries);
 
-	uuid_db_foreach_arg(&db->uuid_db, void_organizations_db_entry_report,
-									&ctx);
+	uuid_db_foreach_arg(
+			&db->uuid_db, void_organizations_db_entry_report, &ctx);
 
 ret_err:
 	yajl_gen_free(ctx.gen);

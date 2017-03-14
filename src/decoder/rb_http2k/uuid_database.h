@@ -28,7 +28,7 @@
 typedef struct uuid_entry_s {
 
 #ifndef NDEBUG
-	/* Private data - do not access directly */
+/* Private data - do not access directly */
 
 /// Magic to assert coherency.
 #define UUID_ENTRY_MAGIC 0x001D3A1C001D3A1CL
@@ -72,10 +72,8 @@ void uuid_db_insert(uuid_db_t *db, uuid_entry_t *entry);
   @param db database
   @param entry Entry to remove
   */
-#define uuid_db_remove(uuid_db, entry) \
+#define uuid_db_remove(uuid_db, entry)                                         \
 	tommy_hashdyn_remove_existing(uuid_db, &(entry)->node)
-
-
 
 /** Get an entry from uuid database.
   @note Obtained entry need to be freed with uuid_entry_decref

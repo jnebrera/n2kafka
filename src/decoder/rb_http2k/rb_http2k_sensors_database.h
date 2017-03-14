@@ -20,8 +20,8 @@
 
 #pragma once
 
-#include "uuid_database.h"
 #include "rb_http2k_organizations_database.h"
+#include "uuid_database.h"
 
 #include <jansson.h>
 
@@ -29,7 +29,7 @@
 typedef struct sensor_db_entry {
 
 #ifndef NDEBUG
-	/* Private data - do not access directly */
+/* Private data - do not access directly */
 
 /// Magic to assert coherency.
 #define SENSOR_DB_ENTRY_MAGIC 0x05350DB305350DB3L
@@ -71,8 +71,8 @@ typedef struct sensors_db_s sensors_db_t;
   @param organizations_db Organizations db, each sensor belongs to one
   @returns new database
   */
-sensors_db_t *sensors_db_new(json_t *sensors_config,
-					organizations_db_t *organizations_db);
+sensors_db_t *
+sensors_db_new(json_t *sensors_config, organizations_db_t *organizations_db);
 
 /** Get an entry from sensor database.
   @note Obtained entry need to be freed with sensor_db_entry_decref

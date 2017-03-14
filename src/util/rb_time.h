@@ -1,4 +1,4 @@
- /*
+/*
 ** Copyright (C) 2016 Eneo Tecnologia S.L.
 ** Author: Eugenio Perez <eupm90@gmail.com>
 **
@@ -33,20 +33,20 @@ static int zero_timespec(const struct timespec *ts) {
   @return 0 if equal, >0 if second timespec if bigger than first, and
   <0 in other case
   */
-static int cmp_timespec(const struct timespec *ts1,
-			const struct timespec *ts2) __attribute__((unused));
-static int cmp_timespec(const struct timespec *ts1,
-			const struct timespec *ts2) {
-	if(ts1->tv_sec != ts2->tv_sec) {
+static int cmp_timespec(const struct timespec *ts1, const struct timespec *ts2)
+		__attribute__((unused));
+static int
+cmp_timespec(const struct timespec *ts1, const struct timespec *ts2) {
+	if (ts1->tv_sec != ts2->tv_sec) {
 		return ts2->tv_sec - ts1->tv_sec;
 	} else {
 		return ts2->tv_nsec - ts1->tv_nsec;
 	}
 }
 
-static int zero_itimerspec(const struct itimerspec *its)
-						__attribute__((unused));
+static int
+zero_itimerspec(const struct itimerspec *its) __attribute__((unused));
 static int zero_itimerspec(const struct itimerspec *its) {
-	return zero_timespec(&its->it_value)
-					&& zero_timespec(&its->it_interval);
+	return zero_timespec(&its->it_value) &&
+	       zero_timespec(&its->it_interval);
 }

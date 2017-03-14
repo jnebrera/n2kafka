@@ -18,21 +18,20 @@
 
 #include "in_addr_list.h"
 
-#include <sys/queue.h>
 #include <netinet/in.h>
-#include <sys/socket.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/queue.h>
+#include <sys/socket.h>
 
-
-typedef struct in_addr_list_node_s{
+typedef struct in_addr_list_node_s {
 	struct in_addr addr;
 	LIST_ENTRY(in_addr_list_node_s) entry;
-}in_addr_list_node_t;
+} in_addr_list_node_t;
 
-typedef LIST_HEAD(,in_addr_list_node_s) in_addr_list_head_t;
+typedef LIST_HEAD(, in_addr_list_node_s) in_addr_list_head_t;
 
-struct in_addr_list_s{
+struct in_addr_list_s {
 	in_addr_list_head_t head;
 };
 
@@ -40,36 +39,38 @@ struct in_addr_list_s{
 #define syslist(list) (&(list)->head)
 
 /// Init a sockaddr_in list.
-in_addr_list_t *in_addr_list_new(){
-	in_addr_list_t *list = calloc(1,sizeof(*list));
+in_addr_list_t *in_addr_list_new() {
+	in_addr_list_t *list = calloc(1, sizeof(*list));
 	LIST_INIT(syslist(list));
 	return list;
 }
 
 /// Add an address to list.
-void in_addr_list_add(in_addr_list_t *list,const struct in_addr *addr){
-	in_addr_list_node_t *node = calloc(1,sizeof(*node));
+void in_addr_list_add(in_addr_list_t *list, const struct in_addr *addr) {
+	in_addr_list_node_t *node = calloc(1, sizeof(*node));
 
-	memcpy(&node->addr,addr,sizeof(*addr));
+	memcpy(&node->addr, addr, sizeof(*addr));
 
-	LIST_INSERT_HEAD(syslist(list),node,entry);
+	LIST_INSERT_HEAD(syslist(list), node, entry);
 }
 
 /// Check if an addr is in list.
-int in_addr_list_contains(const in_addr_list_t *list,const struct in_addr *addr){
-	in_addr_list_node_t *n=NULL;
-	for(n=LIST_FIRST(syslist(list));n!=NULL;n=LIST_NEXT(n,entry)){
-		if(0==memcmp(addr,&n->addr,sizeof(n->addr)))
+int in_addr_list_contains(const in_addr_list_t *list,
+			  const struct in_addr *addr) {
+	in_addr_list_node_t *n = NULL;
+	for (n = LIST_FIRST(syslist(list)); n != NULL;
+	     n = LIST_NEXT(n, entry)) {
+		if (0 == memcmp(addr, &n->addr, sizeof(n->addr)))
 			return 1;
 	}
 	return 0;
 }
 
 /// Deallocate a list.
-void in_addr_list_done(in_addr_list_t *list){
-	in_addr_list_node_t *n=NULL;
-	while((n = LIST_FIRST(syslist(list)))){
-		LIST_REMOVE(n,entry);
+void in_addr_list_done(in_addr_list_t *list) {
+	in_addr_list_node_t *n = NULL;
+	while ((n = LIST_FIRST(syslist(list)))) {
+		LIST_REMOVE(n, entry);
 		free(n);
 	}
 	free(list);

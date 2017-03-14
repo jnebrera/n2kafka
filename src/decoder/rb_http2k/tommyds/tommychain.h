@@ -50,15 +50,17 @@
  * - All the other inner prev and next fields are correctly set.
  */
 typedef struct tommy_chain_struct {
-	tommy_node* head; /**< Pointer at the head of the chain. */
-	tommy_node* tail; /**< Pointer at the tail of the chain. */
+	tommy_node *head; /**< Pointer at the head of the chain. */
+	tommy_node *tail; /**< Pointer at the tail of the chain. */
 } tommy_chain;
 
 /**
  * Splices a chain in the middle of another chain.
  */
-tommy_inline void tommy_chain_splice(tommy_node* first_before, tommy_node* first_after, tommy_node* second_head, tommy_node* second_tail)
-{
+tommy_inline void tommy_chain_splice(tommy_node *first_before,
+				     tommy_node *first_after,
+				     tommy_node *second_head,
+				     tommy_node *second_tail) {
 	/* set the prev list */
 	first_after->prev = second_tail;
 	second_head->prev = first_before;
@@ -71,8 +73,8 @@ tommy_inline void tommy_chain_splice(tommy_node* first_before, tommy_node* first
 /**
  * Concats two chains.
  */
-tommy_inline void tommy_chain_concat(tommy_node* first_tail, tommy_node* second_head)
-{
+tommy_inline void
+tommy_chain_concat(tommy_node *first_tail, tommy_node *second_head) {
 	/* set the prev list */
 	second_head->prev = first_tail;
 
@@ -83,20 +85,24 @@ tommy_inline void tommy_chain_concat(tommy_node* first_tail, tommy_node* second_
 /**
  * Merges two chains.
  */
-tommy_inline void tommy_chain_merge(tommy_chain* first, tommy_chain* second, tommy_compare_func* cmp)
-{
-	tommy_node* first_i = first->head;
-	tommy_node* second_i = second->head;
+tommy_inline void tommy_chain_merge(tommy_chain *first,
+				    tommy_chain *second,
+				    tommy_compare_func *cmp) {
+	tommy_node *first_i = first->head;
+	tommy_node *second_i = second->head;
 
 	/* merge */
 	while (1) {
 		if (cmp(first_i->data, second_i->data) > 0) {
-			tommy_node* next = second_i->next;
+			tommy_node *next = second_i->next;
 			if (first_i == first->head) {
 				tommy_chain_concat(second_i, first_i);
 				first->head = second_i;
 			} else {
-				tommy_chain_splice(first_i->prev, first_i, second_i, second_i);
+				tommy_chain_splice(first_i->prev,
+						   first_i,
+						   second_i,
+						   second_i);
 			}
 			if (second_i == second->tail)
 				break;
@@ -114,10 +120,12 @@ tommy_inline void tommy_chain_merge(tommy_chain* first, tommy_chain* second, tom
 
 /**
  * Merges two chains managing special degenerated cases.
- * It's funtionally equivalent at tommy_chain_merge() but faster with already ordered chains.
+ * It's funtionally equivalent at tommy_chain_merge() but faster with already
+ * ordered chains.
  */
-tommy_inline void tommy_chain_merge_degenerated(tommy_chain* first, tommy_chain* second, tommy_compare_func* cmp)
-{
+tommy_inline void tommy_chain_merge_degenerated(tommy_chain *first,
+						tommy_chain *second,
+						tommy_compare_func *cmp) {
 	/* identify the condition first <= second */
 	if (cmp(first->tail->data, second->head->data) <= 0) {
 		tommy_chain_concat(first->tail, second->head);
@@ -143,7 +151,8 @@ tommy_inline void tommy_chain_merge_degenerated(tommy_chain* first, tommy_chain*
 
 /**
  * Sorts a chain.
- * It's a stable merge sort using power of 2 buckets, with O(N*log(N)) complexity,
+ * It's a stable merge sort using power of 2 buckets, with O(N*log(N))
+ * complexity,
  * similar at the one used in the SGI STL libraries and in the Linux Kernel,
  * but faster on degenerated cases like already ordered lists.
  *
@@ -153,13 +162,15 @@ tommy_inline void tommy_chain_merge_degenerated(tommy_chain* first, tommy_chain*
  * Linux Kernel lib/list_sort.c
  * http://lxr.linux.no/#linux+v2.6.36/lib/list_sort.c
  */
-tommy_inline void tommy_chain_mergesort(tommy_chain* chain, tommy_compare_func* cmp)
-{
+tommy_inline void
+tommy_chain_mergesort(tommy_chain *chain, tommy_compare_func *cmp) {
 	/*
 	 * Bit buckets of chains.
 	 * Each bucket contains 2^i nodes or it's empty.
-	 * The chain at address TOMMY_CHAIN_BIT_MAX is an independet variable operating as "carry".
-	 * We keep it in the same "bit" vector to avoid reports from the valgrind tool sgcheck.
+	 * The chain at address TOMMY_CHAIN_BIT_MAX is an independet variable
+	 * operating as "carry".
+	 * We keep it in the same "bit" vector to avoid reports from the
+	 * valgrind tool sgcheck.
 	 */
 	tommy_chain bit[TOMMY_CHAIN_BIT_MAX + 1];
 
@@ -168,15 +179,15 @@ tommy_inline void tommy_chain_mergesort(tommy_chain* chain, tommy_compare_func* 
 	 * It's used to know which bucket is empty of full.
 	 */
 	tommy_count_t counter;
-	tommy_node* node = chain->head;
-	tommy_node* tail = chain->tail;
+	tommy_node *node = chain->head;
+	tommy_node *tail = chain->tail;
 	tommy_count_t mask;
 	tommy_count_t i;
 
 	counter = 0;
 	while (1) {
-		tommy_node* next;
-		tommy_chain* last;
+		tommy_node *next;
+		tommy_chain *last;
 
 		/* carry bit to add */
 		last = &bit[TOMMY_CHAIN_BIT_MAX];
@@ -211,7 +222,8 @@ tommy_inline void tommy_chain_mergesort(tommy_chain* chain, tommy_compare_func* 
 	while (mask != 1) {
 		mask >>= 1;
 		if (mask & 1)
-			tommy_chain_merge_degenerated(&bit[i + 1], &bit[i], cmp);
+			tommy_chain_merge_degenerated(
+					&bit[i + 1], &bit[i], cmp);
 		else
 			bit[i + 1] = bit[i];
 		++i;
@@ -221,4 +233,3 @@ tommy_inline void tommy_chain_mergesort(tommy_chain* chain, tommy_compare_func* 
 }
 
 #endif
-

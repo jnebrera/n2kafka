@@ -31,32 +31,33 @@
 /******************************************************************************/
 /* hashdyn */
 
-void tommy_hashdyn_init(tommy_hashdyn* hashdyn)
-{
+void tommy_hashdyn_init(tommy_hashdyn *hashdyn) {
 	/* fixed initial size */
 	hashdyn->bucket_bit = TOMMY_HASHDYN_BIT;
 	hashdyn->bucket_max = 1 << hashdyn->bucket_bit;
 	hashdyn->bucket_mask = hashdyn->bucket_max - 1;
-	hashdyn->bucket = tommy_cast(tommy_hashdyn_node**, tommy_calloc(hashdyn->bucket_max, sizeof(tommy_hashdyn_node*)));
+	hashdyn->bucket =
+			tommy_cast(tommy_hashdyn_node **,
+				   tommy_calloc(hashdyn->bucket_max,
+						sizeof(tommy_hashdyn_node *)));
 
 	hashdyn->count = 0;
 }
 
-void tommy_hashdyn_done(tommy_hashdyn* hashdyn)
-{
+void tommy_hashdyn_done(tommy_hashdyn *hashdyn) {
 	tommy_free(hashdyn->bucket);
 }
 
 /**
  * Resize the bucket vector.
  */
-static void tommy_hashdyn_resize(tommy_hashdyn* hashdyn, tommy_count_t new_bucket_bit)
-{
+static void
+tommy_hashdyn_resize(tommy_hashdyn *hashdyn, tommy_count_t new_bucket_bit) {
 	tommy_count_t bucket_bit;
 	tommy_count_t bucket_max;
 	tommy_count_t new_bucket_max;
 	tommy_count_t new_bucket_mask;
-	tommy_hashdyn_node** new_bucket;
+	tommy_hashdyn_node **new_bucket;
 
 	bucket_bit = hashdyn->bucket_bit;
 	bucket_max = hashdyn->bucket_max;
@@ -66,7 +67,9 @@ static void tommy_hashdyn_resize(tommy_hashdyn* hashdyn, tommy_count_t new_bucke
 
 	/* allocate the new vector using malloc() and not calloc() */
 	/* because data is fully initialized in the update process */
-	new_bucket = tommy_cast(tommy_hashdyn_node**, tommy_malloc(new_bucket_max * sizeof(tommy_hashdyn_node*)));
+	new_bucket = tommy_cast(tommy_hashdyn_node **,
+				tommy_malloc(new_bucket_max *
+					     sizeof(tommy_hashdyn_node *)));
 
 	/* reinsert all the elements */
 	if (new_bucket_bit > bucket_bit) {
@@ -74,7 +77,7 @@ static void tommy_hashdyn_resize(tommy_hashdyn* hashdyn, tommy_count_t new_bucke
 
 		/* grow */
 		for (i = 0; i < bucket_max; ++i) {
-			tommy_hashdyn_node* j;
+			tommy_hashdyn_node *j;
 
 			/* setup the new two buckets */
 			new_bucket[i] = 0;
@@ -83,12 +86,14 @@ static void tommy_hashdyn_resize(tommy_hashdyn* hashdyn, tommy_count_t new_bucke
 			/* reinsert the bucket */
 			j = hashdyn->bucket[i];
 			while (j) {
-				tommy_hashdyn_node* j_next = j->next;
+				tommy_hashdyn_node *j_next = j->next;
 				tommy_count_t pos = j->key & new_bucket_mask;
 				if (new_bucket[pos])
-					tommy_list_insert_tail_not_empty(new_bucket[pos], j);
+					tommy_list_insert_tail_not_empty(
+							new_bucket[pos], j);
 				else
-					tommy_list_insert_first(&new_bucket[pos], j);
+					tommy_list_insert_first(
+							&new_bucket[pos], j);
 				j = j_next;
 			}
 		}
@@ -101,7 +106,8 @@ static void tommy_hashdyn_resize(tommy_hashdyn* hashdyn, tommy_count_t new_bucke
 			new_bucket[i] = hashdyn->bucket[i];
 
 			/* concat the upper bucket */
-			tommy_list_concat(&new_bucket[i], &hashdyn->bucket[i + new_bucket_max]);
+			tommy_list_concat(&new_bucket[i],
+					  &hashdyn->bucket[i + new_bucket_max]);
 		}
 	}
 
@@ -117,8 +123,7 @@ static void tommy_hashdyn_resize(tommy_hashdyn* hashdyn, tommy_count_t new_bucke
 /**
  * Grow.
  */
-tommy_inline void hashdyn_grow_step(tommy_hashdyn* hashdyn)
-{
+tommy_inline void hashdyn_grow_step(tommy_hashdyn *hashdyn) {
 	/* grow if more than 50% full */
 	if (hashdyn->count >= hashdyn->bucket_max / 2)
 		tommy_hashdyn_resize(hashdyn, hashdyn->bucket_bit + 1);
@@ -127,15 +132,17 @@ tommy_inline void hashdyn_grow_step(tommy_hashdyn* hashdyn)
 /**
  * Shrink.
  */
-tommy_inline void hashdyn_shrink_step(tommy_hashdyn* hashdyn)
-{
+tommy_inline void hashdyn_shrink_step(tommy_hashdyn *hashdyn) {
 	/* shrink if less than 12.5% full */
-	if (hashdyn->count <= hashdyn->bucket_max / 8 && hashdyn->bucket_bit > TOMMY_HASHDYN_BIT)
+	if (hashdyn->count <= hashdyn->bucket_max / 8 &&
+	    hashdyn->bucket_bit > TOMMY_HASHDYN_BIT)
 		tommy_hashdyn_resize(hashdyn, hashdyn->bucket_bit - 1);
 }
 
-void tommy_hashdyn_insert(tommy_hashdyn* hashdyn, tommy_hashdyn_node* node, void* data, tommy_hash_t hash)
-{
+void tommy_hashdyn_insert(tommy_hashdyn *hashdyn,
+			  tommy_hashdyn_node *node,
+			  void *data,
+			  tommy_hash_t hash) {
 	tommy_count_t pos = hash & hashdyn->bucket_mask;
 
 	tommy_list_insert_tail(&hashdyn->bucket[pos], node, data);
@@ -147,8 +154,8 @@ void tommy_hashdyn_insert(tommy_hashdyn* hashdyn, tommy_hashdyn_node* node, void
 	hashdyn_grow_step(hashdyn);
 }
 
-void* tommy_hashdyn_remove_existing(tommy_hashdyn* hashdyn, tommy_hashdyn_node* node)
-{
+void *tommy_hashdyn_remove_existing(tommy_hashdyn *hashdyn,
+				    tommy_hashdyn_node *node) {
 	tommy_count_t pos = node->key & hashdyn->bucket_mask;
 
 	tommy_list_remove_existing(&hashdyn->bucket[pos], node);
@@ -160,13 +167,16 @@ void* tommy_hashdyn_remove_existing(tommy_hashdyn* hashdyn, tommy_hashdyn_node* 
 	return node->data;
 }
 
-void* tommy_hashdyn_remove(tommy_hashdyn* hashdyn, tommy_search_func* cmp, const void* cmp_arg, tommy_hash_t hash)
-{
+void *tommy_hashdyn_remove(tommy_hashdyn *hashdyn,
+			   tommy_search_func *cmp,
+			   const void *cmp_arg,
+			   tommy_hash_t hash) {
 	tommy_count_t pos = hash & hashdyn->bucket_mask;
-	tommy_hashdyn_node* node = hashdyn->bucket[pos];
+	tommy_hashdyn_node *node = hashdyn->bucket[pos];
 
 	while (node) {
-		/* we first check if the hash matches, as in the same bucket we may have multiples hash values */
+		/* we first check if the hash matches, as in the same bucket we
+		 * may have multiples hash values */
 		if (node->key == hash && cmp(cmp_arg, node->data) == 0) {
 			tommy_list_remove_existing(&hashdyn->bucket[pos], node);
 
@@ -182,43 +192,42 @@ void* tommy_hashdyn_remove(tommy_hashdyn* hashdyn, tommy_search_func* cmp, const
 	return 0;
 }
 
-void tommy_hashdyn_foreach(tommy_hashdyn* hashdyn, tommy_foreach_func* func)
-{
+void tommy_hashdyn_foreach(tommy_hashdyn *hashdyn, tommy_foreach_func *func) {
 	tommy_count_t bucket_max = hashdyn->bucket_max;
-	tommy_hashdyn_node** bucket = hashdyn->bucket;
+	tommy_hashdyn_node **bucket = hashdyn->bucket;
 	tommy_count_t pos;
 
 	for (pos = 0; pos < bucket_max; ++pos) {
-		tommy_hashdyn_node* node = bucket[pos];
+		tommy_hashdyn_node *node = bucket[pos];
 
 		while (node) {
-			void* data = node->data;
+			void *data = node->data;
 			node = node->next;
 			func(data);
 		}
 	}
 }
 
-void tommy_hashdyn_foreach_arg(tommy_hashdyn* hashdyn, tommy_foreach_arg_func* func, void* arg)
-{
+void tommy_hashdyn_foreach_arg(tommy_hashdyn *hashdyn,
+			       tommy_foreach_arg_func *func,
+			       void *arg) {
 	tommy_count_t bucket_max = hashdyn->bucket_max;
-	tommy_hashdyn_node** bucket = hashdyn->bucket;
+	tommy_hashdyn_node **bucket = hashdyn->bucket;
 	tommy_count_t pos;
 
 	for (pos = 0; pos < bucket_max; ++pos) {
-		tommy_hashdyn_node* node = bucket[pos];
+		tommy_hashdyn_node *node = bucket[pos];
 
 		while (node) {
-			void* data = node->data;
+			void *data = node->data;
 			node = node->next;
 			func(arg, data);
 		}
 	}
 }
 
-tommy_size_t tommy_hashdyn_memory_usage(tommy_hashdyn* hashdyn)
-{
-	return hashdyn->bucket_max * (tommy_size_t)sizeof(hashdyn->bucket[0])
-	       + tommy_hashdyn_count(hashdyn) * (tommy_size_t)sizeof(tommy_hashdyn_node);
+tommy_size_t tommy_hashdyn_memory_usage(tommy_hashdyn *hashdyn) {
+	return hashdyn->bucket_max * (tommy_size_t)sizeof(hashdyn->bucket[0]) +
+	       tommy_hashdyn_count(hashdyn) *
+			       (tommy_size_t)sizeof(tommy_hashdyn_node);
 }
-

@@ -22,9 +22,9 @@
 
 #include "util/pair.h"
 
+#include <pthread.h>
 #include <stdint.h>
 #include <string.h>
-#include <pthread.h>
 
 /* All functions are thread-safe here, excepting free_valid_meraki_database */
 
@@ -35,14 +35,15 @@ struct meraki_database {
 	struct json_t *root;
 };
 
-static void init_meraki_database(struct meraki_database *db) __attribute__((unused));
+static void
+init_meraki_database(struct meraki_database *db) __attribute__((unused));
 static void init_meraki_database(struct meraki_database *db) {
-	pthread_rwlock_init(&db->rwlock,0);
+	pthread_rwlock_init(&db->rwlock, 0);
 	db->root = NULL;
 }
 
-int meraki_opaque_creator(struct json_t *config,void **opaque);
-int meraki_opaque_reload(struct json_t *config,void *opaque);
+int meraki_opaque_creator(struct json_t *config, void **opaque);
+int meraki_opaque_reload(struct json_t *config, void *opaque);
 void meraki_opaque_destructor(void *opaque);
 
 int parse_meraki_secrets(void *db, const struct json_t *meraki_object);
@@ -53,6 +54,8 @@ struct meraki_config {
 	struct meraki_database database;
 };
 
-void meraki_decode(char *buffer,size_t buf_size,
-	const keyval_list_t *attrs,void *listener_callback_opaque,
-	void **sessionp);
+void meraki_decode(char *buffer,
+		   size_t buf_size,
+		   const keyval_list_t *attrs,
+		   void *listener_callback_opaque,
+		   void **sessionp);

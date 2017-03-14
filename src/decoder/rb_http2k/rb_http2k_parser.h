@@ -23,11 +23,11 @@
 
 #include "rb_http2k_sensors_database.h"
 
-#include <yajl/yajl_parse.h>
-#include <yajl/yajl_gen.h>
-#include <util/kafka_message_list.h>
 #include <jansson.h>
+#include <util/kafka_message_list.h>
 #include <util/pair.h>
+#include <yajl/yajl_gen.h>
+#include <yajl/yajl_parse.h>
 
 /// @TODO many of the fields here could be a state machine
 /// @TODO separate parsing <-> not parsing fields
@@ -46,7 +46,7 @@ struct rb_session {
 	size_t object_array_parsing_stack;
 
 	/// Per POST business.
-	const char *client_ip,*sensor_uuid,*topic,*kafka_partitioner_key;
+	const char *client_ip, *sensor_uuid, *topic, *kafka_partitioner_key;
 
 	/// Topid handler
 	struct topic_s *topic_handler;
@@ -70,8 +70,8 @@ struct rb_session {
 };
 
 struct rb_config;
-struct rb_session *new_rb_session(struct rb_config *rb_config,
-	                                const keyval_list_t *msg_vars);
+struct rb_session *
+new_rb_session(struct rb_config *rb_config, const keyval_list_t *msg_vars);
 
 int gen_jansson_object(yajl_gen gen, json_t *enrichment_data);
 

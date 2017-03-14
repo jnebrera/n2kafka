@@ -16,69 +16,73 @@
 ** along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "version.h"
 #include "engine.h"
-#include "util/kafka.h"
 #include "global_config.h"
+#include "util/kafka.h"
+#include "version.h"
 
+#include <jansson.h>
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
-#include <jansson.h>
 
 #define DEFAULT_PORT 2057
 
 static int do_reload = 0;
 
-static void shutdown_process(){
+static void shutdown_process() {
 	printf("Exiting\n");
-	do_shutdown=1;
+	do_shutdown = 1;
 }
 
-static void show_usage(const char *progname){
-	fprintf(stdout,"n2kafka version %s-%s\n",n2kafka_version,n2kafka_revision);
-	fprintf(stdout,"Usage: %s <config_file>\n",progname);
-	fprintf(stdout,"\n");
+static void show_usage(const char *progname) {
 	fprintf(stdout,
-	        "Where <config_file> is a json file that can contains the \n");
-	fprintf(stdout,"the next configurations:\n");
-	
-	fprintf(stdout,"{\n");
-	fprintf(stdout,"\t\"listeners:\":[\n");
+		"n2kafka version %s-%s\n",
+		n2kafka_version,
+		n2kafka_revision);
+	fprintf(stdout, "Usage: %s <config_file>\n", progname);
+	fprintf(stdout, "\n");
 	fprintf(stdout,
-	        "\t\t{\"proto\":\"http\",\"port\":2057,\"mode\":\"(1)\","
-	        "\"threads\":20}\n");
+		"Where <config_file> is a json file that can contains the \n");
+	fprintf(stdout, "the next configurations:\n");
+
+	fprintf(stdout, "{\n");
+	fprintf(stdout, "\t\"listeners:\":[\n");
 	fprintf(stdout,
-	        "\t\t{\"proto\":\"tcp\",\"port\":2056,"
-	        "\"tcp_leepalive\":true,\"mode\"},\n");
-	fprintf(stdout,"\t\t{\"proto\":\"udp\",\"port\":2058,\"threads\":20}\n");
-	fprintf(stdout,"\t],\n");
-	fprintf(stdout,"\t\"brokers\":\"kafka brokers\",\n");
-	fprintf(stdout,"\t\"topic\":\"kafka topic\",\n");
-	fprintf(stdout,"\t\"rdkafka.socket.max.fails\":\"3\",\n");
-	fprintf(stdout,"\t\"rdkafka.socket.keepalive.enable\":\"true\",\n");
-	fprintf(stdout,"\t\"blacklist\":[\"192.168.101.3\"]\n");
-	fprintf(stdout,"}\n\n");
-	fprintf(stdout,"(1) Modes can be:\n");
+		"\t\t{\"proto\":\"http\",\"port\":2057,\"mode\":\"(1)\","
+		"\"threads\":20}\n");
 	fprintf(stdout,
-	        "\tthread_per_connection: Creates a thread for each connection.\n");
-	fprintf(stdout,"\t\tThread argument will be ignored in this mode\n");
+		"\t\t{\"proto\":\"tcp\",\"port\":2056,"
+		"\"tcp_leepalive\":true,\"mode\"},\n");
 	fprintf(stdout,
-	        "\tselect,poll,epoll: Fixed number of threads (with threads "
-	        "parameter) manages all connections\n");
+		"\t\t{\"proto\":\"udp\",\"port\":2058,\"threads\":20}\n");
+	fprintf(stdout, "\t],\n");
+	fprintf(stdout, "\t\"brokers\":\"kafka brokers\",\n");
+	fprintf(stdout, "\t\"topic\":\"kafka topic\",\n");
+	fprintf(stdout, "\t\"rdkafka.socket.max.fails\":\"3\",\n");
+	fprintf(stdout, "\t\"rdkafka.socket.keepalive.enable\":\"true\",\n");
+	fprintf(stdout, "\t\"blacklist\":[\"192.168.101.3\"]\n");
+	fprintf(stdout, "}\n\n");
+	fprintf(stdout, "(1) Modes can be:\n");
+	fprintf(stdout, "\tthread_per_connection: Creates a thread for each "
+			"connection.\n");
+	fprintf(stdout, "\t\tThread argument will be ignored in this mode\n");
+	fprintf(stdout,
+		"\tselect,poll,epoll: Fixed number of threads (with threads "
+		"parameter) manages all connections\n");
 }
 
-static int is_asking_help(const char *param){
-	return 0==strcmp(param,"-h") || 0==strcmp(param,"--help");
+static int is_asking_help(const char *param) {
+	return 0 == strcmp(param, "-h") || 0 == strcmp(param, "--help");
 }
 
-static void sighup_proc(int signum __attribute__((unused))){
+static void sighup_proc(int signum __attribute__((unused))) {
 	do_reload = 1;
 }
 
-int main(int argc,char *argv[]){
-	if(argc != 2 || is_asking_help(argv[1])){
+int main(int argc, char *argv[]) {
+	if (argc != 2 || is_asking_help(argv[1])) {
 		show_usage(argv[0]);
 		exit(1);
 	}
@@ -86,12 +90,12 @@ int main(int argc,char *argv[]){
 	init_global_config();
 	parse_config(argv[1]);
 
-	signal(SIGINT,shutdown_process);
-	signal(SIGHUP,sighup_proc);
+	signal(SIGINT, shutdown_process);
+	signal(SIGHUP, sighup_proc);
 
-	while(!do_shutdown){
+	while (!do_shutdown) {
 		kafka_poll(1000 /* ms */);
-		if(do_reload){
+		if (do_reload) {
 			reload_config(&global_config);
 			do_reload = 0;
 		}

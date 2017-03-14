@@ -20,13 +20,12 @@
 #include "util/util.h"
 
 #include "engine.h"
+#include "global_config.h"
 #include "parse.h"
 #include "util/kafka.h"
-#include "global_config.h"
 
 #ifdef HAVE_LIBMICROHTTPD
 #include "listener/http.h"
 #endif
 
 int do_shutdown = 0;
-

@@ -13,15 +13,17 @@ struct topics_db;
 /** It creates a new database */
 struct topics_db *topics_db_new();
 
-/** Add a topic into a database 
+/** Add a topic into a database
 	@param topics_db Topics database
 	@param topic Topic to produce
 	@param partition_key Field to extract partition key
 	@param partition_key_len Length of partition key
 	@return 1 if OK, 0 ioc.
 	*/
-int topics_db_add(struct topics_db *topics_db,rd_kafka_topic_t *rkt,
-	const char *partition_key,size_t partition_key_len);
+int topics_db_add(struct topics_db *topics_db,
+		  rd_kafka_topic_t *rkt,
+		  const char *partition_key,
+		  size_t partition_key_len);
 
 /** Returns JSON key for what message has to be partitioned
 	@param topic Topic.
@@ -52,6 +54,7 @@ rd_kafka_topic_t *topics_db_get_rdkafka_topic(struct topic_s *topic);
 const char *topics_db_get_topic_name(const struct topic_s *topic);
 
 /** Destroy a topics db.
-	You can keep using topics extracted from it, but you can't search for more topics
+	You can keep using topics extracted from it, but you can't search for
+   more topics
 	*/
 void topics_db_done(struct topics_db *topics_db);

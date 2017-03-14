@@ -20,27 +20,27 @@
 */
 
 #include "rb_http2k_decoder.h"
+#include "engine/global_config.h"
 #include "rb_http2k_parser.h"
 #include "rb_http2k_sync_common.h"
-#include "util/rb_mac.h"
 #include "util/kafka.h"
-#include "engine/global_config.h"
-#include "util/rb_json.h"
-#include "util/topic_database.h"
 #include "util/kafka_message_list.h"
-#include "util/util.h"
+#include "util/rb_json.h"
+#include "util/rb_mac.h"
 #include "util/rb_time.h"
+#include "util/topic_database.h"
+#include "util/util.h"
 
+#include <assert.h>
+#include <errno.h>
+#include <jansson.h>
+#include <librd/rd.h>
 #include <librd/rdlog.h>
 #include <librd/rdmem.h>
-#include <assert.h>
-#include <jansson.h>
+#include <librdkafka/rdkafka.h>
+#include <pthread.h>
 #include <stdint.h>
 #include <string.h>
-#include <pthread.h>
-#include <errno.h>
-#include <librd/rd.h>
-#include <librdkafka/rdkafka.h>
 
 static const char RB_HTTP2K_CONFIG_KEY[] = "rb_http2k_config";
 static const char RB_SENSORS_UUID_KEY[] = "sensors_uuids";
@@ -51,9 +51,9 @@ static const char RB_ORGANIZATIONS_SYNC_TOPICS_KEY[] = "topics";
 static const char RB_ORGANIZATIONS_SYNC_INTERVAL_S_KEY[] = "interval_s";
 static const char RB_ORGANIZATIONS_SYNC_CLEAN_KEY[] = "clean_on";
 static const char RB_ORGANIZATIONS_SYNC_CLEAN_TIMESTAMP_MOD_KEY[] =
-							"timestamp_s_mod";
+		"timestamp_s_mod";
 static const char RB_ORGANIZATIONS_SYNC_CLEAN_TIMESTAMP_OFFSET_KEY[] =
-							"timestamp_s_offset";
+		"timestamp_s_offset";
 static const char RB_ORGANIZATIONS_SYNC_PUT_URL_KEY[] = "put_url";
 static const char RB_TOPICS_KEY[] = "topics";
 static const char RB_SENSOR_UUID_KEY[] = "uuid";
@@ -61,13 +61,19 @@ static const char RB_SENSOR_UUID_KEY[] = "uuid";
 static const char RB_TOPIC_PARTITIONER_KEY[] = "partition_key";
 static const char RB_TOPIC_PARTITIONER_ALGORITHM_KEY[] = "partition_algo";
 
-typedef int32_t (*partitioner_cb) (const rd_kafka_topic_t *rkt,
-                                   const void *keydata, size_t keylen, int32_t partition_cnt,
-                                   void *rkt_opaque, void *msg_opaque);
+typedef int32_t (*partitioner_cb)(const rd_kafka_topic_t *rkt,
+				  const void *keydata,
+				  size_t keylen,
+				  int32_t partition_cnt,
+				  void *rkt_opaque,
+				  void *msg_opaque);
 
-static int32_t (mac_partitioner) (const rd_kafka_topic_t *rkt,
-                                  const void *keydata, size_t keylen, int32_t partition_cnt,
-                                  void *rkt_opaque, void *msg_opaque);
+static int32_t(mac_partitioner)(const rd_kafka_topic_t *rkt,
+				const void *keydata,
+				size_t keylen,
+				int32_t partition_cnt,
+				void *rkt_opaque,
+				void *msg_opaque);
 
 /** Algorithm of messages partitioner */
 enum partitioner_algorithm {
@@ -82,7 +88,7 @@ struct {
 	const char *name;
 	partitioner_cb partitioner;
 } partitioner_algorithm_list[] = {
-	{mac, "mac", mac_partitioner},
+		{mac, "mac", mac_partitioner},
 };
 
 #ifndef NDEBUG
@@ -108,9 +114,9 @@ struct rb_opaque {
 	time_t produce_error_last_time[LAST_WARNING_TIME__END];
 };
 
-static enum warning_times_pos kafka_error_to_warning_time_pos(
-                                                    rd_kafka_resp_err_t err) {
-	switch(err) {
+static enum warning_times_pos
+kafka_error_to_warning_time_pos(rd_kafka_resp_err_t err) {
+	switch (err) {
 	case RD_KAFKA_RESP_ERR__QUEUE_FULL:
 		return LAST_WARNING_TIME__QUEUE_FULL;
 	case RD_KAFKA_RESP_ERR_MSG_SIZE_TOO_LARGE:
@@ -124,9 +130,12 @@ static enum warning_times_pos kafka_error_to_warning_time_pos(
 	};
 }
 
-static int32_t mac_partitioner (const rd_kafka_topic_t *rkt,
-                                const void *keydata, size_t keylen, int32_t partition_cnt,
-                                void *rkt_opaque, void *msg_opaque) {
+static int32_t mac_partitioner(const rd_kafka_topic_t *rkt,
+			       const void *keydata,
+			       size_t keylen,
+			       int32_t partition_cnt,
+			       void *rkt_opaque,
+			       void *msg_opaque) {
 	size_t toks = 0;
 	uint64_t intmac = 0;
 	char mac_key[sizeof("00:00:00:00:00:00")];
@@ -134,8 +143,10 @@ static int32_t mac_partitioner (const rd_kafka_topic_t *rkt,
 	if (keylen != strlen("00:00:00:00:00:00")) {
 		if (keylen != 0) {
 			/* We were expecting a MAC and we do not have it */
-			rdlog(LOG_WARNING, "Invalid mac %.*s len", (int)keylen,
-				(const char *)keydata);
+			rdlog(LOG_WARNING,
+			      "Invalid mac %.*s len",
+			      (int)keylen,
+			      (const char *)keydata);
 		}
 		goto fallback_behavior;
 	}
@@ -146,26 +157,40 @@ static int32_t mac_partitioner (const rd_kafka_topic_t *rkt,
 	for (toks = 1; toks < 6; ++toks) {
 		const size_t semicolon_pos = 3 * toks - 1;
 		if (':' != mac_key[semicolon_pos]) {
-			rdlog(LOG_WARNING, "Invalid mac %.*s (it does not have ':' in char %zu.",
-			      (int)keylen, mac_key, semicolon_pos);
+			rdlog(LOG_WARNING,
+			      "Invalid mac %.*s (it does not have ':' in char "
+			      "%zu.",
+			      (int)keylen,
+			      mac_key,
+			      semicolon_pos);
 			goto fallback_behavior;
 		}
 	}
 
 	for (toks = 0; toks < 6; ++toks) {
 		char *endptr = NULL;
-		intmac = (intmac << 8) + strtoul(&mac_key[3 * toks], &endptr, 16);
+		intmac = (intmac << 8) +
+			 strtoul(&mac_key[3 * toks], &endptr, 16);
 		/// The key should end with '"' in json format
-		if ((toks < 5 && *endptr != ':') || (toks == 5 && *endptr != '\0')) {
-			rdlog(LOG_WARNING, "Invalid mac %.*s, unexpected %c end of %zu token",
-			      (int)keylen, mac_key, *endptr, toks);
+		if ((toks < 5 && *endptr != ':') ||
+		    (toks == 5 && *endptr != '\0')) {
+			rdlog(LOG_WARNING,
+			      "Invalid mac %.*s, unexpected %c end of %zu "
+			      "token",
+			      (int)keylen,
+			      mac_key,
+			      *endptr,
+			      toks);
 			goto fallback_behavior;
-
 		}
 
 		if (endptr != mac_key + 3 * (toks + 1) - 1) {
-			rdlog(LOG_WARNING, "Invalid mac %.*s, unexpected token length at %zu token",
-			      (int)keylen, mac_key, toks);
+			rdlog(LOG_WARNING,
+			      "Invalid mac %.*s, unexpected token length at "
+			      "%zu token",
+			      (int)keylen,
+			      mac_key,
+			      toks);
 			goto fallback_behavior;
 		}
 	}
@@ -173,23 +198,29 @@ static int32_t mac_partitioner (const rd_kafka_topic_t *rkt,
 	return intmac % (uint32_t)partition_cnt;
 
 fallback_behavior:
-	return rd_kafka_msg_partitioner_random(rkt, keydata, keylen, partition_cnt,
-	                                       rkt_opaque, msg_opaque);
+	return rd_kafka_msg_partitioner_random(rkt,
+					       keydata,
+					       keylen,
+					       partition_cnt,
+					       rkt_opaque,
+					       msg_opaque);
 }
 
 /** Parsing of per uuid enrichment.
 	@param config original config with RB_SENSORS_UUID_KEY to extract it.
 	@return new uuid database
 	*/
-static sensors_db_t *parse_per_uuid_opaque_config(json_t *config,
-					organizations_db_t *organizations_db) {
+static sensors_db_t *
+parse_per_uuid_opaque_config(json_t *config,
+			     organizations_db_t *organizations_db) {
 	assert(config);
 
 	json_t *sensors_config = json_object_get(config, RB_SENSORS_UUID_KEY);
 
 	if (NULL == sensors_config) {
-		rdlog(LOG_ERR,"Couldn't unpack %s key: Object not found",
-			RB_SENSORS_UUID_KEY);
+		rdlog(LOG_ERR,
+		      "Couldn't unpack %s key: Object not found",
+		      RB_SENSORS_UUID_KEY);
 		return NULL;
 	}
 
@@ -210,7 +241,8 @@ static partitioner_cb partitioner_of_name(const char *name) {
 	return NULL;
 }
 
-static int parse_topic_list_config(json_t *config, struct topics_db *new_topics_db) {
+static int
+parse_topic_list_config(json_t *config, struct topics_db *new_topics_db) {
 	const char *key;
 	json_t *value;
 	json_error_t jerr;
@@ -219,8 +251,8 @@ static int parse_topic_list_config(json_t *config, struct topics_db *new_topics_
 
 	assert(config);
 
-	const int json_unpack_rc = json_unpack_ex(config, &jerr, 0, "{s:o}",
-	                           RB_TOPICS_KEY, &topic_list);
+	const int json_unpack_rc = json_unpack_ex(
+			config, &jerr, 0, "{s:o}", RB_TOPICS_KEY, &topic_list);
 
 	if (0 != json_unpack_rc) {
 		rdlog(LOG_ERR, "%s", jerr.text);
@@ -246,49 +278,74 @@ static int parse_topic_list_config(json_t *config, struct topics_db *new_topics_
 
 		if (!json_is_object(value)) {
 			if (pass == 0) {
-				rdlog(LOG_ERR, "Topic %s is not an object. Discarding.", topic_name);
+				rdlog(LOG_ERR,
+				      "Topic %s is not an object. Discarding.",
+				      topic_name);
 			}
 			continue;
 		}
 
-		const int topic_unpack_rc = json_unpack_ex(value, &jerr, 0, "{s?s%,s?s}",
-		                            RB_TOPIC_PARTITIONER_KEY, &partition_key, &partition_key_len,
-		                            RB_TOPIC_PARTITIONER_ALGORITHM_KEY, &partition_algo);
+		const int topic_unpack_rc = json_unpack_ex(
+				value,
+				&jerr,
+				0,
+				"{s?s%,s?s}",
+				RB_TOPIC_PARTITIONER_KEY,
+				&partition_key,
+				&partition_key_len,
+				RB_TOPIC_PARTITIONER_ALGORITHM_KEY,
+				&partition_algo);
 
 		if (0 != topic_unpack_rc) {
-			rdlog(LOG_ERR, "Can't extract information of topic %s (%s). Discarding.",
-			      topic_name, jerr.text);
+			rdlog(LOG_ERR,
+			      "Can't extract information of topic %s (%s). "
+			      "Discarding.",
+			      topic_name,
+			      jerr.text);
 			continue;
 		}
 
 		rd_kafka_topic_conf_t *my_rkt_conf = rd_kafka_topic_conf_dup(
-                                global_config.kafka_topic_conf);
-		if(NULL == my_rkt_conf) {
-			rdlog(LOG_ERR,"Couldn't topic_conf_dup in topic %s",topic_name);
+				global_config.kafka_topic_conf);
+		if (NULL == my_rkt_conf) {
+			rdlog(LOG_ERR,
+			      "Couldn't topic_conf_dup in topic %s",
+			      topic_name);
 			continue;
 		}
 
 		if (NULL != partition_algo) {
-			partitioner_cb partitioner = partitioner_of_name(partition_algo);
+			partitioner_cb partitioner =
+					partitioner_of_name(partition_algo);
 			if (NULL != partitioner) {
-				rd_kafka_topic_conf_set_partitioner_cb(my_rkt_conf, partitioner);
+				rd_kafka_topic_conf_set_partitioner_cb(
+						my_rkt_conf, partitioner);
 			} else {
 				rdlog(LOG_ERR,
-					"Can't found partitioner algorithm %s for topic %s",
-					partition_algo,topic_name);
+				      "Can't found partitioner algorithm %s "
+				      "for topic %s",
+				      partition_algo,
+				      topic_name);
 			}
 		}
 
-		rkt = rd_kafka_topic_new(global_config.rk, topic_name, my_rkt_conf);
+		rkt = rd_kafka_topic_new(
+				global_config.rk, topic_name, my_rkt_conf);
 		if (NULL == rkt) {
 			char buf[BUFSIZ];
 			strerror_r(errno, buf, sizeof(buf));
-			rdlog(LOG_ERR, "Can't create topic %s: %s", topic_name, buf);
+			rdlog(LOG_ERR,
+			      "Can't create topic %s: %s",
+			      topic_name,
+			      buf);
 			rd_kafka_topic_conf_destroy(my_rkt_conf);
 			continue;
 		}
 
-		topics_db_add(new_topics_db,rkt,partition_key,partition_key_len);
+		topics_db_add(new_topics_db,
+			      rkt,
+			      partition_key,
+			      partition_key_len);
 	}
 
 	return 0;
@@ -309,8 +366,10 @@ int rb_opaque_creator(json_t *config __attribute__((unused)), void **_opaque) {
 	opaque->magic = RB_OPAQUE_MAGIC;
 #endif
 
-	for(i=0;i<RD_ARRAYSIZE(opaque->produce_error_last_time_mutex);++i) {
-		pthread_mutex_init(&opaque->produce_error_last_time_mutex[i], NULL);
+	for (i = 0; i < RD_ARRAYSIZE(opaque->produce_error_last_time_mutex);
+	     ++i) {
+		pthread_mutex_init(&opaque->produce_error_last_time_mutex[i],
+				   NULL);
 	}
 
 	/// @TODO move global_config to static allocated buffer
@@ -330,26 +389,29 @@ int rb_opaque_reload(json_t *config, void *opaque) {
 /** Timer event function, that cleans client's consumed.
   @param rb_config config to print stats
   */
-static void rb_decoder_accounting_tick0(struct rb_config *rb_config,
-								int clean) {
+static void
+rb_decoder_accounting_tick0(struct rb_config *rb_config, int clean) {
 	char err[BUFSIZ];
 	rdlog(LOG_DEBUG, "Sending client's accounting information");
 	struct kafka_message_array *msgs = NULL;
-	struct itimerspec monitor_ts_value,clean_ts_value;
+	struct itimerspec monitor_ts_value, clean_ts_value;
 
 	pthread_rwlock_rdlock(&rb_config->database.rwlock);
 
 	const int get_interval_rc = rb_timer_get_interval(
-		rb_config->organizations_sync.timer, &monitor_ts_value);
+			rb_config->organizations_sync.timer, &monitor_ts_value);
 	if (0 != get_interval_rc) {
-		rdlog(LOG_ERR, "Couldn't get timer interval: %s",
-			mystrerror(errno, err, sizeof(err)));
+		rdlog(LOG_ERR,
+		      "Couldn't get timer interval: %s",
+		      mystrerror(errno, err, sizeof(err)));
 	}
 	const int get_clean_interval_rc = rb_timer_get_interval(
-		rb_config->organizations_sync.clean_timer, &clean_ts_value);
+			rb_config->organizations_sync.clean_timer,
+			&clean_ts_value);
 	if (0 != get_clean_interval_rc) {
-		rdlog(LOG_ERR, "Couldn't get clean timer interval: %s",
-			mystrerror(errno, err, sizeof(err)));
+		rdlog(LOG_ERR,
+		      "Couldn't get clean timer interval: %s",
+		      mystrerror(errno, err, sizeof(err)));
 	}
 
 	if (0 == rb_config->organizations_sync.topics.count) {
@@ -360,13 +422,16 @@ static void rb_decoder_accounting_tick0(struct rb_config *rb_config,
 
 	time_t now = time(NULL);
 	msgs = organization_db_interval_consumed0(
-		&rb_config->database.organizations_db, now, &monitor_ts_value,
-				&clean_ts_value, global_config.n2kafka_id,
-				clean);
+			&rb_config->database.organizations_db,
+			now,
+			&monitor_ts_value,
+			&clean_ts_value,
+			global_config.n2kafka_id,
+			clean);
 
 	if (msgs) {
 		send_array_to_kafka_topics(
-			&rb_config->organizations_sync.topics, msgs);
+				&rb_config->organizations_sync.topics, msgs);
 	}
 	pthread_rwlock_unlock(&rb_config->database.rwlock);
 
@@ -379,7 +444,6 @@ static void rb_decoder_timer_tick(void *ctx, int clean) {
 	struct rb_config *rb_cfg = ctx;
 	assert_rb_config(rb_cfg);
 	rb_decoder_accounting_tick0(rb_cfg, clean);
-
 }
 
 // Convenience function
@@ -418,20 +482,24 @@ static int rb_decoder_register_timers(struct rb_config *rb_config) {
 	struct itimerspec my_zero_itimerspec;
 	memset(&my_zero_itimerspec, 0, sizeof(my_zero_itimerspec));
 
-	rb_config->organizations_sync.timer = decoder_register_timer(
-		&my_zero_itimerspec, rb_decoder_accounting_tick, rb_config);
+	rb_config->organizations_sync.timer =
+			decoder_register_timer(&my_zero_itimerspec,
+					       rb_decoder_accounting_tick,
+					       rb_config);
 
 	if (NULL == rb_config->organizations_sync.timer) {
 		rdlog(LOG_ERR, "Couldn't create sync timer (out of memory?)");
 		return -1;
 	}
 
-	rb_config->organizations_sync.clean_timer = decoder_register_timer(
-		&my_zero_itimerspec, rb_decoder_org_clean_tick, rb_config);
+	rb_config->organizations_sync.clean_timer =
+			decoder_register_timer(&my_zero_itimerspec,
+					       rb_decoder_org_clean_tick,
+					       rb_config);
 
 	if (NULL == rb_config->organizations_sync.clean_timer) {
 		rdlog(LOG_ERR,
-			"Couldn't register clean timer (out of memory?)");
+		      "Couldn't register clean timer (out of memory?)");
 		rb_decoder_deregister_timers(rb_config);
 		return -1;
 	}
@@ -444,22 +512,23 @@ static int rb_decoder_register_timers(struct rb_config *rb_config) {
   @param new_timespec new timer interval
   @todo errors treatment
   */
-static void rb_reload_monitor_timer(struct rb_config *rb_config,
-				const struct itimerspec *org_sync_timespec,
-				const struct itimerspec *org_clean_timespec) {
+static void
+rb_reload_monitor_timer(struct rb_config *rb_config,
+			const struct itimerspec *org_sync_timespec,
+			const struct itimerspec *org_clean_timespec) {
 	decoder_timer_set_interval(rb_config->organizations_sync.timer,
-							org_sync_timespec);
+				   org_sync_timespec);
 	decoder_timer_set_interval0(rb_config->organizations_sync.clean_timer,
-					TIMER_ABSTIME, org_clean_timespec);
+				    TIMER_ABSTIME,
+				    org_clean_timespec);
 }
-
 
 /** Creates a topic handler for organization monitor
   @param monitor_topics_array Monitor topics array
   @return New topic handler
 */
 static int create_organization_monitor_topic(json_t *monitor_topics_array,
-						struct rkt_array *rkt_array) {
+					     struct rkt_array *rkt_array) {
 	size_t array_index;
 	json_t *value;
 
@@ -480,17 +549,19 @@ static int create_organization_monitor_topic(json_t *monitor_topics_array,
 
 		const char *topic_name = json_string_value(value);
 		if (NULL == topic_name) {
-			rdlog(LOG_ERR, "Couldn't extract monitor topic %zu",
-				array_index);
+			rdlog(LOG_ERR,
+			      "Couldn't extract monitor topic %zu",
+			      array_index);
 			continue;
 		}
 
 		rkt_array->rkt[rkt_array->count] = new_rkt_global_config(
-			topic_name, NULL,
-			err, sizeof(err));
+				topic_name, NULL, err, sizeof(err));
 		if (NULL == rkt_array->rkt[rkt_array->count]) {
-			rdlog(LOG_ERR, "Couldn't create monitor %s topic: %s",
-				topic_name, err);
+			rdlog(LOG_ERR,
+			      "Couldn't create monitor %s topic: %s",
+			      topic_name,
+			      err);
 			continue;
 		}
 
@@ -506,30 +577,31 @@ static int create_organization_monitor_topic(json_t *monitor_topics_array,
   @return 0 if success, 1 in other case
   */
 static int set_monitor_itimerspec(const time_t interval,
-					struct itimerspec *monitor_interval) {
+				  struct itimerspec *monitor_interval) {
 	memset(monitor_interval, 0, sizeof(*monitor_interval));
-	monitor_interval->it_interval.tv_sec
-		= monitor_interval->it_value.tv_sec = interval;
+	monitor_interval->it_interval.tv_sec =
+			monitor_interval->it_value.tv_sec = interval;
 
 	return 0;
 }
 
-static void parse_organization_monitor_sync_clean(
-		struct itimerspec *clean_timerspec, json_int_t clean_mod,
-		json_int_t clean_offset) {
+static void
+parse_organization_monitor_sync_clean(struct itimerspec *clean_timerspec,
+				      json_int_t clean_mod,
+				      json_int_t clean_offset) {
 
 	if (clean_mod == 0) {
 		/* Nothing to do */
 		return;
 	}
 
-	clean_timerspec->it_value.tv_nsec
-				= clean_timerspec->it_interval.tv_nsec = 0;
+	clean_timerspec->it_value.tv_nsec =
+			clean_timerspec->it_interval.tv_nsec = 0;
 	clean_timerspec->it_interval.tv_sec = clean_mod;
 
 	const time_t now = time(NULL);
 	/* previous clean timestamp */
-	time_t prev_clean = (now - now%clean_mod) + clean_offset;
+	time_t prev_clean = (now - now % clean_mod) + clean_offset;
 	while (prev_clean > now) {
 		prev_clean -= clean_mod;
 	}
@@ -537,11 +609,13 @@ static void parse_organization_monitor_sync_clean(
 	clean_timerspec->it_value.tv_sec = prev_clean + clean_mod;
 }
 
-static int parse_organization_monitor_sync(json_t *config,
-		struct rkt_array *organizations_monitor_topics,
-		struct itimerspec *monitor_interval,
-		struct itimerspec *clean_timerspec,
-		json_int_t *org_clean_offset_s,char **http_put_url_copy) {
+static int
+parse_organization_monitor_sync(json_t *config,
+				struct rkt_array *organizations_monitor_topics,
+				struct itimerspec *monitor_interval,
+				struct itimerspec *clean_timerspec,
+				json_int_t *org_clean_offset_s,
+				char **http_put_url_copy) {
 	json_error_t jerr;
 	json_t *monitor_topics = NULL;
 	json_int_t monitor_topic_interval_s = 0, org_clean_mod_s = 0;
@@ -553,52 +627,60 @@ static int parse_organization_monitor_sync(json_t *config,
 	assert(monitor_interval);
 	assert(clean_timerspec);
 
-	const int json_unpack_rc = json_unpack_ex(config, &jerr, 0,
-		"{s?{s?o,s?I,s?s,s:{s:I,s?I}}}",
-		RB_ORGANIZATIONS_SYNC_KEY,
-		RB_ORGANIZATIONS_SYNC_TOPICS_KEY,&monitor_topics,
-		RB_ORGANIZATIONS_SYNC_INTERVAL_S_KEY,
-						&monitor_topic_interval_s,
-		RB_ORGANIZATIONS_SYNC_PUT_URL_KEY, &http_put_url,
-		RB_ORGANIZATIONS_SYNC_CLEAN_KEY,
+	const int json_unpack_rc = json_unpack_ex(
+			config,
+			&jerr,
+			0,
+			"{s?{s?o,s?I,s?s,s:{s:I,s?I}}}",
+			RB_ORGANIZATIONS_SYNC_KEY,
+			RB_ORGANIZATIONS_SYNC_TOPICS_KEY,
+			&monitor_topics,
+			RB_ORGANIZATIONS_SYNC_INTERVAL_S_KEY,
+			&monitor_topic_interval_s,
+			RB_ORGANIZATIONS_SYNC_PUT_URL_KEY,
+			&http_put_url,
+			RB_ORGANIZATIONS_SYNC_CLEAN_KEY,
 			RB_ORGANIZATIONS_SYNC_CLEAN_TIMESTAMP_MOD_KEY,
-							&org_clean_mod_s,
+			&org_clean_mod_s,
 			RB_ORGANIZATIONS_SYNC_CLEAN_TIMESTAMP_OFFSET_KEY,
-							org_clean_offset_s);
-
+			org_clean_offset_s);
 
 	if (0 != json_unpack_rc) {
-		rdlog(LOG_ERR, "Couldn't unpack organization monitor config: "
-			"%s", jerr.text);
+		rdlog(LOG_ERR,
+		      "Couldn't unpack organization monitor config: "
+		      "%s",
+		      jerr.text);
 		return -1;
 	}
 
 	if (*org_clean_offset_s > org_clean_mod_s) {
 		const json_int_t new_org_clean_offset_s =
-					*org_clean_offset_s % org_clean_mod_s;
+				*org_clean_offset_s % org_clean_mod_s;
 		rdlog(LOG_WARNING,
-			"Organization clean offset is bigger than clean mod"
-			" (%lld > %lld). Clean offset will be %lld",
-					*org_clean_offset_s, org_clean_mod_s,
-					new_org_clean_offset_s);
+		      "Organization clean offset is bigger than clean mod"
+		      " (%lld > %lld). Clean offset will be %lld",
+		      *org_clean_offset_s,
+		      org_clean_mod_s,
+		      new_org_clean_offset_s);
 
 		*org_clean_offset_s = new_org_clean_offset_s;
 	}
 
-	parse_organization_monitor_sync_clean(clean_timerspec, org_clean_mod_s,
-		*org_clean_offset_s);
+	parse_organization_monitor_sync_clean(
+			clean_timerspec, org_clean_mod_s, *org_clean_offset_s);
 
 	if (monitor_topics == NULL && 0 == monitor_topic_interval_s) {
 		/* You don't want monitor, nothing to do */
 		return 0;
 	} else if (monitor_topics && monitor_topic_interval_s) {
 		if (!json_is_array(monitor_topics)) {
-			rdlog(LOG_ERR, "%s is not an array!",
-				RB_ORGANIZATIONS_SYNC_TOPICS_KEY);
+			rdlog(LOG_ERR,
+			      "%s is not an array!",
+			      RB_ORGANIZATIONS_SYNC_TOPICS_KEY);
 			return -1;
 		}
 
-		if(0 == json_array_size(monitor_topics)) {
+		if (0 == json_array_size(monitor_topics)) {
 			/* You don't want monitor, nothing to do */
 			return 0;
 		}
@@ -607,31 +689,32 @@ static int parse_organization_monitor_sync(json_t *config,
 			*http_put_url_copy = strdup(http_put_url);
 			if (NULL == *http_put_url_copy) {
 				rdlog(LOG_ERR,
-					"Couldn't copy HTTP PUT URL (out of "
-					"memory?)");
+				      "Couldn't copy HTTP PUT URL (out of "
+				      "memory?)");
 			}
 		}
 
 		const int create_rkt_rc = create_organization_monitor_topic(
-			monitor_topics, organizations_monitor_topics);
+				monitor_topics, organizations_monitor_topics);
 
 		if (0 != create_rkt_rc) {
 			return -1;
 		}
 
-
 		return set_monitor_itimerspec(monitor_topic_interval_s,
-							monitor_interval);
+					      monitor_interval);
 	} else {
-		const char *param_set = monitor_topics ?
-				RB_ORGANIZATIONS_SYNC_KEY
-				:RB_ORGANIZATIONS_SYNC_INTERVAL_S_KEY;
-		const char *param_not_set = monitor_topics ?
-				RB_ORGANIZATIONS_SYNC_INTERVAL_S_KEY
-				:RB_ORGANIZATIONS_SYNC_KEY;
-		rdlog(LOG_ERR, "You have set %s but not %s,"
-			" no organization monitor will be applied",
-			param_set, param_not_set);
+		const char *param_set =
+				monitor_topics ? RB_ORGANIZATIONS_SYNC_KEY
+					       : RB_ORGANIZATIONS_SYNC_INTERVAL_S_KEY;
+		const char *param_not_set =
+				monitor_topics ? RB_ORGANIZATIONS_SYNC_INTERVAL_S_KEY
+					       : RB_ORGANIZATIONS_SYNC_KEY;
+		rdlog(LOG_ERR,
+		      "You have set %s but not %s,"
+		      " no organization monitor will be applied",
+		      param_set,
+		      param_not_set);
 		return -1;
 	}
 }
@@ -643,7 +726,7 @@ int rb_decoder_reload(void *vrb_config, const json_t *config) {
 	struct rkt_array rkt_array;
 	char *http_put_url = NULL;
 	struct itimerspec organizations_monitor_topic_ts,
-		          organizations_clean_ts;
+			organizations_clean_ts;
 	json_int_t organization_clean_s_offset = 0;
 	sensors_db_t *sensors_db = NULL;
 
@@ -652,10 +735,12 @@ int rb_decoder_reload(void *vrb_config, const json_t *config) {
 	assert(config);
 
 	memset(&rkt_array, 0, sizeof(rkt_array));
-	memset(&organizations_monitor_topic_ts, 0,
-		sizeof(organizations_monitor_topic_ts));
-	memset(&organizations_clean_ts, 0,
-		sizeof(organizations_monitor_topic_ts));
+	memset(&organizations_monitor_topic_ts,
+	       0,
+	       sizeof(organizations_monitor_topic_ts));
+	memset(&organizations_clean_ts,
+	       0,
+	       sizeof(organizations_monitor_topic_ts));
 	json_t *my_config = json_deep_copy(config);
 
 	if (my_config == NULL) {
@@ -664,9 +749,12 @@ int rb_decoder_reload(void *vrb_config, const json_t *config) {
 	}
 
 	const int organization_sync_rc = parse_organization_monitor_sync(
-		my_config, &rkt_array, &organizations_monitor_topic_ts,
-		&organizations_clean_ts, &organization_clean_s_offset,
-		&http_put_url);
+			my_config,
+			&rkt_array,
+			&organizations_monitor_topic_ts,
+			&organizations_clean_ts,
+			&organization_clean_s_offset,
+			&http_put_url);
 
 	if (0 != organization_sync_rc) {
 		/* Warning already given */
@@ -675,28 +763,27 @@ int rb_decoder_reload(void *vrb_config, const json_t *config) {
 
 	topics_db = topics_db_new();
 
-	const int topic_list_rc = parse_topic_list_config(my_config,
-								topics_db);
+	const int topic_list_rc = parse_topic_list_config(my_config, topics_db);
 	if (topic_list_rc != 0) {
 		rc = -1;
 		goto err;
 	}
 
-	json_t *organization_uuid = json_object_get(my_config,
-						RB_ORGANIZATIONS_UUID_KEY);
+	json_t *organization_uuid =
+			json_object_get(my_config, RB_ORGANIZATIONS_UUID_KEY);
 
 	update_sync_topic(&rb_config->organizations_sync.thread,
-				rkt_array.count > 0 ? rkt_array.rkt[0] : NULL);
+			  rkt_array.count > 0 ? rkt_array.rkt[0] : NULL);
 
 	pthread_rwlock_wrlock(&rb_config->database.rwlock);
 	if (organization_uuid) {
 		organizations_db_reload(&rb_config->database.organizations_db,
-							organization_uuid);
+					organization_uuid);
 	}
-	sensors_db = parse_per_uuid_opaque_config(my_config,
-					&rb_config->database.organizations_db);
+	sensors_db = parse_per_uuid_opaque_config(
+			my_config, &rb_config->database.organizations_db);
 	if (NULL != sensors_db) {
-		swap_ptrs(sensors_db,rb_config->database.sensors_db);
+		swap_ptrs(sensors_db, rb_config->database.sensors_db);
 	} else {
 		rc = -1;
 	}
@@ -704,9 +791,10 @@ int rb_decoder_reload(void *vrb_config, const json_t *config) {
 			&rb_config->organizations_sync.thread,
 			organizations_clean_ts.it_interval.tv_sec,
 			organization_clean_s_offset);
-	rb_reload_monitor_timer(rb_config, &organizations_monitor_topic_ts,
-		&organizations_clean_ts);
-	swap_ptrs(topics_db,rb_config->database.topics_db);
+	rb_reload_monitor_timer(rb_config,
+				&organizations_monitor_topic_ts,
+				&organizations_clean_ts);
+	swap_ptrs(topics_db, rb_config->database.topics_db);
 	swap_ptrs(rb_config->organizations_sync.http.url, http_put_url);
 	rkt_array_swap(&rb_config->organizations_sync.topics, &rkt_array);
 	pthread_rwlock_unlock(&rb_config->database.rwlock);
@@ -751,42 +839,52 @@ struct format_http_put_url_ctx {
 };
 
 /// snprintf convenience function
-static int format_http_put_url(char *buf, size_t buf_size,
-				const struct format_http_put_url_ctx *ctx) {
-	return snprintf(buf, buf_size, "%s/%s/reach_bytes_limit", ctx->base_url,
-							ctx->organization_uuid);
+static int format_http_put_url(char *buf,
+			       size_t buf_size,
+			       const struct format_http_put_url_ctx *ctx) {
+	return snprintf(buf,
+			buf_size,
+			"%s/%s/reach_bytes_limit",
+			ctx->base_url,
+			ctx->organization_uuid);
 }
 
 static void org_db_limit_reached_http(const organizations_db_t *org_db,
-			const organization_db_entry_t *org,
-			const char *base_url,
-			rb_http2k_curl_handler_t *curl_handler) {
+				      const organization_db_entry_t *org,
+				      const char *base_url,
+				      rb_http2k_curl_handler_t *curl_handler) {
 	char err[BUFSIZ];
 	const struct format_http_put_url_ctx ctx = {
-		.base_url = base_url,
-		.organization_uuid = organization_db_entry_get_uuid(org),
+			.base_url = base_url,
+			.organization_uuid =
+					organization_db_entry_get_uuid(org),
 	};
 
 	(void)org_db;
 
 	const int actual_url_size = format_http_put_url(NULL, 0, &ctx);
 	if (actual_url_size < 0) {
-		rdlog(LOG_ERR, "Couldn't calculate string size: %s",
-			mystrerror(errno, err, sizeof(err)));
+		rdlog(LOG_ERR,
+		      "Couldn't calculate string size: %s",
+		      mystrerror(errno, err, sizeof(err)));
 		return;
 	}
 
 	char actual_url[actual_url_size + 1];
-	const int print_rc = format_http_put_url(actual_url,
-					(size_t)actual_url_size + 1, &ctx);
+	const int print_rc = format_http_put_url(
+			actual_url, (size_t)actual_url_size + 1, &ctx);
 
 	if (print_rc < 0) {
-		rdlog(LOG_ERR, "Couldn't print URL: %s",
-			mystrerror(errno, err, sizeof(err)));
+		rdlog(LOG_ERR,
+		      "Couldn't print URL: %s",
+		      mystrerror(errno, err, sizeof(err)));
 		return;
 	} else if (print_rc > actual_url_size) {
-		rdlog(LOG_ERR, "Not enough space to print: Needed %d, "
-			"provided %d", print_rc, actual_url_size);
+		rdlog(LOG_ERR,
+		      "Not enough space to print: Needed %d, "
+		      "provided %d",
+		      print_rc,
+		      actual_url_size);
 		return;
 	}
 
@@ -794,13 +892,17 @@ static void org_db_limit_reached_http(const organizations_db_t *org_db,
 }
 
 static void org_db_limit_reached(const organizations_db_t *org_db,
-				const organization_db_entry_t *org, void *ctx) {
+				 const organization_db_entry_t *org,
+				 void *ctx) {
 	struct rb_config *rb_config = ctx;
 
 	if (rb_config->organizations_sync.http.url) {
-		org_db_limit_reached_http(org_db, org,
-			rb_config->organizations_sync.http.url,
-			&rb_config->organizations_sync.http.curl_handler);
+		org_db_limit_reached_http(
+				org_db,
+				org,
+				rb_config->organizations_sync.http.url,
+				&rb_config->organizations_sync.http
+						 .curl_handler);
 	}
 }
 
@@ -812,7 +914,8 @@ int parse_rb_config(void *vconfig, const struct json_t *config) {
 	assert(config);
 
 	if (only_stdout_output()) {
-		rdlog(LOG_ERR, "Can't use rb_http2k decoder if not kafka brokers configured.");
+		rdlog(LOG_ERR, "Can't use rb_http2k decoder if not kafka "
+			       "brokers configured.");
 		return -1;
 	}
 
@@ -827,23 +930,30 @@ int parse_rb_config(void *vconfig, const struct json_t *config) {
 		goto rk_conf_dup_err;
 	}
 
-	const rd_kafka_conf_res_t set_group_id_rc = rd_kafka_conf_set(rk_conf,
-		"group.id", "global_config.n2kafka_id", err, sizeof(err));
+	const rd_kafka_conf_res_t set_group_id_rc =
+			rd_kafka_conf_set(rk_conf,
+					  "group.id",
+					  "global_config.n2kafka_id",
+					  err,
+					  sizeof(err));
 	if (set_group_id_rc != RD_KAFKA_CONF_OK) {
-		rdlog(LOG_ERR, "Couldn't set group.id: %s",
-			rd_kafka_err2str(set_group_id_rc));
+		rdlog(LOG_ERR,
+		      "Couldn't set group.id: %s",
+		      rd_kafka_err2str(set_group_id_rc));
 		goto rk_conf_err;
 	}
 
-	const int sync_thread_init_rc = sync_thread_init(
-				&rb_config->organizations_sync.thread, rk_conf,
-					&rb_config->database.organizations_db);
+	const int sync_thread_init_rc =
+			sync_thread_init(&rb_config->organizations_sync.thread,
+					 rk_conf,
+					 &rb_config->database.organizations_db);
 	if (0 != sync_thread_init_rc) {
 		goto consumer_thread_err;
 	}
 
 	const int init_curl_rc = rb_http2k_curl_handler_init(
-		&rb_config->organizations_sync.http.curl_handler, 10000);
+			&rb_config->organizations_sync.http.curl_handler,
+			10000);
 	if (0 != init_curl_rc) {
 		goto curl_init_err;
 	}
@@ -859,7 +969,7 @@ int parse_rb_config(void *vconfig, const struct json_t *config) {
 
 	/// @todo improve this initialization
 	rb_config->database.organizations_db.limit_reached_cb =
-							org_db_limit_reached;
+			org_db_limit_reached;
 	rb_config->database.organizations_db.limit_reached_cb_ctx = rb_config;
 
 	/// @TODO error treatment
@@ -877,8 +987,8 @@ reload_err:
 curl_init_err:
 consumer_thread_err:
 rk_conf_err:
-	/// @TODO: Can't say if we have consumed it!
-	// rd_kafka_conf_destroy(rk_conf);
+/// @TODO: Can't say if we have consumed it!
+// rd_kafka_conf_destroy(rk_conf);
 rk_conf_dup_err:
 	rb_decoder_deregister_timers(rb_config);
 	return -1;
@@ -888,39 +998,59 @@ rk_conf_dup_err:
 	@param topic Topic handler
 	@param msgs Messages to send
 	@param len Length of msgs */
-static void produce_or_free(struct rb_opaque *opaque, struct topic_s *topic,
-                                        rd_kafka_message_t *msgs, int len) {
+static void produce_or_free(struct rb_opaque *opaque,
+			    struct topic_s *topic,
+			    rd_kafka_message_t *msgs,
+			    int len) {
 	assert(topic);
 	assert(msgs);
-	static const time_t alert_threshold = 5*60;
+	static const time_t alert_threshold = 5 * 60;
 
 	rd_kafka_topic_t *rkt = topics_db_get_rdkafka_topic(topic);
 
-	const int produce_ret = rd_kafka_produce_batch(rkt, RD_KAFKA_PARTITION_UA,
-	                        RD_KAFKA_MSG_F_FREE, msgs, len);
+	const int produce_ret = rd_kafka_produce_batch(rkt,
+						       RD_KAFKA_PARTITION_UA,
+						       RD_KAFKA_MSG_F_FREE,
+						       msgs,
+						       len);
 
 	if (produce_ret != len) {
 		int i;
-		for(i=0;i<len;++i) {
-			if(msgs[i].err != RD_KAFKA_RESP_ERR_NO_ERROR) {
+		for (i = 0; i < len; ++i) {
+			if (msgs[i].err != RD_KAFKA_RESP_ERR_NO_ERROR) {
 				time_t last_warning_time = 0;
 				int warn = 0;
-				const size_t last_warning_time_pos = kafka_error_to_warning_time_pos(msgs[i].err);
+				const size_t last_warning_time_pos =
+						kafka_error_to_warning_time_pos(
+								msgs[i].err);
 
-				if(last_warning_time_pos < LAST_WARNING_TIME__END) {
+				if (last_warning_time_pos <
+				    LAST_WARNING_TIME__END) {
 					const time_t curr_time = time(NULL);
-					pthread_mutex_lock(&opaque->produce_error_last_time_mutex[last_warning_time_pos]);
-					last_warning_time = opaque->produce_error_last_time[last_warning_time_pos];
-					if(difftime(curr_time,last_warning_time) > alert_threshold) {
-						opaque->produce_error_last_time[last_warning_time_pos] = curr_time;
+					pthread_mutex_lock(
+							&opaque->produce_error_last_time_mutex
+									 [last_warning_time_pos]);
+					last_warning_time =
+							opaque->produce_error_last_time
+									[last_warning_time_pos];
+					if (difftime(curr_time,
+						     last_warning_time) >
+					    alert_threshold) {
+						opaque->produce_error_last_time
+								[last_warning_time_pos] =
+								curr_time;
 						warn = 1;
 					}
-					pthread_mutex_unlock(&opaque->produce_error_last_time_mutex[last_warning_time_pos]);
+					pthread_mutex_unlock(
+							&opaque->produce_error_last_time_mutex
+									 [last_warning_time_pos]);
 				}
 
-				if(warn) {
-					/* If no alert threshold established or last alert is too old */
-					rdlog(LOG_ERR, "Can't produce to topic %s: %s",
+				if (warn) {
+					/* If no alert threshold established or
+					 * last alert is too old */
+					rdlog(LOG_ERR,
+					      "Can't produce to topic %s: %s",
 					      rd_kafka_topic_name(rkt),
 					      rd_kafka_err2str(msgs[i].err));
 				}
@@ -935,9 +1065,11 @@ static void produce_or_free(struct rb_opaque *opaque, struct topic_s *topic,
  *  MAIN ENTRY POINT
  */
 
-static void process_rb_buffer(const char *buffer, size_t bsize,
-            const keyval_list_t *msg_vars, struct rb_opaque *opaque,
-            struct rb_session **sessionp) {
+static void process_rb_buffer(const char *buffer,
+			      size_t bsize,
+			      const keyval_list_t *msg_vars,
+			      struct rb_opaque *opaque,
+			      struct rb_session **sessionp) {
 
 	// json_error_t err;
 	// struct rb_database *db = &opaque->rb_config->database;
@@ -948,10 +1080,10 @@ static void process_rb_buffer(const char *buffer, size_t bsize,
 
 	assert(sessionp);
 
-	if(NULL == *sessionp) {
+	if (NULL == *sessionp) {
 		/* First call */
-		*sessionp = new_rb_session(opaque->rb_config,msg_vars);
-		if(NULL == *sessionp) {
+		*sessionp = new_rb_session(opaque->rb_config, msg_vars);
+		if (NULL == *sessionp) {
 			return;
 		}
 	} else if (0 == bsize) {
@@ -966,10 +1098,10 @@ static void process_rb_buffer(const char *buffer, size_t bsize,
 	/* If the client has reached limit, it is not allowed to keep sending
 	   bytes
 	   */
-	organization_db_entry_t *organization = sensor_db_entry_organization(
-		session->sensor);
+	organization_db_entry_t *organization =
+			sensor_db_entry_organization(session->sensor);
 	if (organization && organization_limit_reached(organization)) {
-		organization_add_consumed_bytes(organization,bsize);
+		organization_add_consumed_bytes(organization, bsize);
 		return;
 	}
 
@@ -987,24 +1119,28 @@ static void process_rb_buffer(const char *buffer, size_t bsize,
 			   were consumed the enriched message, but if we want
 			   not to parse it, we can't do better */
 			const size_t rest_of_message =
-				bsize - yajl_get_bytes_consumed(
+					bsize -
+					yajl_get_bytes_consumed(
 							session->handler);
 			organization_add_consumed_bytes(organization,
 							rest_of_message);
 		} else {
 			/// @TODO improve this!
-			unsigned char * str = yajl_get_error(session->handler,
-							1, in_iterator, bsize);
-			fprintf(stderr, "%s", (const char *) str);
+			unsigned char *str = yajl_get_error(session->handler,
+							    1,
+							    in_iterator,
+							    bsize);
+			fprintf(stderr, "%s", (const char *)str);
 			yajl_free_error(session->handler, str);
 		}
 	}
 }
 
-void rb_decode(char *buffer, size_t buf_size,
-               const keyval_list_t *list,
-               void *_listener_callback_opaque,
-               void **vsessionp) {
+void rb_decode(char *buffer,
+	       size_t buf_size,
+	       const keyval_list_t *list,
+	       void *_listener_callback_opaque,
+	       void **vsessionp) {
 	struct rb_opaque *rb_opaque = _listener_callback_opaque;
 	struct rb_session **sessionp = (struct rb_session **)vsessionp;
 	/// Helper pointer to simulate streaming behavior
@@ -1014,27 +1150,31 @@ void rb_decode(char *buffer, size_t buf_size,
 	assert(RB_OPAQUE_MAGIC == rb_opaque->magic);
 #endif
 
-	if(NULL == vsessionp) {
+	if (NULL == vsessionp) {
 		// Simulate an active
 		sessionp = &my_session;
 	}
 
-	process_rb_buffer(buffer, buf_size, list, rb_opaque,sessionp);
+	process_rb_buffer(buffer, buf_size, list, rb_opaque, sessionp);
 
-	if(buffer) {
+	if (buffer) {
 		/* It was not the last call, designed to free session */
-		const size_t n_messages = rd_kafka_msg_q_size(&(*sessionp)->msg_queue);
+		const size_t n_messages =
+				rd_kafka_msg_q_size(&(*sessionp)->msg_queue);
 		rd_kafka_message_t msgs[n_messages];
-		rd_kafka_msg_q_dump(&(*sessionp)->msg_queue,msgs);
+		rd_kafka_msg_q_dump(&(*sessionp)->msg_queue, msgs);
 
-		if((*sessionp)->topic) {
-			produce_or_free(rb_opaque,(*sessionp)->topic_handler, msgs, n_messages);
+		if ((*sessionp)->topic) {
+			produce_or_free(rb_opaque,
+					(*sessionp)->topic_handler,
+					msgs,
+					n_messages);
 		}
 	}
 
-	if(NULL == vsessionp) {
+	if (NULL == vsessionp) {
 		// Simulate last call that will free my_session
-		process_rb_buffer(NULL,0,list,rb_opaque, sessionp);
+		process_rb_buffer(NULL, 0, list, rb_opaque, sessionp);
 	}
 }
 

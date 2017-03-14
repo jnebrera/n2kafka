@@ -24,12 +24,12 @@
 
 #include <librd/rdlog.h>
 
-#include <string.h>
 #include <assert.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <jansson.h>
 #include <errno.h>
+#include <jansson.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 int init_rb_database(struct rb_database *db) {
 	char errbuf[BUFSIZ];
@@ -67,9 +67,10 @@ void free_valid_rb_database(struct rb_database *db) {
 }
 
 int rb_http2k_database_get_topic_client(struct rb_database *db,
-		const char *topic, const char *sensor_uuid,
-		struct topic_s **topic_handler,
-		sensor_db_entry_t **client_enrichment) {
+					const char *topic,
+					const char *sensor_uuid,
+					struct topic_s **topic_handler,
+					sensor_db_entry_t **client_enrichment) {
 	assert(db);
 	assert(topic_handler);
 	assert(client_enrichment);
@@ -77,8 +78,9 @@ int rb_http2k_database_get_topic_client(struct rb_database *db,
 	pthread_rwlock_rdlock(&db->rwlock);
 	*topic_handler = topics_db_get_topic(db->topics_db, topic);
 
-	if(*topic_handler) {
-		*client_enrichment = sensors_db_get(db->sensors_db, sensor_uuid);
+	if (*topic_handler) {
+		*client_enrichment =
+				sensors_db_get(db->sensors_db, sensor_uuid);
 	}
 	pthread_rwlock_unlock(&db->rwlock);
 
@@ -94,9 +96,9 @@ int rb_http2k_validate_uuid(struct rb_database *db, const char *sensor_uuid) {
 }
 
 int rb_http2k_validate_topic(struct rb_database *db, const char *topic) {
-       pthread_rwlock_rdlock(&db->rwlock);
-       const int ret = topics_db_topic_exists(db->topics_db,topic);
-       pthread_rwlock_unlock(&db->rwlock);
+	pthread_rwlock_rdlock(&db->rwlock);
+	const int ret = topics_db_topic_exists(db->topics_db, topic);
+	pthread_rwlock_unlock(&db->rwlock);
 
-       return ret;
+	return ret;
 }

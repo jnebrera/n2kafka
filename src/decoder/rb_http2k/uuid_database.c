@@ -28,7 +28,7 @@ static const uint64_t hashtable_seed = 0;
 
 /** Asserts that we're using a valid uuid_entry */
 static void uuid_entry_assert(const uuid_entry_t *uuid_entry) {
-        (void)uuid_entry;
+	(void)uuid_entry;
 	assert(UUID_ENTRY_MAGIC == uuid_entry->magic);
 }
 
@@ -37,12 +37,12 @@ static void uuid_entry_assert(const uuid_entry_t *uuid_entry) {
   @param obj uuid_entry
   @return 0 if equal, 1 ioc
   */
-static int uuid_entry_cmp(const void* arg, const void* obj) {
+static int uuid_entry_cmp(const void *arg, const void *obj) {
 	const char *uuid = arg;
 	const uuid_entry_t *uuid_entry = obj;
 	uuid_entry_assert(uuid_entry);
 
-	return strcmp(uuid,uuid_entry->uuid);
+	return strcmp(uuid, uuid_entry->uuid);
 }
 
 /** Inserts an uuid element in uuid hashtable
@@ -60,6 +60,5 @@ void uuid_db_insert(uuid_db_t *db, uuid_entry_t *entry) {
   @returns uuid entry
   */
 uuid_entry_t *uuid_db_search(uuid_db_t *db, const char *uuid) {
-	return tommy_hashdyn_search(db, uuid_entry_cmp, uuid,
-							hash_str(uuid));
+	return tommy_hashdyn_search(db, uuid_entry_cmp, uuid, hash_str(uuid));
 }

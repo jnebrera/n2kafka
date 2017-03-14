@@ -24,12 +24,12 @@
 #include "util/util.h"
 
 #include "engine/global_config.h"
-#include <librd/rdlog.h>
 #include <jansson.h>
+#include <librd/rdlog.h>
 
 #include <assert.h>
-#include <string.h>
 #include <errno.h>
+#include <string.h>
 
 /// librdkafka property to modify consumer group id
 static const char RDKAFKA_CONF_GROUP_ID[] = "group.id";
@@ -82,8 +82,9 @@ static void assert_msg_consume_ctx(const struct msg_consume_ctx *ctx) {
 static void *sync_thread(void *);
 static void sync_thread_msg_consume(rd_kafka_message_t *msg, void *ctx);
 
-int sync_thread_init(sync_thread_t *thread, rd_kafka_conf_t *rk_conf,
-						organizations_db_t *org_db) {
+int sync_thread_init(sync_thread_t *thread,
+		     rd_kafka_conf_t *rk_conf,
+		     organizations_db_t *org_db) {
 	char err[BUFSIZ];
 	size_t group_id_size = 0;
 	static const int thread_shared_sem = 0;
@@ -97,20 +98,21 @@ int sync_thread_init(sync_thread_t *thread, rd_kafka_conf_t *rk_conf,
 	thread->rk_conf = rk_conf;
 	thread->org_db = org_db;
 
-	const int mtx_init_rc = pthread_mutex_init(
-					&thread->clean_interval.mutex, NULL);
+	const int mtx_init_rc =
+			pthread_mutex_init(&thread->clean_interval.mutex, NULL);
 	if (mtx_init_rc != 0) {
-		rdlog(LOG_ERR, "Couldn't create mutex: %s",
-			mystrerror(errno, err, sizeof(err)));
+		rdlog(LOG_ERR,
+		      "Couldn't create mutex: %s",
+		      mystrerror(errno, err, sizeof(err)));
 		return -1;
 	}
 
-	const rd_kafka_conf_res_t get_group_id_rc = rd_kafka_conf_get (rk_conf,
-		RDKAFKA_CONF_GROUP_ID, NULL, &group_id_size);
+	const rd_kafka_conf_res_t get_group_id_rc = rd_kafka_conf_get(
+			rk_conf, RDKAFKA_CONF_GROUP_ID, NULL, &group_id_size);
 	if (RD_KAFKA_CONF_OK != get_group_id_rc) {
 		rdlog(LOG_ERR,
-			"Couldn't get a valid group_id from rk_conf: %s",
-			rd_kafka_err2str(get_group_id_rc));
+		      "Couldn't get a valid group_id from rk_conf: %s",
+		      rd_kafka_err2str(get_group_id_rc));
 		return -1;
 	}
 	if (0 == group_id_size) {
@@ -120,11 +122,12 @@ int sync_thread_init(sync_thread_t *thread, rd_kafka_conf_t *rk_conf,
 
 	sem_init(&thread->sem, thread_shared_sem, sem_initial_value);
 
-	const int thread_rc = pthread_create(&thread->thread, NULL,
-							sync_thread, thread);
+	const int thread_rc = pthread_create(
+			&thread->thread, NULL, sync_thread, thread);
 	if (thread_rc != 0) {
-		rdlog(LOG_ERR, "Couldn't create thread: %s", mystrerror(errno,
-							err, sizeof(err)));
+		rdlog(LOG_ERR,
+		      "Couldn't create thread: %s",
+		      mystrerror(errno, err, sizeof(err)));
 		sem_destroy(&thread->sem);
 		return -1;
 	}
@@ -137,7 +140,7 @@ int sync_thread_init(sync_thread_t *thread, rd_kafka_conf_t *rk_conf,
 }
 
 void sync_thread_done(sync_thread_t *thread) {
-	ATOMIC_OP(fetch,and,&thread->run,0);
+	ATOMIC_OP(fetch, and, &thread->run, 0);
 	pthread_join(thread->thread, NULL);
 	pthread_mutex_destroy(&thread->clean_interval.mutex);
 }
@@ -148,16 +151,17 @@ void sync_thread_done(sync_thread_t *thread) {
   @return 0 if no need to reload, !0 in other case
   */
 static int udpate_sync_topic_need_to_reload(sync_thread_t *thread,
-						rd_kafka_topic_t *topic) {
+					    rd_kafka_topic_t *topic) {
 	int rc = 1;
 	rd_kafka_topic_partition_list_t *curr_topics = NULL;
 
 	const rd_kafka_resp_err_t subscription_rc =
-				rd_kafka_assignment(thread->rk, &curr_topics);
+			rd_kafka_assignment(thread->rk, &curr_topics);
 
 	if (subscription_rc != RD_KAFKA_RESP_ERR_NO_ERROR) {
-		rdlog(LOG_ERR, "Couldn't get current assignments: %s",
-					rd_kafka_err2str(subscription_rc));
+		rdlog(LOG_ERR,
+		      "Couldn't get current assignments: %s",
+		      rd_kafka_err2str(subscription_rc));
 		/* Better not to reload */
 		rc = 0;
 		goto done;
@@ -171,8 +175,8 @@ static int udpate_sync_topic_need_to_reload(sync_thread_t *thread,
 
 	if (curr_topics && curr_topics->cnt > 1) {
 		const char *requested_topic = rd_kafka_topic_name(topic);
-		if (topic && 0!=strcmp(curr_topics->elems[0].topic,
-							requested_topic)) {
+		if (topic &&
+		    0 != strcmp(curr_topics->elems[0].topic, requested_topic)) {
 			/* We assume that we only have one topic, so all list
 			   elements belongs to the same topic */
 			rdlog(LOG_ERR, "Sync topic can't be reloaded.");
@@ -202,7 +206,7 @@ static int update_sync_topic0(sync_thread_t *thread, rd_kafka_topic_t *rkt) {
 
 	rdlog(LOG_INFO, "Getting topic %s metadata", topic_name);
 	const rd_kafka_resp_err_t get_topic_metadata_err =
-				kafka_get_topic_metadata(rkt, &metadata, 5000);
+			kafka_get_topic_metadata(rkt, &metadata, 5000);
 	if (get_topic_metadata_err != RD_KAFKA_RESP_ERR_NO_ERROR) {
 		/* Log already given */
 		return -1;
@@ -213,18 +217,19 @@ static int update_sync_topic0(sync_thread_t *thread, rd_kafka_topic_t *rkt) {
 		return -1;
 	}
 
-	const struct rd_kafka_metadata_topic *topic_metadata =
-							metadata->topics;
+	const struct rd_kafka_metadata_topic *topic_metadata = metadata->topics;
 	const int partition_cnt = topic_metadata->partition_cnt;
 
-	rdlog(LOG_INFO, "Topic %s has %d partitions", topic_name,
-						partition_cnt);
+	rdlog(LOG_INFO,
+	      "Topic %s has %d partitions",
+	      topic_name,
+	      partition_cnt);
 
 	struct msg_consume_ctx *ctx = rd_kafka_opaque(thread->rk);
 	assert(ctx);
 	pthread_mutex_lock(&ctx->in_sync.mutex);
 	ctx->in_sync.in_sync = calloc((size_t)partition_cnt,
-					sizeof(ctx->in_sync.in_sync[0]));
+				      sizeof(ctx->in_sync.in_sync[0]));
 	pthread_mutex_unlock(&ctx->in_sync.mutex);
 	if (NULL == ctx->in_sync.in_sync) {
 		rdlog(LOG_ERR, "Couldn't allocate partition_sync_array");
@@ -240,17 +245,19 @@ static int update_sync_topic0(sync_thread_t *thread, rd_kafka_topic_t *rkt) {
 
 	for (i = 0; i < partition_cnt; ++i) {
 		rd_kafka_topic_partition_list_add(topics, topic_name, i);
-		rd_kafka_topic_partition_list_set_offset(topics, topic_name, i,
-									0);
+		rd_kafka_topic_partition_list_set_offset(
+				topics, topic_name, i, 0);
 	}
 
 	rdlog(LOG_INFO, "Assigning %d partitions", topics->cnt);
 
-	const rd_kafka_resp_err_t assign_rc = rd_kafka_assign(thread->rk,
-								topics);
+	const rd_kafka_resp_err_t assign_rc =
+			rd_kafka_assign(thread->rk, topics);
 	if (assign_rc != RD_KAFKA_RESP_ERR_NO_ERROR) {
-		rdlog(LOG_ERR, "Couldn't assign topic %s: %s", topic_name,
-						rd_kafka_err2str(assign_rc));
+		rdlog(LOG_ERR,
+		      "Couldn't assign topic %s: %s",
+		      topic_name,
+		      rd_kafka_err2str(assign_rc));
 		rc = -1;
 	}
 
@@ -269,19 +276,19 @@ in_sync_calloc_err:
 
 int update_sync_topic(sync_thread_t *thread, rd_kafka_topic_t *topic) {
 	if (udpate_sync_topic_need_to_reload(thread, topic)) {
-		return update_sync_topic0(thread,topic);
+		return update_sync_topic0(thread, topic);
 	} else {
 		return 0;
 	}
 }
 
-void update_sync_thread_clean_interval(sync_thread_t *thread, time_t interval_s,
-							time_t offset_s) {
+void update_sync_thread_clean_interval(sync_thread_t *thread,
+				       time_t interval_s,
+				       time_t offset_s) {
 	pthread_mutex_lock(&thread->clean_interval.mutex);
 	thread->clean_interval.interval_s = interval_s;
 	thread->clean_interval.offset_s = offset_s;
 	pthread_mutex_unlock(&thread->clean_interval.mutex);
-
 }
 
 /** Get an object from a json. If it can't get it, it will print an error
@@ -290,7 +297,8 @@ void update_sync_thread_clean_interval(sync_thread_t *thread, time_t interval_s,
   @param key child key
   @return Child object if we could found it, NULL in other case
   */
-static const json_t *json_object_get_verbose(const json_t *root, const char *key) {
+static const json_t *
+json_object_get_verbose(const json_t *root, const char *key) {
 	const json_t *value = json_object_get(root, key);
 	if (NULL == value) {
 		rdlog(LOG_DEBUG, "Couldn't found %s key", key);
@@ -304,8 +312,10 @@ static uint64_t my_strtouint64(const char *str) {
 	char *endptr = NULL;
 	const unsigned long int ret = strtoul(str, &endptr, 10);
 	if (!(*endptr == '\0')) {
-		rdlog(LOG_ERR, "Couldn't parse number %s: %s",str,
-					mystrerror(errno, err, sizeof(err)));
+		rdlog(LOG_ERR,
+		      "Couldn't parse number %s: %s",
+		      str,
+		      mystrerror(errno, err, sizeof(err)));
 	}
 
 	return ret;
@@ -324,7 +334,7 @@ static uint64_t int_value_of(const json_t *root, const char *key) {
 		return 0;
 	}
 
-	switch(json_typeof(value)) {
+	switch (json_typeof(value)) {
 	case JSON_STRING:
 		value_str = json_string_value(value);
 		return my_strtouint64(value_str);
@@ -341,7 +351,7 @@ static uint64_t int_value_of(const json_t *root, const char *key) {
 	case JSON_FALSE:
 	case JSON_NULL:
 	default:
-		rdlog(LOG_ERR,"Couldn't parse %s: No valid type", key);
+		rdlog(LOG_ERR, "Couldn't parse %s: No valid type", key);
 		return 0;
 	};
 }
@@ -363,20 +373,26 @@ struct organization_bytes_update {
   @param bytes_update struct to save unpack
   @return 0 if success, !0 in other case
   */
-static int real_sync_thread_msg_consume_unpack(json_t *msg,
-			struct organization_bytes_update *bytes_update) {
+static int real_sync_thread_msg_consume_unpack(
+		json_t *msg, struct organization_bytes_update *bytes_update) {
 	int rc = 0;
 	json_error_t jerr;
 	const char *monitor = NULL;
 	json_int_t msg_timestamp = 0;
 
-	const int json_unpack_rc = json_unpack_ex(msg, &jerr, 0,
-		"{s?s,s?s,s?s,s?I}",
-		MONITOR_MSG_MONITOR_KEY, &monitor,
-		MONITOR_MSG_ORGANIZATION_UUID_KEY,
-					&bytes_update->organization_uuid,
-		MONITOR_MSG_N2KAFKA_ID_KEY, &bytes_update->n2kafka_id,
-		MONITOR_MSG_TIMESTAMP_KEY, &msg_timestamp);
+	const int json_unpack_rc =
+			json_unpack_ex(msg,
+				       &jerr,
+				       0,
+				       "{s?s,s?s,s?s,s?I}",
+				       MONITOR_MSG_MONITOR_KEY,
+				       &monitor,
+				       MONITOR_MSG_ORGANIZATION_UUID_KEY,
+				       &bytes_update->organization_uuid,
+				       MONITOR_MSG_N2KAFKA_ID_KEY,
+				       &bytes_update->n2kafka_id,
+				       MONITOR_MSG_TIMESTAMP_KEY,
+				       &msg_timestamp);
 
 	if (json_unpack_rc != 0) {
 		rdlog(LOG_ERR, "Couldn't unpack msg: %s", jerr.text);
@@ -384,9 +400,9 @@ static int real_sync_thread_msg_consume_unpack(json_t *msg,
 		goto done;
 	}
 
-	if (NULL == monitor || NULL == bytes_update->organization_uuid
-			|| NULL == bytes_update->n2kafka_id
-			|| 0!=strcmp(monitor, "organization_received_bytes")) {
+	if (NULL == monitor || NULL == bytes_update->organization_uuid ||
+	    NULL == bytes_update->n2kafka_id ||
+	    0 != strcmp(monitor, "organization_received_bytes")) {
 		/* this message is not for us */
 		rc = -1;
 		goto done;
@@ -408,12 +424,15 @@ static void real_sync_thread_msg_consume_update(
 		organization_db_entry_t *organization,
 		const struct organization_bytes_update *bytes_update) {
 
-	rdlog(LOG_DEBUG, "Consuming %"PRIu64" bytes of %s from %s",
-		bytes_update->bytes, bytes_update->organization_uuid,
-		bytes_update->n2kafka_id);
+	rdlog(LOG_DEBUG,
+	      "Consuming %" PRIu64 " bytes of %s from %s",
+	      bytes_update->bytes,
+	      bytes_update->organization_uuid,
+	      bytes_update->n2kafka_id);
 
 	organization_add_other_consumed_bytes(organization,
-				bytes_update->n2kafka_id, bytes_update->bytes);
+					      bytes_update->n2kafka_id,
+					      bytes_update->bytes);
 }
 
 /** Tell if the kafka message has been produced by this n2kafka
@@ -421,13 +440,13 @@ static void real_sync_thread_msg_consume_update(
   @param msg Message we want to check
   @return 0 if it is from another n2kafka, !0 in other case
   */
-static int is_this_n2kafka_message(const char *n2kafka_id,
-					const rd_kafka_message_t *msg) {
+static int
+is_this_n2kafka_message(const char *n2kafka_id, const rd_kafka_message_t *msg) {
 	assert(n2kafka_id);
 	assert(msg);
 	assert(msg->key);
 	assert(msg->key_len > 0);
-	return 0 == strncmp(n2kafka_id,msg->key, msg->key_len);
+	return 0 == strncmp(n2kafka_id, msg->key, msg->key_len);
 }
 
 /** Tell timestamp interval slice. We should only accept a message if it is
@@ -438,7 +457,8 @@ static int is_this_n2kafka_message(const char *n2kafka_id,
   @return interval slice
   */
 static int64_t timestamp_interval_slice(time_t timestamp,
-			time_t interval_duration, time_t interval_offset) {
+					time_t interval_duration,
+					time_t interval_offset) {
 	const time_t t = timestamp / interval_duration;
 	return (timestamp % interval_duration > interval_offset) ? t + 1 : t;
 }
@@ -450,12 +470,14 @@ static int64_t timestamp_interval_slice(time_t timestamp,
   @param interval_offset slice_offset
   @return 0 if they are in the same slice, !0 in other case
   */
-static int timestamp_interval_slice_cmp(time_t time1, time_t time2,
-			time_t interval_duration, time_t interval_offset) {
-	const int64_t time1_ts_slice = timestamp_interval_slice(time1,
-					interval_duration,interval_offset);
-	const int64_t time2_ts_slice = timestamp_interval_slice(time2,
-					interval_duration,interval_offset);
+static int timestamp_interval_slice_cmp(time_t time1,
+					time_t time2,
+					time_t interval_duration,
+					time_t interval_offset) {
+	const int64_t time1_ts_slice = timestamp_interval_slice(
+			time1, interval_duration, interval_offset);
+	const int64_t time2_ts_slice = timestamp_interval_slice(
+			time2, interval_duration, interval_offset);
 
 	return time2_ts_slice - time1_ts_slice;
 }
@@ -465,7 +487,7 @@ static int timestamp_interval_slice_cmp(time_t time1, time_t time2,
   @param ctx Context
   */
 static void real_sync_thread_msg_consume(rd_kafka_message_t *msg,
-						struct msg_consume_ctx *ctx) {
+					 struct msg_consume_ctx *ctx) {
 	(void)ctx;
 	struct organization_bytes_update bytes_update;
 	json_error_t jerr;
@@ -487,13 +509,16 @@ static void real_sync_thread_msg_consume(rd_kafka_message_t *msg,
 	memset(&bytes_update, 0, sizeof(bytes_update));
 	json_t *jmsg = json_loadb(msg->payload, msg->len, 0, &jerr);
 	if (NULL == jmsg) {
-		rdlog(LOG_ERR, "Couldn't decode message [%.*s]: %s",
-			(int)msg->len, (char *)msg->payload, jerr.text);
+		rdlog(LOG_ERR,
+		      "Couldn't decode message [%.*s]: %s",
+		      (int)msg->len,
+		      (char *)msg->payload,
+		      jerr.text);
 		return;
 	}
 
-	const int unpack_rc = real_sync_thread_msg_consume_unpack(jmsg,
-								&bytes_update);
+	const int unpack_rc = real_sync_thread_msg_consume_unpack(
+			jmsg, &bytes_update);
 	if (0 != unpack_rc) {
 		goto done;
 	}
@@ -506,28 +531,30 @@ static void real_sync_thread_msg_consume(rd_kafka_message_t *msg,
 	pthread_mutex_lock(&ctx->thread->clean_interval.mutex);
 	if (ctx->thread->clean_interval.interval_s) {
 		now_msg_timestamp_cmp = timestamp_interval_slice_cmp(
-					now,bytes_update.timestamp,
-					ctx->thread->clean_interval.interval_s,
-					ctx->thread->clean_interval.offset_s);
+				now,
+				bytes_update.timestamp,
+				ctx->thread->clean_interval.interval_s,
+				ctx->thread->clean_interval.offset_s);
 	}
 	pthread_mutex_unlock(&ctx->thread->clean_interval.mutex);
 
 	if (0 != now_msg_timestamp_cmp) {
 		rdlog(LOG_DEBUG,
-			"[now=%tu][msg_ts=%tu][interval_s=%tu][offset_s=%tu]"
-			" Not in the same interval slice",
-			now, bytes_update.timestamp,
-			ctx->thread->clean_interval.interval_s,
-			ctx->thread->clean_interval.offset_s);
+		      "[now=%tu][msg_ts=%tu][interval_s=%tu][offset_s=%tu]"
+		      " Not in the same interval slice",
+		      now,
+		      bytes_update.timestamp,
+		      ctx->thread->clean_interval.interval_s,
+		      ctx->thread->clean_interval.offset_s);
 		goto done;
 	}
 
-
 	organization_db_entry_t *organization = organizations_db_get(
-		ctx->thread->org_db, bytes_update.organization_uuid);
+			ctx->thread->org_db, bytes_update.organization_uuid);
 	if (NULL == organization) {
-		rdlog(LOG_ERR, "Couldn't locate organization %s",
-			bytes_update.organization_uuid);
+		rdlog(LOG_ERR,
+		      "Couldn't locate organization %s",
+		      bytes_update.organization_uuid);
 		goto done;
 	}
 
@@ -544,38 +571,37 @@ done:
   @param ctx Context
   */
 static void sync_thread_msg_consume_err(rd_kafka_message_t *msg,
-						struct msg_consume_ctx *ctx) {
+					struct msg_consume_ctx *ctx) {
 	(void)ctx;
-	switch(msg->err) {
+	switch (msg->err) {
 	case RD_KAFKA_RESP_ERR__UNKNOWN_GROUP:
 		rdlog(LOG_CRIT,
-			"Error consuming: %s. Use rdkafka.group.id to set",
-			rd_kafka_err2str(msg->err));
+		      "Error consuming: %s. Use rdkafka.group.id to set",
+		      rd_kafka_err2str(msg->err));
 		rdlog(LOG_CRIT, "Need to restart to apply");
 		/* This thread is no use anymore */
 		pthread_exit(NULL);
 		break;
 
-	case RD_KAFKA_RESP_ERR__PARTITION_EOF:
-		{
-			pthread_mutex_lock(&ctx->in_sync.mutex);
-			const int in_sync =
-					ctx->in_sync.in_sync[msg->partition];
-			if (!in_sync) {
-				ctx->in_sync.in_sync[msg->partition] = 1;
-			}
-			pthread_mutex_unlock(&ctx->in_sync.mutex);
-			if (!in_sync) {
-				rdlog(LOG_INFO,
-					"partition %d "
-					"organization sync completed",
-					msg->partition);
-			}
+	case RD_KAFKA_RESP_ERR__PARTITION_EOF: {
+		pthread_mutex_lock(&ctx->in_sync.mutex);
+		const int in_sync = ctx->in_sync.in_sync[msg->partition];
+		if (!in_sync) {
+			ctx->in_sync.in_sync[msg->partition] = 1;
 		}
-		break;
+		pthread_mutex_unlock(&ctx->in_sync.mutex);
+		if (!in_sync) {
+			rdlog(LOG_INFO,
+			      "partition %d "
+			      "organization sync completed",
+			      msg->partition);
+		}
+	} break;
 	default:
-		rdlog(LOG_ERR, "Error consuming: %.*s",
-			(int)msg->len, (char *)msg->payload);
+		rdlog(LOG_ERR,
+		      "Error consuming: %.*s",
+		      (int)msg->len,
+		      (char *)msg->payload);
 	}
 }
 
@@ -583,15 +609,15 @@ static void sync_thread_msg_consume_err(rd_kafka_message_t *msg,
   @param msg MEssage or error
   @param ctx Consume context
   */
-static void sync_thread_msg_consume0(rd_kafka_message_t *msg,
-						struct msg_consume_ctx *ctx) {
+static void
+sync_thread_msg_consume0(rd_kafka_message_t *msg, struct msg_consume_ctx *ctx) {
 	(void)msg;
 	assert_msg_consume_ctx(ctx);
 
-	if(msg->err == RD_KAFKA_RESP_ERR_NO_ERROR) {
-		real_sync_thread_msg_consume(msg,ctx);
+	if (msg->err == RD_KAFKA_RESP_ERR_NO_ERROR) {
+		real_sync_thread_msg_consume(msg, ctx);
 	} else {
-		sync_thread_msg_consume_err(msg,ctx);
+		sync_thread_msg_consume_err(msg, ctx);
 	}
 }
 
@@ -613,11 +639,10 @@ static int sync_thread_kafka_init(sync_thread_t *thread, void *rk_opaque) {
 	rd_kafka_conf_set_consume_cb(thread->rk_conf, sync_thread_msg_consume);
 	rd_kafka_conf_set_opaque(thread->rk_conf, rk_opaque);
 
-	thread->rk = rd_kafka_new(RD_KAFKA_CONSUMER, thread->rk_conf,
-							err, sizeof(err));
+	thread->rk = rd_kafka_new(
+			RD_KAFKA_CONSUMER, thread->rk_conf, err, sizeof(err));
 	if (NULL == thread->rk) {
-		rdlog(LOG_ERR, "Couldn't create rk: %s",
-			err);
+		rdlog(LOG_ERR, "Couldn't create rk: %s", err);
 		/// @TODO should destroy conf?
 		return -1;
 	}
@@ -634,8 +659,9 @@ static int sync_thread_kafka_init(sync_thread_t *thread, void *rk_opaque) {
 static void sync_thread_kafka_done(sync_thread_t *thread) {
 	rd_kafka_resp_err_t close_rc = rd_kafka_consumer_close(thread->rk);
 	if (close_rc != RD_KAFKA_RESP_ERR_NO_ERROR) {
-		rdlog(LOG_ERR, "Couldn't close previous consumer: %s",
-						rd_kafka_err2str(close_rc));
+		rdlog(LOG_ERR,
+		      "Couldn't close previous consumer: %s",
+		      rd_kafka_err2str(close_rc));
 	}
 
 	rd_kafka_destroy(thread->rk);
@@ -645,15 +671,16 @@ static void sync_thread_kafka_done(sync_thread_t *thread) {
 static void *sync_thread(void *vthread) {
 	struct msg_consume_ctx ctx = {
 #ifdef MSG_CONSUME_CTX_MAGIC
-		.magic = MSG_CONSUME_CTX_MAGIC,
+			.magic = MSG_CONSUME_CTX_MAGIC,
 #endif
-		.in_sync = {
-			.mutex = PTHREAD_MUTEX_INITIALIZER,
-		},
+			.in_sync =
+					{
+							.mutex = PTHREAD_MUTEX_INITIALIZER,
+					},
 
-		/// @TODO does not use global config here!!
-		.n2kafka_id = global_config.n2kafka_id,
-		.thread = vthread,
+			/// @TODO does not use global config here!!
+			.n2kafka_id = global_config.n2kafka_id,
+			.thread = vthread,
 	};
 
 	assert_sync_thread(ctx.thread);
@@ -665,7 +692,7 @@ static void *sync_thread(void *vthread) {
 
 	rdlog(LOG_INFO, "Starting http2k organization bytes sync");
 
-	while(ATOMIC_OP(fetch,add,&ctx.thread->run,0)) {
+	while (ATOMIC_OP(fetch, add, &ctx.thread->run, 0)) {
 		/// @TODO end of partition message is returned. Why I can't
 		/// handle it via consumer_cb?
 		rd_kafka_message_t *msg;

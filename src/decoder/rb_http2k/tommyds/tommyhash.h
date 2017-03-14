@@ -26,7 +26,8 @@
  */
 
 /** \file
- * Hash functions for the use with ::tommy_hashtable, ::tommy_hashdyn and ::tommy_hashlin.
+ * Hash functions for the use with ::tommy_hashtable, ::tommy_hashdyn and
+ * ::tommy_hashlin.
  */
 
 #ifndef __TOMMYHASH_H
@@ -47,7 +48,8 @@ typedef tommy_key_t tommy_hash_t;
  * Implementation of the Robert Jenkins "lookup3" hash 32 bits version,
  * from http://www.burtleburtle.net/bob/hash/doobs.html, function hashlittle().
  * \param init_val Initialization value.
- * Using a different initialization value, you can generate a completely different set of hash values.
+ * Using a different initialization value, you can generate a completely
+ * different set of hash values.
  * Use 0 if not relevant.
  * \param void_key Pointer at the data to hash.
  * \param key_len Size of the data to hash.
@@ -55,14 +57,17 @@ typedef tommy_key_t tommy_hash_t;
  * This function is endianess independent.
  * \return The hash value of 32 bits.
  */
-tommy_uint32_t tommy_hash_u32(tommy_uint32_t init_val, const void* void_key, tommy_size_t key_len);
+tommy_uint32_t tommy_hash_u32(tommy_uint32_t init_val,
+			      const void *void_key,
+			      tommy_size_t key_len);
 
 /**
  * Hash function with a 64 bits result.
  * Implementation of the Robert Jenkins "lookup3" hash 64 bits versions,
  * from http://www.burtleburtle.net/bob/hash/doobs.html, function hashlittle2().
  * \param init_val Initialization value.
- * Using a different initialization value, you can generate a completely different set of hash values.
+ * Using a different initialization value, you can generate a completely
+ * different set of hash values.
  * Use 0 if not relevant.
  * \param void_key Pointer at the data to hash.
  * \param key_len Size of the data to hash.
@@ -70,15 +75,16 @@ tommy_uint32_t tommy_hash_u32(tommy_uint32_t init_val, const void* void_key, tom
  * This function is endianess independent.
  * \return The hash value of 64 bits.
  */
-tommy_uint64_t tommy_hash_u64(tommy_uint64_t init_val, const void* void_key, tommy_size_t key_len);
+tommy_uint64_t tommy_hash_u64(tommy_uint64_t init_val,
+			      const void *void_key,
+			      tommy_size_t key_len);
 
 /**
  * Integer hash of 32 bits.
  * Implementation of the Robert Jenkins "4-byte Integer Hashing",
  * from http://burtleburtle.net/bob/hash/integer.html
  */
-tommy_inline tommy_uint32_t tommy_inthash_u32(tommy_uint32_t key)
-{
+tommy_inline tommy_uint32_t tommy_inthash_u32(tommy_uint32_t key) {
 	key -= key << 6;
 	key ^= key >> 17;
 	key -= key << 9;
@@ -95,8 +101,7 @@ tommy_inline tommy_uint32_t tommy_inthash_u32(tommy_uint32_t key)
  * Implementation of the Thomas Wang "Integer Hash Function",
  * from http://www.cris.com/~Ttwang/tech/inthash.htm
  */
-tommy_inline tommy_uint64_t tommy_inthash_u64(tommy_uint64_t key)
-{
+tommy_inline tommy_uint64_t tommy_inthash_u64(tommy_uint64_t key) {
 	key = ~key + (key << 21);
 	key = key ^ (key >> 24);
 	key = key + (key << 3) + (key << 8);
@@ -109,4 +114,3 @@ tommy_inline tommy_uint64_t tommy_inthash_u64(tommy_uint64_t key)
 }
 
 #endif
-

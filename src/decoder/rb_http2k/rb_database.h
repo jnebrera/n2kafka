@@ -20,14 +20,14 @@
 
 #pragma once
 
-#include "util/topic_database.h"
-#include "rb_http2k_sensors_database.h"
 #include "rb_http2k_organizations_database.h"
+#include "rb_http2k_sensors_database.h"
+#include "util/topic_database.h"
 
 #include "util/rb_timer.h"
 
-#include <pthread.h>
 #include <jansson.h>
+#include <pthread.h>
 
 struct rb_database {
 	/* UUID enrichment read-only database */
@@ -62,8 +62,10 @@ void free_valid_rb_database(struct rb_database *db);
 	@return 0 if OK, !=0 in other case
 	*/
 int rb_http2k_database_get_topic_client(struct rb_database *db,
-	const char *topic, const char *sensor_uuid,
-	struct topic_s **topic_handler, sensor_db_entry_t **sensor_info);
+					const char *topic,
+					const char *sensor_uuid,
+					struct topic_s **topic_handler,
+					sensor_db_entry_t **sensor_info);
 
-int rb_http2k_validate_uuid(struct rb_database *db,const char *uuid);
-int rb_http2k_validate_topic(struct rb_database *db,const char *topic);
+int rb_http2k_validate_uuid(struct rb_database *db, const char *uuid);
+int rb_http2k_validate_topic(struct rb_database *db, const char *topic);

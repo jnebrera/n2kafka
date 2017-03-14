@@ -18,17 +18,18 @@
 
 #include "rb_addr.h"
 
-#include <stdio.h>
 #include <errno.h>
 #include <librd/rdlog.h>
+#include <stdio.h>
 
-const char *sockaddr2str(char *buf, size_t buf_size, struct sockaddr *sockaddr) {
+const char *
+sockaddr2str(char *buf, size_t buf_size, struct sockaddr *sockaddr) {
 	char errbuf[BUFSIZ];
 
 	const void *addr_buf = NULL;
 	const char *ret = NULL;
 
-	switch(sockaddr->sa_family) {
+	switch (sockaddr->sa_family) {
 	case AF_INET:
 		addr_buf = &((struct sockaddr_in *)sockaddr)->sin_addr;
 		break;
@@ -39,15 +40,15 @@ const char *sockaddr2str(char *buf, size_t buf_size, struct sockaddr *sockaddr) 
 		break;
 	}
 
-	if(NULL == addr_buf) {
+	if (NULL == addr_buf) {
 		errno = EAFNOSUPPORT;
 	} else {
-		ret = inet_ntop(sockaddr->sa_family, addr_buf,buf,buf_size);
+		ret = inet_ntop(sockaddr->sa_family, addr_buf, buf, buf_size);
 	}
 
-	if(NULL == ret) {
-		strerror_r(errno,errbuf,sizeof(errbuf));
-		rdlog(LOG_ERR,"Can't print client address: %s",errbuf);
+	if (NULL == ret) {
+		strerror_r(errno, errbuf, sizeof(errbuf));
+		rdlog(LOG_ERR, "Can't print client address: %s", errbuf);
 	}
 
 	return ret;

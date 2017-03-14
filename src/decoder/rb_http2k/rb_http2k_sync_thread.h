@@ -24,9 +24,9 @@
 #include "rb_http2k_organizations_database.h"
 
 #include <librdkafka/rdkafka.h>
-#include <stdint.h>
 #include <pthread.h>
 #include <semaphore.h>
+#include <stdint.h>
 
 /// Information shared between main thread and consumer thread
 typedef struct sync_thread_s {
@@ -70,8 +70,9 @@ typedef struct sync_thread_s {
   @param thread Context to initialize
   @return 0 if success, !0 in other case
   */
-int sync_thread_init(sync_thread_t *thread, rd_kafka_conf_t *rk,
-						organizations_db_t *org_db);
+int sync_thread_init(sync_thread_t *thread,
+		     rd_kafka_conf_t *rk,
+		     organizations_db_t *org_db);
 
 /** De-initialize a consumer topic context
   @param thread Context to free
@@ -89,4 +90,5 @@ int update_sync_topic(sync_thread_t *thread, rd_kafka_topic_t *topic);
   @param offset_s Offset from 0 that intervals start
   */
 void update_sync_thread_clean_interval(sync_thread_t *thread,
-					time_t interval_s, time_t offset_s);
+				       time_t interval_s,
+				       time_t offset_s);

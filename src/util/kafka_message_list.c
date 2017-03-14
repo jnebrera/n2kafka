@@ -17,27 +17,27 @@ void rd_kafka_msg_q_init(rd_kafka_message_queue_t *q) {
 }
 
 int rd_kafka_msg_q_add(rd_kafka_message_queue_t *q,
-                    const rd_kafka_message_t *msg) {
+		       const rd_kafka_message_t *msg) {
 	rd_kafka_message_queue_elm_t *elm = malloc(sizeof(*elm));
-	if(elm) {
+	if (elm) {
 		++q->count;
-		memcpy(&elm->msg,msg,sizeof(msg[0]));
-		TAILQ_INSERT_TAIL(&q->list,elm,list_entry);
+		memcpy(&elm->msg, msg, sizeof(msg[0]));
+		TAILQ_INSERT_TAIL(&q->list, elm, list_entry);
 	}
 
 	return elm != NULL;
 }
 
-static void rd_kafka_msg_q_dump0(rd_kafka_message_queue_t *q,
-	rd_kafka_message_t *msgs) {
+static void
+rd_kafka_msg_q_dump0(rd_kafka_message_queue_t *q, rd_kafka_message_t *msgs) {
 
 	rd_kafka_message_queue_elm_t *elm = NULL;
 	size_t i = 0;
 
-	while((elm = TAILQ_FIRST(&q->list))) {
-		TAILQ_REMOVE(&q->list,elm,list_entry);
-		if(msgs) {
-			memcpy(&msgs[i++],&elm->msg,sizeof(msgs[0]));
+	while ((elm = TAILQ_FIRST(&q->list))) {
+		TAILQ_REMOVE(&q->list, elm, list_entry);
+		if (msgs) {
+			memcpy(&msgs[i++], &elm->msg, sizeof(msgs[0]));
 		}
 		free(elm);
 	}
@@ -46,11 +46,11 @@ static void rd_kafka_msg_q_dump0(rd_kafka_message_queue_t *q,
 }
 
 void rd_kafka_msg_q_dump(rd_kafka_message_queue_t *q,
-	rd_kafka_message_t *msgs) {
+			 rd_kafka_message_t *msgs) {
 
-	rd_kafka_msg_q_dump0(q,msgs);
+	rd_kafka_msg_q_dump0(q, msgs);
 }
 
 void rd_kafka_msg_q_clean(rd_kafka_message_queue_t *q) {
-	rd_kafka_msg_q_dump0(q,NULL);
+	rd_kafka_msg_q_dump0(q, NULL);
 }

@@ -32,14 +32,18 @@
  * into an hashtables, but useable also as a generic list.
  *
  * The main feature of this list is to require only one pointer to represent the
- * list, compared to a classic implementation requiring a head an a tail pointers.
+ * list, compared to a classic implementation requiring a head an a tail
+ * pointers.
  * This reduces the memory usage in hashtables.
  *
- * Another feature is to support the insertion at the end of the list. This allow to store
- * collisions in a stable order. Where for stable order we mean that equal elements keep
+ * Another feature is to support the insertion at the end of the list. This
+ * allow to store
+ * collisions in a stable order. Where for stable order we mean that equal
+ * elements keep
  * their insertion order.
  *
- * To initialize the list, you have to call tommy_list_init(), or to simply assign
+ * To initialize the list, you have to call tommy_list_init(), or to simply
+ * assign
  * to it NULL, as an empty list is represented by the NULL value.
  *
  * \code
@@ -105,14 +109,13 @@
 /**
  * Double linked list type.
  */
-typedef tommy_node* tommy_list;
+typedef tommy_node *tommy_list;
 
 /**
  * Initializes the list.
  * The list is completely inplace, so it doesn't need to be deinitialized.
  */
-tommy_inline void tommy_list_init(tommy_list* list)
-{
+tommy_inline void tommy_list_init(tommy_list *list) {
 	*list = 0;
 }
 
@@ -120,8 +123,7 @@ tommy_inline void tommy_list_init(tommy_list* list)
  * Gets the head of the list.
  * \return The head node. For empty lists 0 is returned.
  */
-tommy_inline tommy_node* tommy_list_head(tommy_list* list)
-{
+tommy_inline tommy_node *tommy_list_head(tommy_list *list) {
 	return *list;
 }
 
@@ -129,9 +131,8 @@ tommy_inline tommy_node* tommy_list_head(tommy_list* list)
  * Gets the tail of the list.
  * \return The tail node. For empty lists 0 is returned.
  */
-tommy_inline tommy_node* tommy_list_tail(tommy_list* list)
-{
-	tommy_node* head = tommy_list_head(list);
+tommy_inline tommy_node *tommy_list_tail(tommy_list *list) {
+	tommy_node *head = tommy_list_head(list);
 
 	if (!head)
 		return 0;
@@ -144,8 +145,7 @@ tommy_inline tommy_node* tommy_list_tail(tommy_list* list)
  * \param list The list to initialize.
  * \param node The node to insert.
  */
-tommy_inline void tommy_list_insert_first(tommy_list* list, tommy_node* node)
-{
+tommy_inline void tommy_list_insert_first(tommy_list *list, tommy_node *node) {
 	/* one element "circular" prev list */
 	node->prev = node;
 
@@ -161,9 +161,9 @@ tommy_inline void tommy_list_insert_first(tommy_list* list, tommy_node* node)
  * \param list The list. The list cannot be empty.
  * \param node The node to insert.
  */
-tommy_inline void tommy_list_insert_head_not_empty(tommy_list* list, tommy_node* node)
-{
-	tommy_node* head = tommy_list_head(list);
+tommy_inline void
+tommy_list_insert_head_not_empty(tommy_list *list, tommy_node *node) {
+	tommy_node *head = tommy_list_head(list);
 
 	/* insert in the "circular" prev list */
 	node->prev = head->prev;
@@ -181,8 +181,8 @@ tommy_inline void tommy_list_insert_head_not_empty(tommy_list* list, tommy_node*
  * \param head The node at the list head. It cannot be 0.
  * \param node The node to insert.
  */
-tommy_inline void tommy_list_insert_tail_not_empty(tommy_node* head, tommy_node* node)
-{
+tommy_inline void
+tommy_list_insert_tail_not_empty(tommy_node *head, tommy_node *node) {
 	/* insert in the "circular" prev list */
 	node->prev = head->prev;
 	head->prev = node;
@@ -195,11 +195,12 @@ tommy_inline void tommy_list_insert_tail_not_empty(tommy_node* head, tommy_node*
 /**
  * Inserts an element at the head of a list.
  * \param node The node to insert.
- * \param data The object containing the node. It's used to set the tommy_node::data field of the node.
+ * \param data The object containing the node. It's used to set the
+ * tommy_node::data field of the node.
  */
-tommy_inline void tommy_list_insert_head(tommy_list* list, tommy_node* node, void* data)
-{
-	tommy_node* head = tommy_list_head(list);
+tommy_inline void
+tommy_list_insert_head(tommy_list *list, tommy_node *node, void *data) {
+	tommy_node *head = tommy_list_head(list);
 
 	if (head)
 		tommy_list_insert_head_not_empty(list, node);
@@ -212,11 +213,12 @@ tommy_inline void tommy_list_insert_head(tommy_list* list, tommy_node* node, voi
 /**
  * Inserts an element at the tail of a list.
  * \param node The node to insert.
- * \param data The object containing the node. It's used to set the tommy_node::data field of the node.
+ * \param data The object containing the node. It's used to set the
+ * tommy_node::data field of the node.
  */
-tommy_inline void tommy_list_insert_tail(tommy_list* list, tommy_node* node, void* data)
-{
-	tommy_node* head = tommy_list_head(list);
+tommy_inline void
+tommy_list_insert_tail(tommy_list *list, tommy_node *node, void *data) {
+	tommy_node *head = tommy_list_head(list);
 
 	if (head)
 		tommy_list_insert_tail_not_empty(head, node);
@@ -231,9 +233,8 @@ tommy_inline void tommy_list_insert_tail(tommy_list* list, tommy_node* node, voi
  * \param list The list. The list cannot be empty.
  * \return The node removed.
  */
-tommy_inline tommy_node* tommy_list_remove_head_not_empty(tommy_list* list)
-{
-	tommy_node* head = tommy_list_head(list);
+tommy_inline tommy_node *tommy_list_remove_head_not_empty(tommy_list *list) {
+	tommy_node *head = tommy_list_head(list);
 
 	/* remove from the "circular" prev list */
 	head->next->prev = head->prev;
@@ -252,9 +253,9 @@ tommy_inline tommy_node* tommy_list_remove_head_not_empty(tommy_list* list)
  * \param node The node to remove. The node must be in the list.
  * \return The tommy_node::data field of the node removed.
  */
-tommy_inline void* tommy_list_remove_existing(tommy_list* list, tommy_node* node)
-{
-	tommy_node* head = tommy_list_head(list);
+tommy_inline void *
+tommy_list_remove_existing(tommy_list *list, tommy_node *node) {
+	tommy_node *head = tommy_list_head(list);
 
 	/* remove from the "circular" prev list */
 	if (node->next)
@@ -278,23 +279,23 @@ tommy_inline void* tommy_list_remove_existing(tommy_list* list, tommy_node* node
  * \param second The second list. After this call the list content is undefined,
  * and you should not use it anymore.
  */
-void tommy_list_concat(tommy_list* first, tommy_list* second);
+void tommy_list_concat(tommy_list *first, tommy_list *second);
 
 /**
  * Sorts a list.
  * It's a stable merge sort with O(N*log(N)) worst complexity.
  * It's faster on degenerated cases like partially ordered lists.
  * \param cmp Compare function called with two elements.
- * The function should return <0 if the first element is less than the second, ==0 if equal, and >0 if greather.
+ * The function should return <0 if the first element is less than the second,
+ * ==0 if equal, and >0 if greather.
  */
-void tommy_list_sort(tommy_list* list, tommy_compare_func* cmp);
+void tommy_list_sort(tommy_list *list, tommy_compare_func *cmp);
 
 /**
  * Checks if empty.
  * \return If the list is empty.
  */
-tommy_inline tommy_bool_t tommy_list_empty(tommy_list* list)
-{
+tommy_inline tommy_bool_t tommy_list_empty(tommy_list *list) {
 	return tommy_list_head(list) == 0;
 }
 
@@ -326,12 +327,12 @@ tommy_inline tommy_bool_t tommy_list_empty(tommy_list* list)
  * tommy_list_foreach(&list, free);
  * \endcode
  */
-tommy_inline void tommy_list_foreach(tommy_list* list, tommy_foreach_func* func)
-{
-	tommy_node* node = tommy_list_head(list);
+tommy_inline void
+tommy_list_foreach(tommy_list *list, tommy_foreach_func *func) {
+	tommy_node *node = tommy_list_head(list);
 
 	while (node) {
-		void* data = node->data;
+		void *data = node->data;
 		node = node->next;
 		func(data);
 	}
@@ -340,16 +341,16 @@ tommy_inline void tommy_list_foreach(tommy_list* list, tommy_foreach_func* func)
 /**
  * Calls the specified function with an argument for each element in the list.
  */
-tommy_inline void tommy_list_foreach_arg(tommy_list* list, tommy_foreach_arg_func* func, void* arg)
-{
-	tommy_node* node = tommy_list_head(list);
+tommy_inline void tommy_list_foreach_arg(tommy_list *list,
+					 tommy_foreach_arg_func *func,
+					 void *arg) {
+	tommy_node *node = tommy_list_head(list);
 
 	while (node) {
-		void* data = node->data;
+		void *data = node->data;
 		node = node->next;
 		func(arg, data);
 	}
 }
 
 #endif
-

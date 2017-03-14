@@ -19,13 +19,13 @@
 ** along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "config.h"
 #include "rb_http2k_curl_handler.h"
+#include "config.h"
 
 #include <util/util.h>
 
-#include <librd/rdthread.h>
 #include <librd/rdlog.h>
+#include <librd/rdthread.h>
 
 typedef struct rb_http2k_curl_handler_msg_s {
 #ifndef NDEBUG
@@ -35,8 +35,8 @@ typedef struct rb_http2k_curl_handler_msg_s {
 	CURL *curl_handler;
 } rb_http2k_curl_handler_msg_t;
 
-static void assert_rb_http2k_curl_handler_ctx(
-					rb_http2k_curl_handler_t *handler) {
+static void
+assert_rb_http2k_curl_handler_ctx(rb_http2k_curl_handler_t *handler) {
 #ifdef RB_HTTP2K_CURL_HANDLER_MAGIC
 	assert(RB_HTTP2K_CURL_HANDLER_MAGIC == handler->magic);
 #else
@@ -45,12 +45,12 @@ static void assert_rb_http2k_curl_handler_ctx(
 }
 
 /** Overwrite default write_callback, that prints out content by stdout */
-static size_t write_callback(char *ptr, size_t size, size_t nmemb,
-							void *userdata) {
+static size_t
+write_callback(char *ptr, size_t size, size_t nmemb, void *userdata) {
 	(void)ptr;
 	(void)userdata;
 
-	return size*nmemb;
+	return size * nmemb;
 }
 
 /* Convenience function */
@@ -66,8 +66,8 @@ static CURL *my_rd_fifoq_pop_timedwait(rd_fifoq_t *fifoq, int timeout_ms) {
 	return ret;
 }
 
-static void curl_handler_add_curl(rb_http2k_curl_handler_t *handler,
-							CURL *curl_handler) {
+static void
+curl_handler_add_curl(rb_http2k_curl_handler_t *handler, CURL *curl_handler) {
 	rdlog(LOG_DEBUG, "Adding HTTP PUT %p", curl_handler);
 	curl_multi_add_handle(handler->curl_multi_handler, curl_handler);
 }
@@ -80,13 +80,13 @@ static int curl_handler_purge_completed(rb_http2k_curl_handler_t *handler) {
 	CURLMsg *msg;
 	int cleaned = 0;
 	int msgs_in_queue;
-	while((msg = curl_multi_info_read(handler->curl_multi_handler,
-							&msgs_in_queue))) {
-		if(msg->msg == CURLMSG_DONE) {
+	while ((msg = curl_multi_info_read(handler->curl_multi_handler,
+					   &msgs_in_queue))) {
+		if (msg->msg == CURLMSG_DONE) {
 			CURL *e = msg->easy_handle;
 			rdlog(LOG_DEBUG, "HTTP PUT %p end", msg);
 			curl_multi_remove_handle(handler->curl_multi_handler,
-									e);
+						 e);
 			curl_easy_cleanup(e);
 			cleaned++;
 		} else {
@@ -100,26 +100,24 @@ static int curl_handler_purge_completed(rb_http2k_curl_handler_t *handler) {
 static void curl_handler_entry_point0(rb_http2k_curl_handler_t *handler) {
 	static int fifoq_pop_timeout_ms = 500;
 	int my_still_running = 0;
-	while(ATOMIC_OP(fetch,add,&handler->run,0)) {
+	while (ATOMIC_OP(fetch, add, &handler->run, 0)) {
 		int still_running = 0;
 		CURL *elm = my_rd_fifoq_pop_timedwait(&handler->msg_queue,
-							fifoq_pop_timeout_ms);
+						      fifoq_pop_timeout_ms);
 		if (elm) {
 			my_still_running++;
 			curl_handler_add_curl(handler, elm);
 		}
 
-		curl_multi_perform(handler->curl_multi_handler,
-							&still_running);
+		curl_multi_perform(handler->curl_multi_handler, &still_running);
 
 		if (still_running < my_still_running) {
 			/* Some handlers require attention */
-			const int cleaned = curl_handler_purge_completed(
-								handler);
+			const int cleaned =
+					curl_handler_purge_completed(handler);
 			my_still_running -= cleaned;
 		}
 	}
-
 }
 
 static void *curl_handler_entry_point(void *ctx) {
@@ -130,7 +128,7 @@ static void *curl_handler_entry_point(void *ctx) {
 }
 
 int rb_http2k_curl_handler_init(rb_http2k_curl_handler_t *handler,
-							int max_msgs_size) {
+				int max_msgs_size) {
 	char err[BUFSIZ];
 #ifdef RB_HTTP2K_CURL_HANDLER_MAGIC
 	handler->magic = RB_HTTP2K_CURL_HANDLER_MAGIC;
@@ -146,12 +144,15 @@ int rb_http2k_curl_handler_init(rb_http2k_curl_handler_t *handler,
 		return -1;
 	}
 
-	const int pthread_create_rc = pthread_create(&handler->thread, NULL,
-		curl_handler_entry_point, handler);
+	const int pthread_create_rc = pthread_create(&handler->thread,
+						     NULL,
+						     curl_handler_entry_point,
+						     handler);
 
 	if (pthread_create_rc != 0) {
-		rdlog(LOG_ERR, "Couldn't create thread: %s",
-			mystrerror(errno, err, sizeof(err)));
+		rdlog(LOG_ERR,
+		      "Couldn't create thread: %s",
+		      mystrerror(errno, err, sizeof(err)));
 		curl_multi_cleanup(handler->curl_multi_handler);
 	}
 
@@ -159,22 +160,21 @@ int rb_http2k_curl_handler_init(rb_http2k_curl_handler_t *handler,
 }
 
 void rb_http2k_curl_handler_done(rb_http2k_curl_handler_t *handler) {
-	ATOMIC_OP(fetch,and,&handler->run,0);
+	ATOMIC_OP(fetch, and, &handler->run, 0);
 	pthread_join(handler->thread, NULL);
 	curl_multi_cleanup(handler->curl_multi_handler);
 	curl_global_cleanup();
 	rd_fifoq_destroy(&handler->msg_queue);
 }
 
-static void curl_easy_set_http_put_method(CURL *curl_handler,
-							const char *url) {
+static void curl_easy_set_http_put_method(CURL *curl_handler, const char *url) {
 	curl_easy_setopt(curl_handler, CURLOPT_URL, url);
 	curl_easy_setopt(curl_handler, CURLOPT_UPLOAD, 1);
 }
 
 /// @TODO test full queue
 void rb_http2k_curl_handler_put_empty(rb_http2k_curl_handler_t *handler,
-							const char *url) {
+				      const char *url) {
 	CURL *curl_handler = curl_easy_init(), *purged = NULL;
 	curl_easy_set_http_put_method(curl_handler, url);
 	curl_easy_setopt(curl_handler, CURLOPT_WRITEFUNCTION, write_callback);
@@ -182,15 +182,15 @@ void rb_http2k_curl_handler_put_empty(rb_http2k_curl_handler_t *handler,
 	// Skip SSL verification
 	curl_easy_setopt(curl_handler, CURLOPT_SSL_VERIFYPEER, 0L);
 
-	rdlog(LOG_DEBUG, "Adding curl handler %p to URL %s", curl_handler,
-									url);
+	rdlog(LOG_DEBUG, "Adding curl handler %p to URL %s", curl_handler, url);
 
-	rd_fifoq_add_purge(&handler->msg_queue,curl_handler,&purged);
+	rd_fifoq_add_purge(&handler->msg_queue, curl_handler, &purged);
 	if (purged) {
 		char *purged_url = NULL;
 		curl_easy_getinfo(purged, CURLINFO_EFFECTIVE_URL, &purged_url);
-		rdlog(LOG_ERR, "Too much request queued. Freeing %s",
-			purged_url ? purged_url : "older");
+		rdlog(LOG_ERR,
+		      "Too much request queued. Freeing %s",
+		      purged_url ? purged_url : "older");
 		curl_easy_cleanup(purged);
 	}
 }

@@ -22,9 +22,9 @@
 
 #include "config.h"
 
-#include <jansson.h>
-#include "uuid_database.h"
 #include "util/kafka.h"
+#include "uuid_database.h"
+#include <jansson.h>
 
 #include <pthread.h>
 #include <stdbool.h>
@@ -42,15 +42,15 @@ struct organization_limit {
 	uint64_t consumed;
 	/// Last reported bytes
 	uint64_t reported;
-        /// Boolean that say if we have sent the waning about limit reached
-        int warning_given;
+	/// Boolean that say if we have sent the waning about limit reached
+	int warning_given;
 };
 
 /// Organization database entry
 typedef struct organization_db_entry_s {
 
 #ifndef NDEBUG
-	/* Private data - do not access directly */
+/* Private data - do not access directly */
 
 /// Magic to assert coherency.
 #define ORGANIZATION_DB_ENTRY_MAGIC 0x0A1A10DB0A1A10DBL
@@ -76,10 +76,13 @@ typedef struct organization_db_entry_s {
 	uint64_t refcnt;
 } organization_db_entry_t;
 
-#define ORGANIZATION_BYTES_LIMIT_ATTR(org, attr) ({ \
-	pthread_mutex_lock(&(org)->mutex); \
-	typeof((org)->bytes_limit.attr) ret = (org)->bytes_limit.attr; \
-	pthread_mutex_unlock(&(org)->mutex); ret; })
+#define ORGANIZATION_BYTES_LIMIT_ATTR(org, attr)                               \
+	({                                                                     \
+		pthread_mutex_lock(&(org)->mutex);                             \
+		typeof((org)->bytes_limit.attr) ret = (org)->bytes_limit.attr; \
+		pthread_mutex_unlock(&(org)->mutex);                           \
+		ret;                                                           \
+	})
 
 /** Obtains organization uuid */
 #define organization_db_entry_get_uuid(e) ((e)->uuid_entry.uuid)
@@ -88,8 +91,7 @@ typedef struct organization_db_entry_s {
 #define organization_get_enrichment(e) ((e)->enrichment)
 
 /** Obtains organization max bytes */
-#define organization_get_max_bytes(org) \
-			ORGANIZATION_BYTES_LIMIT_ATTR(org,max)
+#define organization_get_max_bytes(org) ORGANIZATION_BYTES_LIMIT_ATTR(org, max)
 
 /** Add consumed bytes to an organization with no lock
   @param org Organization to add bytes
@@ -100,7 +102,8 @@ typedef struct organization_db_entry_s {
   @return Updated bytes
   */
 uint64_t organization_add_consumed_bytes0(organization_db_entry_t *org,
-					uint64_t bytes, bool reported_bytes);
+					  uint64_t bytes,
+					  bool reported_bytes);
 
 /** Add consumed bytes to an organization. If it reach the limit, it will queue
   a warning in organizations db warning queue.
@@ -108,7 +111,7 @@ uint64_t organization_add_consumed_bytes0(organization_db_entry_t *org,
   @param bytes Bytes to add
   @return updated consumed bytes
   */
-#define organization_add_consumed_bytes(org, bytes) \
+#define organization_add_consumed_bytes(org, bytes)                            \
 	organization_add_consumed_bytes0(org, bytes, false)
 
 /** Adds another n2kafka consumed bytes to this organization
@@ -116,15 +119,15 @@ uint64_t organization_add_consumed_bytes0(organization_db_entry_t *org,
   @param n2kafka_id n2kafka id that consumed this information
   @param bytes Bytes that n2kafka reports to consume
   */
-#define organization_add_other_consumed_bytes(org, n2kafka_id, bytes) \
+#define organization_add_other_consumed_bytes(org, n2kafka_id, bytes)          \
 	organization_add_consumed_bytes0(org, bytes, true)
 
 /** Get's organization's consumed bytes
   @param org Organization
   @return organization's consumed bytes
   */
-#define organization_consumed_bytes(org) \
-			ORGANIZATION_BYTES_LIMIT_ATTR(org,consumed)
+#define organization_consumed_bytes(org)                                       \
+	ORGANIZATION_BYTES_LIMIT_ATTR(org, consumed)
 
 /** Checks if organization byte limit has been reached
   @param org Organization
@@ -144,7 +147,8 @@ struct organizations_db_s {
 
 	/// Callback when an organization has reached limit
 	void (*limit_reached_cb)(const organizations_db_t *org_db,
-				const organization_db_entry_t *org, void *ctx);
+				 const organization_db_entry_t *org,
+				 void *ctx);
 
 	/// Context to limit reached callback
 	void *limit_reached_cb_ctx;
@@ -172,8 +176,8 @@ void organizations_db_reload(organizations_db_t *db, json_t *organizations);
   @param uuid organization uuid
   @returns organization entry
   */
-organization_db_entry_t *organizations_db_get(organizations_db_t *db,
-					const char *organization_uuid);
+organization_db_entry_t *
+organizations_db_get(organizations_db_t *db, const char *organization_uuid);
 
 /** Get a bytes consumed report for each organization
   @param db Database
@@ -182,21 +186,23 @@ organization_db_entry_t *organizations_db_get(organizations_db_t *db,
   @param clean Clean counters
   @return Reports (if clean==1, before the clean)
   */
-struct kafka_message_array *organization_db_interval_consumed0(
-				organizations_db_t *db, time_t now,
-				const struct itimerspec *interval,
-				const struct itimerspec *clean_interval,
-				const char *n2kafka_id, int clean);
+struct kafka_message_array *
+organization_db_interval_consumed0(organizations_db_t *db,
+				   time_t now,
+				   const struct itimerspec *interval,
+				   const struct itimerspec *clean_interval,
+				   const char *n2kafka_id,
+				   int clean);
 
-#define organization_db_interval_consumed(db, now, interval, clean_interval, \
-							 n2kafka_id) \
-	organization_db_interval_consumed0(db, now, interval, clean_interval, \
-								 n2kafka_id, 0)
+#define organization_db_interval_consumed(                                     \
+		db, now, interval, clean_interval, n2kafka_id)                 \
+	organization_db_interval_consumed0(                                    \
+			db, now, interval, clean_interval, n2kafka_id, 0)
 
-#define organization_db_clean_consumed(db, now, interval, clean_interval, \
-							 n2kafka_id) \
-	organization_db_interval_consumed0(db, now, interval, clean_interval, \
-								 n2kafka_id, 1)
+#define organization_db_clean_consumed(                                        \
+		db, now, interval, clean_interval, n2kafka_id)                 \
+	organization_db_interval_consumed0(                                    \
+			db, now, interval, clean_interval, n2kafka_id, 1)
 
 /** Checks if an entry exists in uuid database.
   @param db database
@@ -204,7 +210,7 @@ struct kafka_message_array *organization_db_interval_consumed0(
   @returns 1 if organization found, 0 ioc
   */
 int organizations_db_exists(organizations_db_t *db,
-						const char *organization_uuid);
+			    const char *organization_uuid);
 
 /** Destroy a organization database
   @param db Database to destroy

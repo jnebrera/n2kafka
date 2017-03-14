@@ -20,7 +20,7 @@ CURRENT_N2KAFKA_DIR = $(dir $(lastword $(MAKEFILE_LIST)))
 include src/Makefile.mk
 include mklove/Makefile.base
 
-.PHONY: version.c tests coverage
+.PHONY: version.c tests coverage .clang_complete
 
 version.c:
 	@rm -f $@
@@ -105,3 +105,7 @@ coverage: check_coverage $(TESTS)
 	# ./display_coverage.sh
 
 -include $(DEPS)
+
+.clang_complete:
+	echo $(CPPFLAGS) $(CFLAGS) > $@
+	find src/ -type d | sed -e 's%^%-I%' >> $@

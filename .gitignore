@@ -45,3 +45,6 @@ version.c
 
 # Binary
 n2kafka
+
+# Clang complete tools
+.clang_complete

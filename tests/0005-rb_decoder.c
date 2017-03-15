@@ -19,14 +19,14 @@
 ** along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "rb_http2k_tests.c"
+#include "zz_http2k_tests.c"
 #include "rb_json_tests.c"
 
 #include "../src/listener/http.c"
 
 static const char CONFIG_TEST[] = "{"
 				  "\"brokers\": \"localhost\","
-				  "\"rb_http2k_config\": {"
+				  "\"zz_http2k_config\": {"
 				  "\"sensors_uuids\" : {"
 				  "\"abc\" : {"
 				  "\"enrichment\": {"
@@ -94,11 +94,11 @@ static const char CONFIG_TEST[] = "{"
 static const char *VALID_URL = "/rbdata/abc/rb_flow";
 
 static void test_validate_uri() {
-	test_rb_decoder_setup(CONFIG_TEST);
+	test_zz_decoder_setup(CONFIG_TEST);
 
 	int allok = 1;
 	char *topic = NULL, *uuid = NULL;
-	int validation_rc = rb_http2k_validation(
+	int validation_rc = zz_http2k_validation(
 			NULL /* @TODO this should change */,
 			VALID_URL,
 			&global_config.rb.database,
@@ -114,7 +114,7 @@ static void test_validate_uri() {
 	free(topic);
 	free(uuid);
 
-	test_rb_decoder_teardown();
+	test_zz_decoder_teardown();
 }
 
 static void prepare_args(const char *topic,
@@ -138,7 +138,7 @@ static void prepare_args(const char *topic,
 	add_key_value_pair(list, &mem[2]);
 }
 
-static void check_rb_decoder_double0(struct rb_session **sess,
+static void check_zz_decoder_double0(struct zz_session **sess,
 				     void *unused __attribute__((unused)),
 				     size_t expected_size) {
 	size_t i = 0;
@@ -201,15 +201,15 @@ static void check_rb_decoder_double0(struct rb_session **sess,
 	}
 }
 
-static void check_rb_decoder_simple(struct rb_session **sess, void *opaque) {
-	check_rb_decoder_double0(sess, opaque, 1);
+static void check_zz_decoder_simple(struct zz_session **sess, void *opaque) {
+	check_zz_decoder_double0(sess, opaque, 1);
 }
 
-static void check_rb_decoder_double(struct rb_session **sess, void *opaque) {
-	check_rb_decoder_double0(sess, opaque, 2);
+static void check_zz_decoder_double(struct zz_session **sess, void *opaque) {
+	check_zz_decoder_double0(sess, opaque, 2);
 }
 
-static void check_rb_decoder_simple_def(struct rb_session **sess,
+static void check_zz_decoder_simple_def(struct zz_session **sess,
 					void *unused __attribute__((unused))) {
 	rd_kafka_message_t rkm[2];
 	json_error_t jerr;
@@ -264,7 +264,7 @@ static void check_rb_decoder_simple_def(struct rb_session **sess,
 	free(rkm[0].payload);
 }
 
-static void check_rb_decoder_object(struct rb_session **sess,
+static void check_zz_decoder_object(struct zz_session **sess,
 				    void *unused __attribute__((unused))) {
 	rd_kafka_message_t rkm;
 	json_error_t jerr;
@@ -321,7 +321,7 @@ static void check_rb_decoder_object(struct rb_session **sess,
 }
 
 static void
-check_rb_decoder_object_enrich(struct rb_session **sess,
+check_zz_decoder_object_enrich(struct zz_session **sess,
 			       void *unused __attribute__((unused))) {
 	rd_kafka_message_t rkm;
 	json_error_t jerr;
@@ -375,7 +375,7 @@ check_rb_decoder_object_enrich(struct rb_session **sess,
 }
 
 static void
-check_rb_decoder_array_enrich_v00(struct rb_session **sess, size_t v_size) {
+check_zz_decoder_array_enrich_v00(struct zz_session **sess, size_t v_size) {
 	size_t i;
 	char buf[BUFSIZ];
 	rd_kafka_message_t rkm;
@@ -431,10 +431,10 @@ check_rb_decoder_array_enrich_v00(struct rb_session **sess, size_t v_size) {
 }
 
 #define CHECK_RB_DECODER_ARRAY_FN(N)                                           \
-	static void check_rb_decoder_array_enrich_v##N(                        \
-			struct rb_session **sess,                              \
+	static void check_zz_decoder_array_enrich_v##N(                        \
+			struct zz_session **sess,                              \
 			void *unused __attribute__((unused))) {                \
-		check_rb_decoder_array_enrich_v00(sess, N);                    \
+		check_zz_decoder_array_enrich_v00(sess, N);                    \
 	}
 
 CHECK_RB_DECODER_ARRAY_FN(0)
@@ -443,7 +443,7 @@ CHECK_RB_DECODER_ARRAY_FN(2)
 CHECK_RB_DECODER_ARRAY_FN(3)
 
 static void
-check_rb_decoder_array_enrich(struct rb_session **sess,
+check_zz_decoder_array_enrich(struct zz_session **sess,
 			      void *unused __attribute__((unused))) {
 	rd_kafka_message_t rkm;
 	json_error_t jerr;
@@ -521,7 +521,7 @@ check_rb_decoder_array_enrich(struct rb_session **sess,
 	free(rkm.payload);
 }
 
-static void test_rb_decoder_simple() {
+static void test_zz_decoder_simple() {
 	struct pair mem[3];
 	keyval_list_t args;
 	keyval_list_init(&args);
@@ -535,7 +535,7 @@ static void test_rb_decoder_simple() {
 #define MESSAGES                                                               \
 	X("{\"client_mac\": \"54:26:96:db:88:01\", "                           \
 	  "\"application_name\": \"wwww\", \"sensor_uuid\":\"abc\", \"a\":5}", \
-	  check_rb_decoder_simple)                                             \
+	  check_zz_decoder_simple)                                             \
 	/* Free & Check that session has been freed */                         \
 	X(NULL, check_null_session)
 
@@ -551,7 +551,7 @@ static void test_rb_decoder_simple() {
 #undef X
 	};
 
-	test_rb_decoder0(CONFIG_TEST,
+	test_zz_decoder0(CONFIG_TEST,
 			 &args,
 			 msgs,
 			 callbacks_functions,
@@ -562,7 +562,7 @@ static void test_rb_decoder_simple() {
 }
 
 /// Simple decoding with another enrichment
-static void test_rb_decoder_simple_def() {
+static void test_zz_decoder_simple_def() {
 	struct pair mem[3];
 	keyval_list_t args;
 	keyval_list_init(&args);
@@ -577,7 +577,7 @@ static void test_rb_decoder_simple_def() {
 	X("{\"client_mac\": \"54:26:96:db:88:02\", "                           \
 	  "\"application_name\": \"wwww\", \"sensor_uuid\":\"def\", "          \
 	  "\"a\":5, \"u\":true}",                                              \
-	  check_rb_decoder_simple_def)                                         \
+	  check_zz_decoder_simple_def)                                         \
 	/* Free & Check that session has been freed */                         \
 	X(NULL, check_null_session)
 
@@ -593,7 +593,7 @@ static void test_rb_decoder_simple_def() {
 #undef X
 	};
 
-	test_rb_decoder0(CONFIG_TEST,
+	test_zz_decoder0(CONFIG_TEST,
 			 &args,
 			 msgs,
 			 callbacks_functions,
@@ -604,7 +604,7 @@ static void test_rb_decoder_simple_def() {
 }
 
 /** Two messages in the same input string */
-static void test_rb_decoder_double() {
+static void test_zz_decoder_double() {
 	struct pair mem[3];
 	keyval_list_t args;
 	keyval_list_init(&args);
@@ -620,7 +620,7 @@ static void test_rb_decoder_double() {
 	  "\"application_name\": \"wwww\", \"sensor_uuid\":\"abc\", \"a\":5}"  \
 	  "{\"client_mac\": \"54:26:96:db:88:02\", "                           \
 	  "\"application_name\": \"wwww\", \"sensor_uuid\":\"abc\", \"a\":5}", \
-	  check_rb_decoder_double)                                             \
+	  check_zz_decoder_double)                                             \
 	/* Free & Check that session has been freed */                         \
 	X(NULL, check_null_session)
 
@@ -636,7 +636,7 @@ static void test_rb_decoder_double() {
 #undef X
 	};
 
-	test_rb_decoder0(CONFIG_TEST,
+	test_zz_decoder0(CONFIG_TEST,
 			 &args,
 			 msgs,
 			 callbacks_functions,
@@ -646,7 +646,7 @@ static void test_rb_decoder_double() {
 #undef MESSAGES
 }
 
-static void test_rb_decoder_half() {
+static void test_zz_decoder_half() {
 	struct pair mem[3];
 	keyval_list_t args;
 	keyval_list_init(&args);
@@ -660,7 +660,7 @@ static void test_rb_decoder_half() {
 #define MESSAGES                                                               \
 	X("{\"client_mac\": \"54:26:96:db:88:01\", ", check_zero_messages)     \
 	X("\"application_name\": \"wwww\", \"sensor_uuid\":\"abc\", \"a\":5}", \
-	  check_rb_decoder_simple)                                             \
+	  check_zz_decoder_simple)                                             \
 	/* Free & Check that session has been freed */                         \
 	X(NULL, check_null_session)
 
@@ -676,7 +676,7 @@ static void test_rb_decoder_half() {
 #undef X
 	};
 
-	test_rb_decoder0(CONFIG_TEST,
+	test_zz_decoder0(CONFIG_TEST,
 			 &args,
 			 msgs,
 			 callbacks_functions,
@@ -687,7 +687,7 @@ static void test_rb_decoder_half() {
 }
 
 /** Checks that the decoder can handle to receive the half of a string */
-static void test_rb_decoder_half_string() {
+static void test_zz_decoder_half_string() {
 	struct pair mem[3];
 	keyval_list_t args;
 	keyval_list_init(&args);
@@ -702,11 +702,11 @@ static void test_rb_decoder_half_string() {
 	X("{\"client_mac\": \"54:26:96:", check_zero_messages)                 \
 	X("db:88:01\", \"application_name\": \"wwww\", "                       \
 	  "\"sensor_uuid\":\"abc\", \"a\":5}",                                 \
-	  check_rb_decoder_simple)                                             \
+	  check_zz_decoder_simple)                                             \
 	X("{\"client_mac\": \"", check_zero_messages)                          \
 	X("54:26:96:db:88:01\", \"application_name\": \"wwww\", "              \
 	  "\"sensor_uuid\":\"abc\", \"a\":5}",                                 \
-	  check_rb_decoder_simple)                                             \
+	  check_zz_decoder_simple)                                             \
 	/* Free & Check that session has been freed */                         \
 	X(NULL, check_null_session)
 
@@ -722,7 +722,7 @@ static void test_rb_decoder_half_string() {
 #undef X
 	};
 
-	test_rb_decoder0(CONFIG_TEST,
+	test_zz_decoder0(CONFIG_TEST,
 			 &args,
 			 msgs,
 			 callbacks_functions,
@@ -733,7 +733,7 @@ static void test_rb_decoder_half_string() {
 }
 
 /** Checks that the decoder can handle to receive the half of a key */
-static void test_rb_decoder_half_key() {
+static void test_zz_decoder_half_key() {
 	struct pair mem[3];
 	keyval_list_t args;
 	keyval_list_init(&args);
@@ -748,11 +748,11 @@ static void test_rb_decoder_half_key() {
 	X("{\"client_", check_zero_messages)                                   \
 	X("mac\": \"54:26:96:db:88:01\", \"application_name\": \"wwww\", "     \
 	  "\"sensor_uuid\":\"abc\", \"a\":5}",                                 \
-	  check_rb_decoder_simple)                                             \
+	  check_zz_decoder_simple)                                             \
 	X("{\"client_mac", check_zero_messages)                                \
 	X("\": \"54:26:96:db:88:01\", \"application_name\": \"wwww\", "        \
 	  "\"sensor_uuid\":\"abc\", \"a\":5}",                                 \
-	  check_rb_decoder_simple)                                             \
+	  check_zz_decoder_simple)                                             \
 	/* Free & Check that session has been freed */                         \
 	X(NULL, check_null_session)
 
@@ -768,7 +768,7 @@ static void test_rb_decoder_half_key() {
 #undef X
 	};
 
-	test_rb_decoder0(CONFIG_TEST,
+	test_zz_decoder0(CONFIG_TEST,
 			 &args,
 			 msgs,
 			 callbacks_functions,
@@ -779,7 +779,7 @@ static void test_rb_decoder_half_key() {
 }
 
 /** Test object that don't need to enrich */
-static void test_rb_decoder_objects() {
+static void test_zz_decoder_objects() {
 	struct pair mem[3];
 	keyval_list_t args;
 	keyval_list_init(&args);
@@ -794,7 +794,7 @@ static void test_rb_decoder_objects() {
 	X("{\"client_", check_zero_messages)                                   \
 	X("mac\": \"54:26:96:db:88:01\", \"application_name\": \"wwww\", "     \
 	  "\"sensor_uuid\":\"abc\", \"object\":{\"t1\":1}, \"a\":5}",          \
-	  check_rb_decoder_object)                                             \
+	  check_zz_decoder_object)                                             \
 	/* Free & Check that session has been freed */                         \
 	X(NULL, check_null_session)
 
@@ -810,7 +810,7 @@ static void test_rb_decoder_objects() {
 #undef X
 	};
 
-	test_rb_decoder0(CONFIG_TEST,
+	test_zz_decoder0(CONFIG_TEST,
 			 &args,
 			 msgs,
 			 callbacks_functions,
@@ -836,54 +836,54 @@ static void test_rb_object_enrich() {
 	X("{\"client_", check_zero_messages)                                   \
 	X("mac\": \"54:26:96:db:88:01\", \"application_name\": \"wwww\", "     \
 	  "\"sensor_uuid\":\"ghi\", \"a\":5, \"u\":{\"a\":1}}",                \
-	  check_rb_decoder_object_enrich)                                      \
+	  check_zz_decoder_object_enrich)                                      \
 	X("{\"client_mac\": \"54:26:96:db:88:01\", "                           \
 	  "\"application_name\": \"wwww\", "                                   \
 	  "\"sensor_uuid\":\"ghi\", \"a\":5, \"o\":5, \"u\":{\"a\":1}}",       \
-	  check_rb_decoder_object_enrich)                                      \
+	  check_zz_decoder_object_enrich)                                      \
 	X("{\"client_mac\": \"54:26:96:db:88:01\", "                           \
 	  "\"application_name\": \"wwww\", "                                   \
 	  "\"sensor_uuid\":\"ghi\", \"a\":5, \"o\":{\"a\":5}, "                \
 	  "\"u\":{\"a\":1}}",                                                  \
-	  check_rb_decoder_object_enrich)                                      \
+	  check_zz_decoder_object_enrich)                                      \
 	X("{\"client_mac\": \"54:26:96:db:88:01\", "                           \
 	  "\"application_name\": \"wwww\", "                                   \
 	  "\"sensor_uuid\":\"ghi\", \"o\":{\"a\":5}, \"u\":{\"a\":1}, "        \
 	  "\"a\":5}",                                                          \
-	  check_rb_decoder_object_enrich)                                      \
+	  check_zz_decoder_object_enrich)                                      \
 	X("{\"client_mac\": \"54:26:96:db:88:01\", "                           \
 	  "\"application_name\": \"wwww\", "                                   \
 	  "\"sensor_uuid\":\"ghi\", \"o\":null, \"u\":{\"a\":1}, \"a\":5}",    \
-	  check_rb_decoder_object_enrich)                                      \
+	  check_zz_decoder_object_enrich)                                      \
 	X("{\"client_mac\": \"54:26:96:db:88:01\", "                           \
 	  "\"application_name\": \"wwww\", "                                   \
 	  "\"sensor_uuid\":\"ghi\", \"o\":true, \"u\":{\"a\":1}, \"a\":5}",    \
-	  check_rb_decoder_object_enrich)                                      \
+	  check_zz_decoder_object_enrich)                                      \
 	X("{\"client_mac\": \"54:26:96:db:88:01\", "                           \
 	  "\"application_name\": \"wwww\", "                                   \
 	  "\"sensor_uuid\":\"ghi\", \"o\":false, \"u\":{\"a\":1}, \"a\":5}",   \
-	  check_rb_decoder_object_enrich)                                      \
+	  check_zz_decoder_object_enrich)                                      \
 	X("{\"client_mac\": \"54:26:96:db:88:01\", "                           \
 	  "\"sensor_uuid\":\"ghi\", \"o\":{"                                   \
 	  "\"n\":null,\"t\":true,\"f\":false,\"d\":3,\"o\":{},\"a\":[],"       \
 	  "\"s\":\"s\"},"                                                      \
 	  "\"application_name\": \"wwww\", "                                   \
 	  "\"u\":{\"a\":1}, \"a\":5}",                                         \
-	  check_rb_decoder_object_enrich)                                      \
+	  check_zz_decoder_object_enrich)                                      \
 	X("{\"client_mac\": \"54:26:96:db:88:01\", "                           \
 	  "\"sensor_uuid\":\"ghi\", \"o\":{"                                   \
 	  "\"n\":null,\"t\":true,\"f\":false,\"d\":3,\"a\":[],"                \
 	  "\"s\":\"s\",\"o\":{}},"                                             \
 	  "\"application_name\": \"wwww\", "                                   \
 	  "\"u\":{\"a\":1}, \"a\":5}",                                         \
-	  check_rb_decoder_object_enrich)                                      \
+	  check_zz_decoder_object_enrich)                                      \
 	X("{\"client_mac\": \"54:26:96:db:88:01\", "                           \
 	  "\"sensor_uuid\":\"ghi\", \"o\":{"                                   \
 	  "\"n\":null,\"t\":true,\"f\":false,\"d\":3,\"o\":{},"                \
 	  "\"s\":\"s\",\"a\":[]},"                                             \
 	  "\"application_name\": \"wwww\", "                                   \
 	  "\"u\":{\"a\":1}, \"a\":5}",                                         \
-	  check_rb_decoder_object_enrich)                                      \
+	  check_zz_decoder_object_enrich)                                      \
 	/* Free & Check that session has been freed */                         \
 	X(NULL, check_null_session)
 
@@ -899,7 +899,7 @@ static void test_rb_object_enrich() {
 #undef X
 	};
 
-	test_rb_decoder0(CONFIG_TEST,
+	test_zz_decoder0(CONFIG_TEST,
 			 &args,
 			 msgs,
 			 callbacks_functions,
@@ -938,7 +938,7 @@ static void test_rb_array_enrich0(const char *sensor_uuid,
 	check_callback_fn callbacks_functions[] = {check_callback,
 						   check_null_session};
 
-	test_rb_decoder0(CONFIG_TEST,
+	test_zz_decoder0(CONFIG_TEST,
 			 &args,
 			 msgs,
 			 callbacks_functions,
@@ -948,27 +948,27 @@ static void test_rb_array_enrich0(const char *sensor_uuid,
 
 /** Test if we can enrich with a 0-length array */
 static void test_rb_array_enrich_v0() {
-	test_rb_array_enrich0("v0", check_rb_decoder_array_enrich_v0);
+	test_rb_array_enrich0("v0", check_zz_decoder_array_enrich_v0);
 }
 
 /** Test if we can enrich with a 1-length array */
 static void test_rb_array_enrich_v1() {
-	test_rb_array_enrich0("v1", check_rb_decoder_array_enrich_v1);
+	test_rb_array_enrich0("v1", check_zz_decoder_array_enrich_v1);
 }
 
 /** Test if we can enrich with a 2-length array */
 static void test_rb_array_enrich_v2() {
-	test_rb_array_enrich0("v2", check_rb_decoder_array_enrich_v2);
+	test_rb_array_enrich0("v2", check_zz_decoder_array_enrich_v2);
 }
 
 /** Test if we can enrich with a 3-length array */
 static void test_rb_array_enrich_v3() {
-	test_rb_array_enrich0("v3", check_rb_decoder_array_enrich_v3);
+	test_rb_array_enrich0("v3", check_zz_decoder_array_enrich_v3);
 }
 
 /** Test if we can enrich with a 5-length array */
 static void test_rb_array_enrich_v5() {
-	test_rb_array_enrich0("jkl", check_rb_decoder_array_enrich);
+	test_rb_array_enrich0("jkl", check_zz_decoder_array_enrich);
 }
 
 /** Test if we can enrich over an array */
@@ -988,7 +988,7 @@ static void test_rb_array_enrich() {
 	  "\"sensor_uuid\":\"ghi\", \"o\":[1,2,3,4,5,6],"                      \
 	  "\"application_name\": \"wwww\", "                                   \
 	  "\"u\":{\"a\":1}, \"a\":5}",                                         \
-	  check_rb_decoder_object_enrich)                                      \
+	  check_zz_decoder_object_enrich)                                      \
 	/* Free & Check that session has been freed */                         \
 	X(NULL, check_null_session)
 
@@ -1004,7 +1004,7 @@ static void test_rb_array_enrich() {
 #undef X
 	};
 
-	test_rb_decoder0(CONFIG_TEST,
+	test_zz_decoder0(CONFIG_TEST,
 			 &args,
 			 msgs,
 			 callbacks_functions,
@@ -1020,13 +1020,13 @@ static void test_rb_array_enrich() {
 int main() {
 	const struct CMUnitTest tests[] = {
 			cmocka_unit_test(test_validate_uri),
-			cmocka_unit_test(test_rb_decoder_simple),
-			cmocka_unit_test(test_rb_decoder_simple_def),
-			cmocka_unit_test(test_rb_decoder_double),
-			cmocka_unit_test(test_rb_decoder_half),
-			cmocka_unit_test(test_rb_decoder_half_string),
-			cmocka_unit_test(test_rb_decoder_half_key),
-			cmocka_unit_test(test_rb_decoder_objects),
+			cmocka_unit_test(test_zz_decoder_simple),
+			cmocka_unit_test(test_zz_decoder_simple_def),
+			cmocka_unit_test(test_zz_decoder_double),
+			cmocka_unit_test(test_zz_decoder_half),
+			cmocka_unit_test(test_zz_decoder_half_string),
+			cmocka_unit_test(test_zz_decoder_half_key),
+			cmocka_unit_test(test_zz_decoder_objects),
 			cmocka_unit_test(test_rb_object_enrich),
 			cmocka_unit_test(test_rb_array_enrich_v0),
 			cmocka_unit_test(test_rb_array_enrich_v1),

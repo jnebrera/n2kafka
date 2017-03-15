@@ -19,7 +19,7 @@
 ** along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "rb_http2k_tests.c"
+#include "zz_http2k_tests.c"
 #include "rb_json_tests.c"
 
 #include <assert.h>
@@ -30,7 +30,7 @@ static const char TEMP_TEMPLATE[] = "n2ktXXXXXX";
 
 static const char CONFIG_TEST[] = "{"
 				  "\"brokers\": \"localhost\","
-				  "\"rb_http2k_config\": {"
+				  "\"zz_http2k_config\": {"
 				  "\"sensors_uuids\" : {"
 				  "\"abc\" : {"
 				  "\"enrichment\": {"
@@ -75,7 +75,7 @@ static const char CONFIG_TEST[] = "{"
 				  "}"
 				  "}";
 
-static void validate_test(void (*f)(struct rb_config *rb)) {
+static void validate_test(void (*f)(struct zz_config *rb)) {
 	init_global_config();
 	char temp_filename[sizeof(TEMP_TEMPLATE)];
 	strcpy(temp_filename, TEMP_TEMPLATE);
@@ -93,7 +93,7 @@ static void validate_test(void (*f)(struct rb_config *rb)) {
 	close(temp_fd);
 }
 
-static void validate_topic_test0(struct rb_config *rb) {
+static void validate_topic_test0(struct zz_config *rb) {
 	size_t i;
 	struct {
 		const char *topic;
@@ -106,7 +106,7 @@ static void validate_topic_test0(struct rb_config *rb) {
 	};
 
 	for (i = 0; i < sizeof(validations) / sizeof(validations[0]); ++i) {
-		const int result = rb_http2k_validate_topic(
+		const int result = zz_http2k_validate_topic(
 				&rb->database, validations[i].topic);
 		assert(validations[i].expected == result);
 	}
@@ -116,7 +116,7 @@ static void validate_topic_test() {
 	validate_test(validate_topic_test0);
 }
 
-static void validate_uuid_test0(struct rb_config *rb) {
+static void validate_uuid_test0(struct zz_config *rb) {
 	size_t i;
 	struct {
 		const char *uuid;
@@ -130,7 +130,7 @@ static void validate_uuid_test0(struct rb_config *rb) {
 	};
 
 	for (i = 0; i < sizeof(validations) / sizeof(validations[0]); ++i) {
-		const int result = rb_http2k_validate_uuid(&rb->database,
+		const int result = zz_http2k_validate_uuid(&rb->database,
 							   validations[i].uuid);
 		assert(validations[i].expected == result);
 	}
@@ -141,7 +141,7 @@ static void validate_uuid_test() {
 }
 
 #if 0
-int rb_http2k_validate_topic(struct rb_database *db, const char *topic) {
+int zz_http2k_validate_topic(struct zz_database *db, const char *topic) {
 	pthread_rwlock_rdlock(&db->rwlock);
 	const int ret = topics_db_topic_exists(db->topics_db,topic);
 	pthread_rwlock_unlock(&db->rwlock);

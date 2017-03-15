@@ -19,10 +19,8 @@
 ** along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "rb_http2k_decoder.h"
+#include "zz_http2k_decoder.h"
 #include "engine/global_config.h"
-#include "rb_http2k_parser.h"
-#include "rb_http2k_sync_common.h"
 #include "util/kafka.h"
 #include "util/kafka_message_list.h"
 #include "util/rb_json.h"
@@ -30,6 +28,8 @@
 #include "util/rb_time.h"
 #include "util/topic_database.h"
 #include "util/util.h"
+#include "zz_http2k_parser.h"
+#include "zz_http2k_sync_common.h"
 
 #include <assert.h>
 #include <errno.h>
@@ -42,7 +42,7 @@
 #include <stdint.h>
 #include <string.h>
 
-static const char RB_HTTP2K_CONFIG_KEY[] = "rb_http2k_config";
+static const char RB_HTTP2K_CONFIG_KEY[] = "zz_http2k_config";
 static const char RB_SENSORS_UUID_KEY[] = "sensors_uuids";
 static const char RB_ORGANIZATIONS_UUID_KEY[] = "organizations_uuids";
 static const char RB_N2KAFKA_ID[] = "n2kafka_id";
@@ -91,10 +91,6 @@ struct {
 		{mac, "mac", mac_partitioner},
 };
 
-#ifndef NDEBUG
-#define RB_OPAQUE_MAGIC 0x0B0A3A1C0B0A3A1CL
-#endif
-
 enum warning_times_pos {
 	LAST_WARNING_TIME__QUEUE_FULL,
 	LAST_WARNING_TIME__MSG_SIZE_TOO_LARGE,
@@ -103,16 +99,26 @@ enum warning_times_pos {
 	LAST_WARNING_TIME__END
 };
 
-struct rb_opaque {
-#ifdef RB_OPAQUE_MAGIC
+struct zz_opaque {
+#ifndef NDEBUG
+#define ZZ_OPAQUE_MAGIC 0x0B0A3A1C0B0A3A1CL
 	uint64_t magic;
 #endif
 
-	struct rb_config *rb_config;
+	struct zz_config *zz_config;
 
 	pthread_mutex_t produce_error_last_time_mutex[LAST_WARNING_TIME__END];
 	time_t produce_error_last_time[LAST_WARNING_TIME__END];
 };
+
+#ifdef ZZ_OPAQUE_MAGIC
+static void assert_zz_opaque(struct zz_opaque *zz_opaque) {
+	assert(zz_opaque);
+	assert(ZZ_OPAQUE_MAGIC == zz_opaque->magic);
+}
+#else
+#define assert_zz_opaque(zz_opaque) (void)zz_opaque
+#endif
 
 static enum warning_times_pos
 kafka_error_to_warning_time_pos(rd_kafka_resp_err_t err) {
@@ -351,19 +357,19 @@ parse_topic_list_config(json_t *config, struct topics_db *new_topics_db) {
 	return 0;
 }
 
-int rb_opaque_creator(json_t *config __attribute__((unused)), void **_opaque) {
+int zz_opaque_creator(json_t *config __attribute__((unused)), void **_opaque) {
 	size_t i;
 
 	assert(_opaque);
 
-	struct rb_opaque *opaque = (*_opaque) = calloc(1, sizeof(*opaque));
+	struct zz_opaque *opaque = (*_opaque) = calloc(1, sizeof(*opaque));
 	if (NULL == opaque) {
 		rdlog(LOG_ERR, "Can't alloc RB_HTTP2K opaque (out of memory?)");
 		return -1;
 	}
 
-#ifdef RB_OPAQUE_MAGIC
-	opaque->magic = RB_OPAQUE_MAGIC;
+#ifdef ZZ_OPAQUE_MAGIC
+	opaque->magic = ZZ_OPAQUE_MAGIC;
 #endif
 
 	for (i = 0; i < RD_ARRAYSIZE(opaque->produce_error_last_time_mutex);
@@ -373,12 +379,12 @@ int rb_opaque_creator(json_t *config __attribute__((unused)), void **_opaque) {
 	}
 
 	/// @TODO move global_config to static allocated buffer
-	opaque->rb_config = &global_config.rb;
+	opaque->zz_config = &global_config.rb;
 
 	return 0;
 }
 
-int rb_opaque_reload(json_t *config, void *opaque) {
+int zz_opaque_reload(json_t *config, void *opaque) {
 	/* Do nothing, since this decoder does not save anything per-listener
 	   information */
 	(void)config;
@@ -387,26 +393,26 @@ int rb_opaque_reload(json_t *config, void *opaque) {
 }
 
 /** Timer event function, that cleans client's consumed.
-  @param rb_config config to print stats
+  @param zz_config config to print stats
   */
 static void
-rb_decoder_accounting_tick0(struct rb_config *rb_config, int clean) {
+zz_decoder_accounting_tick0(struct zz_config *zz_config, int clean) {
 	char err[BUFSIZ];
 	rdlog(LOG_DEBUG, "Sending client's accounting information");
 	struct kafka_message_array *msgs = NULL;
 	struct itimerspec monitor_ts_value, clean_ts_value;
 
-	pthread_rwlock_rdlock(&rb_config->database.rwlock);
+	pthread_rwlock_rdlock(&zz_config->database.rwlock);
 
 	const int get_interval_rc = rb_timer_get_interval(
-			rb_config->organizations_sync.timer, &monitor_ts_value);
+			zz_config->organizations_sync.timer, &monitor_ts_value);
 	if (0 != get_interval_rc) {
 		rdlog(LOG_ERR,
 		      "Couldn't get timer interval: %s",
 		      mystrerror(errno, err, sizeof(err)));
 	}
 	const int get_clean_interval_rc = rb_timer_get_interval(
-			rb_config->organizations_sync.clean_timer,
+			zz_config->organizations_sync.clean_timer,
 			&clean_ts_value);
 	if (0 != get_clean_interval_rc) {
 		rdlog(LOG_ERR,
@@ -414,15 +420,15 @@ rb_decoder_accounting_tick0(struct rb_config *rb_config, int clean) {
 		      mystrerror(errno, err, sizeof(err)));
 	}
 
-	if (0 == rb_config->organizations_sync.topics.count) {
+	if (0 == zz_config->organizations_sync.topics.count) {
 		/* No sense to do the processing */
-		pthread_rwlock_unlock(&rb_config->database.rwlock);
+		pthread_rwlock_unlock(&zz_config->database.rwlock);
 		return;
 	}
 
 	time_t now = time(NULL);
 	msgs = organization_db_interval_consumed0(
-			&rb_config->database.organizations_db,
+			&zz_config->database.organizations_db,
 			now,
 			&monitor_ts_value,
 			&clean_ts_value,
@@ -431,76 +437,76 @@ rb_decoder_accounting_tick0(struct rb_config *rb_config, int clean) {
 
 	if (msgs) {
 		send_array_to_kafka_topics(
-				&rb_config->organizations_sync.topics, msgs);
+				&zz_config->organizations_sync.topics, msgs);
 	}
-	pthread_rwlock_unlock(&rb_config->database.rwlock);
+	pthread_rwlock_unlock(&zz_config->database.rwlock);
 
 	if (msgs) {
 		free(msgs);
 	}
 }
 
-static void rb_decoder_timer_tick(void *ctx, int clean) {
-	struct rb_config *rb_cfg = ctx;
-	assert_rb_config(rb_cfg);
-	rb_decoder_accounting_tick0(rb_cfg, clean);
+static void zz_decoder_timer_tick(void *ctx, int clean) {
+	struct zz_config *zz_cfg = ctx;
+	assert_zz_config(zz_cfg);
+	zz_decoder_accounting_tick0(zz_cfg, clean);
 }
 
 // Convenience function
-static void rb_decoder_accounting_tick(void *ctx) {
+static void zz_decoder_accounting_tick(void *ctx) {
 	const int clean = 0;
-	rb_decoder_timer_tick(ctx, clean);
+	zz_decoder_timer_tick(ctx, clean);
 }
 
-static void rb_decoder_org_clean_tick(void *ctx) {
+static void zz_decoder_org_clean_tick(void *ctx) {
 	const int clean = 1;
-	rb_decoder_timer_tick(ctx, clean);
+	zz_decoder_timer_tick(ctx, clean);
 }
 
 /** De-register timer if it exists */
-static void rb_decoder_deregister_timers(struct rb_config *rb_config) {
-	assert(rb_config);
+static void zz_decoder_deregister_timers(struct zz_config *zz_config) {
+	assert(zz_config);
 
-	if (rb_config->organizations_sync.timer) {
-		decoder_deregister_timer(rb_config->organizations_sync.timer);
-		rb_config->organizations_sync.timer = NULL;
+	if (zz_config->organizations_sync.timer) {
+		decoder_deregister_timer(zz_config->organizations_sync.timer);
+		zz_config->organizations_sync.timer = NULL;
 	}
 
-	if (rb_config->organizations_sync.clean_timer) {
+	if (zz_config->organizations_sync.clean_timer) {
 		decoder_deregister_timer(
-				rb_config->organizations_sync.clean_timer);
-		rb_config->organizations_sync.clean_timer = NULL;
+				zz_config->organizations_sync.clean_timer);
+		zz_config->organizations_sync.clean_timer = NULL;
 	}
 }
 
 /** Register organization db sync and organization db clean timers
-  @param rb_config config
+  @param zz_config config
   @return 0 if success, !0 in other case. Error message is displayed
   */
-static int rb_decoder_register_timers(struct rb_config *rb_config) {
-	assert(rb_config);
+static int zz_decoder_register_timers(struct zz_config *zz_config) {
+	assert(zz_config);
 	struct itimerspec my_zero_itimerspec;
 	memset(&my_zero_itimerspec, 0, sizeof(my_zero_itimerspec));
 
-	rb_config->organizations_sync.timer =
+	zz_config->organizations_sync.timer =
 			decoder_register_timer(&my_zero_itimerspec,
-					       rb_decoder_accounting_tick,
-					       rb_config);
+					       zz_decoder_accounting_tick,
+					       zz_config);
 
-	if (NULL == rb_config->organizations_sync.timer) {
+	if (NULL == zz_config->organizations_sync.timer) {
 		rdlog(LOG_ERR, "Couldn't create sync timer (out of memory?)");
 		return -1;
 	}
 
-	rb_config->organizations_sync.clean_timer =
+	zz_config->organizations_sync.clean_timer =
 			decoder_register_timer(&my_zero_itimerspec,
-					       rb_decoder_org_clean_tick,
-					       rb_config);
+					       zz_decoder_org_clean_tick,
+					       zz_config);
 
-	if (NULL == rb_config->organizations_sync.clean_timer) {
+	if (NULL == zz_config->organizations_sync.clean_timer) {
 		rdlog(LOG_ERR,
 		      "Couldn't register clean timer (out of memory?)");
-		rb_decoder_deregister_timers(rb_config);
+		zz_decoder_deregister_timers(zz_config);
 		return -1;
 	}
 
@@ -508,17 +514,17 @@ static int rb_decoder_register_timers(struct rb_config *rb_config) {
 }
 
 /** Actual reload of timer
-  @param rb_config redBorder configuration
+  @param zz_config redBorder configuration
   @param new_timespec new timer interval
   @todo errors treatment
   */
 static void
-rb_reload_monitor_timer(struct rb_config *rb_config,
+zz_reload_monitor_timer(struct zz_config *zz_config,
 			const struct itimerspec *org_sync_timespec,
 			const struct itimerspec *org_clean_timespec) {
-	decoder_timer_set_interval(rb_config->organizations_sync.timer,
+	decoder_timer_set_interval(zz_config->organizations_sync.timer,
 				   org_sync_timespec);
-	decoder_timer_set_interval0(rb_config->organizations_sync.clean_timer,
+	decoder_timer_set_interval0(zz_config->organizations_sync.clean_timer,
 				    TIMER_ABSTIME,
 				    org_clean_timespec);
 }
@@ -719,9 +725,9 @@ parse_organization_monitor_sync(json_t *config,
 	}
 }
 
-int rb_decoder_reload(void *vrb_config, const json_t *config) {
+int zz_decoder_reload(void *vzz_config, const json_t *config) {
 	int rc = 0;
-	struct rb_config *rb_config = vrb_config;
+	struct zz_config *zz_config = vzz_config;
 	struct topics_db *topics_db = NULL;
 	struct rkt_array rkt_array;
 	char *http_put_url = NULL;
@@ -730,8 +736,8 @@ int rb_decoder_reload(void *vrb_config, const json_t *config) {
 	json_int_t organization_clean_s_offset = 0;
 	sensors_db_t *sensors_db = NULL;
 
-	assert(rb_config);
-	assert_rb_config(rb_config);
+	assert(zz_config);
+	assert_zz_config(zz_config);
 	assert(config);
 
 	memset(&rkt_array, 0, sizeof(rkt_array));
@@ -772,32 +778,32 @@ int rb_decoder_reload(void *vrb_config, const json_t *config) {
 	json_t *organization_uuid =
 			json_object_get(my_config, RB_ORGANIZATIONS_UUID_KEY);
 
-	update_sync_topic(&rb_config->organizations_sync.thread,
+	update_sync_topic(&zz_config->organizations_sync.thread,
 			  rkt_array.count > 0 ? rkt_array.rkt[0] : NULL);
 
-	pthread_rwlock_wrlock(&rb_config->database.rwlock);
+	pthread_rwlock_wrlock(&zz_config->database.rwlock);
 	if (organization_uuid) {
-		organizations_db_reload(&rb_config->database.organizations_db,
+		organizations_db_reload(&zz_config->database.organizations_db,
 					organization_uuid);
 	}
 	sensors_db = parse_per_uuid_opaque_config(
-			my_config, &rb_config->database.organizations_db);
+			my_config, &zz_config->database.organizations_db);
 	if (NULL != sensors_db) {
-		swap_ptrs(sensors_db, rb_config->database.sensors_db);
+		swap_ptrs(sensors_db, zz_config->database.sensors_db);
 	} else {
 		rc = -1;
 	}
 	update_sync_thread_clean_interval(
-			&rb_config->organizations_sync.thread,
+			&zz_config->organizations_sync.thread,
 			organizations_clean_ts.it_interval.tv_sec,
 			organization_clean_s_offset);
-	rb_reload_monitor_timer(rb_config,
+	zz_reload_monitor_timer(zz_config,
 				&organizations_monitor_topic_ts,
 				&organizations_clean_ts);
-	swap_ptrs(topics_db, rb_config->database.topics_db);
-	swap_ptrs(rb_config->organizations_sync.http.url, http_put_url);
-	rkt_array_swap(&rb_config->organizations_sync.topics, &rkt_array);
-	pthread_rwlock_unlock(&rb_config->database.rwlock);
+	swap_ptrs(topics_db, zz_config->database.topics_db);
+	swap_ptrs(zz_config->organizations_sync.http.url, http_put_url);
+	rkt_array_swap(&zz_config->organizations_sync.topics, &rkt_array);
+	pthread_rwlock_unlock(&zz_config->database.rwlock);
 
 err:
 	rkt_array_done(&rkt_array);
@@ -819,13 +825,11 @@ err:
 	return rc;
 }
 
-void rb_opaque_done(void *_opaque) {
+void zz_opaque_done(void *_opaque) {
 	assert(_opaque);
 
-	struct rb_opaque *opaque = _opaque;
-#ifdef RB_OPAQUE_MAGIC
-	assert(RB_OPAQUE_MAGIC == opaque->magic);
-#endif
+	struct zz_opaque *opaque = _opaque;
+	assert_zz_opaque(opaque);
 
 	free(opaque);
 }
@@ -852,7 +856,7 @@ static int format_http_put_url(char *buf,
 static void org_db_limit_reached_http(const organizations_db_t *org_db,
 				      const organization_db_entry_t *org,
 				      const char *base_url,
-				      rb_http2k_curl_handler_t *curl_handler) {
+				      zz_http2k_curl_handler_t *curl_handler) {
 	char err[BUFSIZ];
 	const struct format_http_put_url_ctx ctx = {
 			.base_url = base_url,
@@ -888,38 +892,39 @@ static void org_db_limit_reached_http(const organizations_db_t *org_db,
 		return;
 	}
 
-	rb_http2k_curl_handler_put_empty(curl_handler, actual_url);
+	zz_http2k_curl_handler_put_empty(curl_handler, actual_url);
 }
 
 static void org_db_limit_reached(const organizations_db_t *org_db,
 				 const organization_db_entry_t *org,
 				 void *ctx) {
-	struct rb_config *rb_config = ctx;
+	struct zz_config *zz_config = ctx;
 
-	if (rb_config->organizations_sync.http.url) {
+	if (zz_config->organizations_sync.http.url) {
 		org_db_limit_reached_http(
 				org_db,
 				org,
-				rb_config->organizations_sync.http.url,
-				&rb_config->organizations_sync.http
+				zz_config->organizations_sync.http.url,
+				&zz_config->organizations_sync.http
 						 .curl_handler);
 	}
 }
 
-int parse_rb_config(void *vconfig, const struct json_t *config) {
+int parse_zz_config(void *vconfig, const struct json_t *config) {
 	char err[BUFSIZ];
-	struct rb_config *rb_config = vconfig;
+	struct zz_config *zz_config = vconfig;
 
 	assert(vconfig);
 	assert(config);
 
 	if (only_stdout_output()) {
-		rdlog(LOG_ERR, "Can't use rb_http2k decoder if not kafka "
-			       "brokers configured.");
+		rdlog(LOG_ERR,
+		      "Can't use zz_http2k decoder if not kafka "
+		      "brokers configured.");
 		return -1;
 	}
 
-	const int init_timers_rc = rb_decoder_register_timers(rb_config);
+	const int init_timers_rc = zz_decoder_register_timers(zz_config);
 	if (0 != init_timers_rc) {
 		return -1;
 	}
@@ -944,36 +949,36 @@ int parse_rb_config(void *vconfig, const struct json_t *config) {
 	}
 
 	const int sync_thread_init_rc =
-			sync_thread_init(&rb_config->organizations_sync.thread,
+			sync_thread_init(&zz_config->organizations_sync.thread,
 					 rk_conf,
-					 &rb_config->database.organizations_db);
+					 &zz_config->database.organizations_db);
 	if (0 != sync_thread_init_rc) {
 		goto consumer_thread_err;
 	}
 
-	const int init_curl_rc = rb_http2k_curl_handler_init(
-			&rb_config->organizations_sync.http.curl_handler,
+	const int init_curl_rc = zz_http2k_curl_handler_init(
+			&zz_config->organizations_sync.http.curl_handler,
 			10000);
 	if (0 != init_curl_rc) {
 		goto curl_init_err;
 	}
 
-#ifdef RB_CONFIG_MAGIC
-	rb_config->magic = RB_CONFIG_MAGIC;
-#endif // RB_CONFIG_MAGIC
-	const int init_db_rc = init_rb_database(&rb_config->database);
+#ifdef ZZ_CONFIG_MAGIC
+	zz_config->magic = ZZ_CONFIG_MAGIC;
+#endif // ZZ_CONFIG_MAGIC
+	const int init_db_rc = init_zz_database(&zz_config->database);
 	if (init_db_rc != 0) {
-		rdlog(LOG_ERR, "Couldn't init rb_database");
+		rdlog(LOG_ERR, "Couldn't init zz_database");
 		return -1;
 	}
 
 	/// @todo improve this initialization
-	rb_config->database.organizations_db.limit_reached_cb =
+	zz_config->database.organizations_db.limit_reached_cb =
 			org_db_limit_reached;
-	rb_config->database.organizations_db.limit_reached_cb_ctx = rb_config;
+	zz_config->database.organizations_db.limit_reached_cb_ctx = zz_config;
 
 	/// @TODO error treatment
-	const int decoder_reload_rc = rb_decoder_reload(rb_config, config);
+	const int decoder_reload_rc = zz_decoder_reload(zz_config, config);
 	if (decoder_reload_rc != 0) {
 		goto reload_err;
 	}
@@ -981,16 +986,16 @@ int parse_rb_config(void *vconfig, const struct json_t *config) {
 	return 0;
 
 reload_err:
-	free_valid_rb_database(&rb_config->database);
-	rb_http2k_curl_handler_done(
-			&rb_config->organizations_sync.http.curl_handler);
+	free_valid_zz_database(&zz_config->database);
+	zz_http2k_curl_handler_done(
+			&zz_config->organizations_sync.http.curl_handler);
 curl_init_err:
 consumer_thread_err:
 rk_conf_err:
 /// @TODO: Can't say if we have consumed it!
 // rd_kafka_conf_destroy(rk_conf);
 rk_conf_dup_err:
-	rb_decoder_deregister_timers(rb_config);
+	zz_decoder_deregister_timers(zz_config);
 	return -1;
 }
 
@@ -998,7 +1003,7 @@ rk_conf_dup_err:
 	@param topic Topic handler
 	@param msgs Messages to send
 	@param len Length of msgs */
-static void produce_or_free(struct rb_opaque *opaque,
+static void produce_or_free(struct zz_opaque *opaque,
 			    struct topic_s *topic,
 			    rd_kafka_message_t *msgs,
 			    int len) {
@@ -1065,30 +1070,30 @@ static void produce_or_free(struct rb_opaque *opaque,
  *  MAIN ENTRY POINT
  */
 
-static void process_rb_buffer(const char *buffer,
+static void process_zz_buffer(const char *buffer,
 			      size_t bsize,
 			      const keyval_list_t *msg_vars,
-			      struct rb_opaque *opaque,
-			      struct rb_session **sessionp) {
+			      struct zz_opaque *opaque,
+			      struct zz_session **sessionp) {
 
 	// json_error_t err;
-	// struct rb_database *db = &opaque->rb_config->database;
+	// struct zz_database *db = &opaque->zz_config->database;
 	// /* @TODO const */ json_t *uuid_enrichment_entry = NULL;
 	// char *ret = NULL;
-	struct rb_session *session = NULL;
+	struct zz_session *session = NULL;
 	const unsigned char *in_iterator = (const unsigned char *)buffer;
 
 	assert(sessionp);
 
 	if (NULL == *sessionp) {
 		/* First call */
-		*sessionp = new_rb_session(opaque->rb_config, msg_vars);
+		*sessionp = new_zz_session(opaque->zz_config, msg_vars);
 		if (NULL == *sessionp) {
 			return;
 		}
 	} else if (0 == bsize) {
 		/* Last call, need to free session */
-		free_rb_session(*sessionp);
+		free_zz_session(*sessionp);
 		*sessionp = NULL;
 		return;
 	}
@@ -1136,26 +1141,24 @@ static void process_rb_buffer(const char *buffer,
 	}
 }
 
-void rb_decode(char *buffer,
+void zz_decode(char *buffer,
 	       size_t buf_size,
 	       const keyval_list_t *list,
 	       void *_listener_callback_opaque,
 	       void **vsessionp) {
-	struct rb_opaque *rb_opaque = _listener_callback_opaque;
-	struct rb_session **sessionp = (struct rb_session **)vsessionp;
+	struct zz_opaque *zz_opaque = _listener_callback_opaque;
+	struct zz_session **sessionp = (struct zz_session **)vsessionp;
 	/// Helper pointer to simulate streaming behavior
-	struct rb_session *my_session = NULL;
+	struct zz_session *my_session = NULL;
 
-#ifdef RB_OPAQUE_MAGIC
-	assert(RB_OPAQUE_MAGIC == rb_opaque->magic);
-#endif
+	assert_zz_opaque(zz_opaque);
 
 	if (NULL == vsessionp) {
 		// Simulate an active
 		sessionp = &my_session;
 	}
 
-	process_rb_buffer(buffer, buf_size, list, rb_opaque, sessionp);
+	process_zz_buffer(buffer, buf_size, list, zz_opaque, sessionp);
 
 	if (buffer) {
 		/* It was not the last call, designed to free session */
@@ -1165,7 +1168,7 @@ void rb_decode(char *buffer,
 		rd_kafka_msg_q_dump(&(*sessionp)->msg_queue, msgs);
 
 		if ((*sessionp)->topic) {
-			produce_or_free(rb_opaque,
+			produce_or_free(zz_opaque,
 					(*sessionp)->topic_handler,
 					msgs,
 					n_messages);
@@ -1174,20 +1177,20 @@ void rb_decode(char *buffer,
 
 	if (NULL == vsessionp) {
 		// Simulate last call that will free my_session
-		process_rb_buffer(NULL, 0, list, rb_opaque, sessionp);
+		process_zz_buffer(NULL, 0, list, zz_opaque, sessionp);
 	}
 }
 
-void rb_decoder_done(void *vrb_config) {
-	struct rb_config *rb_config = vrb_config;
-	assert_rb_config(rb_config);
-	rb_decoder_deregister_timers(rb_config);
-	rb_http2k_curl_handler_done(
-			&rb_config->organizations_sync.http.curl_handler);
+void zz_decoder_done(void *vzz_config) {
+	struct zz_config *zz_config = vzz_config;
+	assert_zz_config(zz_config);
+	zz_decoder_deregister_timers(zz_config);
+	zz_http2k_curl_handler_done(
+			&zz_config->organizations_sync.http.curl_handler);
 
-	rkt_array_done(&rb_config->organizations_sync.topics);
+	rkt_array_done(&zz_config->organizations_sync.topics);
 
-	sync_thread_done(&rb_config->organizations_sync.thread);
+	sync_thread_done(&zz_config->organizations_sync.thread);
 
-	free_valid_rb_database(&rb_config->database);
+	free_valid_zz_database(&zz_config->database);
 }

@@ -19,7 +19,7 @@
 ** along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "rb_database.h"
+#include "zz_database.h"
 #include "util/topic_database.h"
 
 #include <librd/rdlog.h>
@@ -31,7 +31,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-int init_rb_database(struct rb_database *db) {
+int init_zz_database(struct zz_database *db) {
 	char errbuf[BUFSIZ];
 
 	memset(db, 0, sizeof(*db));
@@ -51,7 +51,7 @@ int init_rb_database(struct rb_database *db) {
 	return 0;
 }
 
-void free_valid_rb_database(struct rb_database *db) {
+void free_valid_zz_database(struct zz_database *db) {
 	if (db) {
 		if (db->sensors_db) {
 			sensors_db_destroy(db->sensors_db);
@@ -66,7 +66,7 @@ void free_valid_rb_database(struct rb_database *db) {
 	}
 }
 
-int rb_http2k_database_get_topic_client(struct rb_database *db,
+int zz_http2k_database_get_topic_client(struct zz_database *db,
 					const char *topic,
 					const char *sensor_uuid,
 					struct topic_s **topic_handler,
@@ -87,7 +87,7 @@ int rb_http2k_database_get_topic_client(struct rb_database *db,
 	return NULL != *topic_handler && NULL != *client_enrichment;
 }
 
-int rb_http2k_validate_uuid(struct rb_database *db, const char *sensor_uuid) {
+int zz_http2k_validate_uuid(struct zz_database *db, const char *sensor_uuid) {
 	pthread_rwlock_rdlock(&db->rwlock);
 	const int ret = sensors_db_exists(db->sensors_db, sensor_uuid);
 	pthread_rwlock_unlock(&db->rwlock);
@@ -95,7 +95,7 @@ int rb_http2k_validate_uuid(struct rb_database *db, const char *sensor_uuid) {
 	return ret;
 }
 
-int rb_http2k_validate_topic(struct rb_database *db, const char *topic) {
+int zz_http2k_validate_topic(struct zz_database *db, const char *topic) {
 	pthread_rwlock_rdlock(&db->rwlock);
 	const int ret = topics_db_topic_exists(db->topics_db, topic);
 	pthread_rwlock_unlock(&db->rwlock);

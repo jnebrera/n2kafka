@@ -19,7 +19,7 @@
 ** along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "rb_http2k_tests.c"
+#include "zz_http2k_tests.c"
 #include "rb_json_tests.c"
 
 #include "../src/listener/http.c"
@@ -30,7 +30,7 @@
 
 static const char CONFIG_TEST[] = "{"
 				  "\"brokers\": \"localhost\","
-				  "\"rb_http2k_config\": {"
+				  "\"zz_http2k_config\": {"
 				  "\"sensors_uuids\" : {"
 				  "\"abc\" : {"
 				  "\"enrichment\": {"
@@ -101,7 +101,7 @@ static void prepare_args(const char *topic,
 }
 
 static void
-check_organization_enrichment_abc(struct rb_session **sess,
+check_organization_enrichment_abc(struct zz_session **sess,
 				  void *unused __attribute__((unused))) {
 	rd_kafka_message_t rkm;
 	json_error_t jerr;
@@ -188,7 +188,7 @@ static void test_organization_enrichment() {
 #undef X
 	};
 
-	test_rb_decoder0(CONFIG_TEST,
+	test_zz_decoder0(CONFIG_TEST,
 			 &args,
 			 msgs,
 			 callbacks_functions,

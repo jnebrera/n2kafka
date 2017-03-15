@@ -20,7 +20,7 @@
 */
 
 #include "engine/global_config.h"
-#include "rb_http2k_tests.c"
+#include "zz_http2k_tests.c"
 #include "rb_json_tests.c"
 
 #include <assert.h>
@@ -35,7 +35,7 @@ static const char TEMP_TEMPLATE[] = "n2ktXXXXXX";
 		ABC_ENRICHMENT, ABC_LIMITS, DEF_ENRICHMENT, DEF_LIMITS)        \
 	"{"                                                                    \
 	"\"brokers\": \"localhost\","                                          \
-	"\"rb_http2k_config\": {"                                              \
+	"\"zz_http2k_config\": {"                                              \
 	"\"sensors_uuids\" : {"                                                \
 	"\"abc\" : {"                                                          \
 	"\"organization_uuid\":\"abc_org\""                                    \
@@ -65,7 +65,7 @@ static const char TEMP_TEMPLATE[] = "n2ktXXXXXX";
 static const char CONFIG_TEST_BASIC_NO_DEF[] =
 		"{"
 		"\"brokers\": \"localhost\","
-		"\"rb_http2k_config\": {"
+		"\"zz_http2k_config\": {"
 		"\"sensors_uuids\" : {"
 		"\"abc\" : {"
 		"\"organization_uuid\":\"abc_org\""
@@ -189,11 +189,11 @@ struct test {
 	/// Reload/apply this configuration, if any
 	const char *config;
 	/// Simulate activity, like HTTP sessions creation
-	void (*activity_cb)(struct rb_config *cfg, void *ctx);
+	void (*activity_cb)(struct zz_config *cfg, void *ctx);
 	/// Context to send to activity cb
 	void *activity_cb_ctx;
 	/// Callback to verify configuration
-	void (*validation_cb)(struct rb_config *cfg, void *ctx);
+	void (*validation_cb)(struct zz_config *cfg, void *ctx);
 	/// Context to send to validation callback
 	void *validation_cb_ctx;
 };
@@ -212,7 +212,7 @@ struct test {
 	}
 
 static void
-validate_organization(struct rb_config *cfg,
+validate_organization(struct zz_config *cfg,
 		      const char *organization_uuid,
 		      size_t expected_max_bytes,
 		      void (*check_enrichment)(const json_t *, void *),
@@ -231,7 +231,7 @@ validate_organization(struct rb_config *cfg,
 	organizations_db_entry_decref(org);
 }
 
-static void validation_reload_pre(struct rb_config *cfg, void *ctx) {
+static void validation_reload_pre(struct zz_config *cfg, void *ctx) {
 	(void)ctx;
 
 	validate_organization(
@@ -240,7 +240,7 @@ static void validation_reload_pre(struct rb_config *cfg, void *ctx) {
 			cfg, "def_org", 0, validate_def_basic_enrichment, NULL);
 }
 
-static void validation_reload_post(struct rb_config *cfg, void *ctx) {
+static void validation_reload_post(struct zz_config *cfg, void *ctx) {
 	(void)ctx;
 
 	validate_organization(cfg,
@@ -271,10 +271,10 @@ static void validate_single_test(const struct test *test, int first) {
 			json_error_t jerr;
 			json_t *jcfg = json_loads(cfg, 0, &jerr);
 			assert(jcfg);
-			json_t *rb_http2k_cfg = json_object_get(
-					jcfg, "rb_http2k_config");
+			json_t *zz_http2k_cfg = json_object_get(
+					jcfg, "zz_http2k_config");
 			/* Just reload */
-			rb_decoder_reload(&global_config.rb, rb_http2k_cfg);
+			zz_decoder_reload(&global_config.rb, zz_http2k_cfg);
 			json_decref(jcfg);
 		}
 	}
@@ -342,7 +342,7 @@ static void validate_reloads() {
  * TEST 2: Delete an organization from config
  */
 
-static void validation_reload_delete_pre(struct rb_config *cfg, void *ctx) {
+static void validation_reload_delete_pre(struct zz_config *cfg, void *ctx) {
 	(void)ctx;
 
 	validate_organization(cfg,
@@ -357,13 +357,13 @@ static void validation_reload_delete_pre(struct rb_config *cfg, void *ctx) {
 			      NULL);
 }
 
-static void assert_org_not_exist(struct rb_config *cfg, const char *uuid) {
+static void assert_org_not_exist(struct zz_config *cfg, const char *uuid) {
 	const int uuid_exists = organizations_db_exists(
 			&cfg->database.organizations_db, uuid);
 	assert(!uuid_exists);
 }
 
-static void validation_reload_delete_post(struct rb_config *cfg, void *ctx) {
+static void validation_reload_delete_post(struct zz_config *cfg, void *ctx) {
 	(void)ctx;
 	void *reload_enrichment = NULL, *reload_enrichment_ctx = NULL;
 

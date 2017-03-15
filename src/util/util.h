@@ -23,7 +23,7 @@
 
 #include <string.h>
 
-#define RB_UNUSED __attribute__((unused))
+#define ZZ_UNUSED __attribute__((unused))
 
 #ifdef likely
 #undef likely

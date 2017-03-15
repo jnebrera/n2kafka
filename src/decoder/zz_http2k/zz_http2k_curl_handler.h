@@ -26,7 +26,7 @@
 #include <pthread.h>
 
 /** CURL handler to send PUT messages */
-typedef struct rb_http2k_curl_handler_s {
+typedef struct zz_http2k_curl_handler_s {
 #ifndef NDEBUG
 #define RB_HTTP2K_CURL_HANDLER_MAGIC 0xB112C3A1CB112C3AL
 	uint64_t magic; ///< Magic to assert coherence
@@ -35,25 +35,25 @@ typedef struct rb_http2k_curl_handler_s {
 	pthread_t thread;	  ///< Thread handler
 	rd_fifoq_t msg_queue;      ///< MSG queue
 	CURLM *curl_multi_handler; ///< Curl handler
-} rb_http2k_curl_handler_t;
+} zz_http2k_curl_handler_t;
 
-/** Creates a rb_http2k_curl_handler
+/** Creates a zz_http2k_curl_handler
   @param handler Handler to start
   @param max_msgs_size Maximum number of messages to accept
   @return 0 if success, !0 in other case
   */
-int rb_http2k_curl_handler_init(rb_http2k_curl_handler_t *handler,
+int zz_http2k_curl_handler_init(zz_http2k_curl_handler_t *handler,
 				int max_msgs_size);
 
-/** Free rb_curl handler resources
+/** Free zz_curl handler resources
   @param handler Handler to be freed
   */
-void rb_http2k_curl_handler_done(rb_http2k_curl_handler_t *handler);
+void zz_http2k_curl_handler_done(zz_http2k_curl_handler_t *handler);
 
 /** Send an empty PUT to a given URL
   @param handler Handler to use to send PUT
   @param URL URL to send it
   @return 0 if OK, ENOBUFS if queue is full
   */
-void rb_http2k_curl_handler_put_empty(rb_http2k_curl_handler_t *handler,
+void zz_http2k_curl_handler_put_empty(zz_http2k_curl_handler_t *handler,
 				      const char *url);

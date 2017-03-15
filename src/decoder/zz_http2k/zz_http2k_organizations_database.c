@@ -21,9 +21,9 @@
 
 #include "config.h"
 
-#include "rb_http2k_organizations_database.h"
-#include "rb_http2k_parser.h"
-#include "rb_http2k_sync_common.h"
+#include "zz_http2k_organizations_database.h"
+#include "zz_http2k_parser.h"
+#include "zz_http2k_sync_common.h"
 #include "util/util.h"
 
 #include <librd/rdlog.h>

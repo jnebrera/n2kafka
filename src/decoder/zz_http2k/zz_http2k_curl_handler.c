@@ -19,7 +19,7 @@
 ** along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "rb_http2k_curl_handler.h"
+#include "zz_http2k_curl_handler.h"
 #include "config.h"
 
 #include <util/util.h>
@@ -27,16 +27,16 @@
 #include <librd/rdlog.h>
 #include <librd/rdthread.h>
 
-typedef struct rb_http2k_curl_handler_msg_s {
+typedef struct zz_http2k_curl_handler_msg_s {
 #ifndef NDEBUG
 #define RB_HTTP2k_CURL_HANDLER_MSG 0xB112CA35B112CA35
 	uint64_t magic;
 #endif
 	CURL *curl_handler;
-} rb_http2k_curl_handler_msg_t;
+} zz_http2k_curl_handler_msg_t;
 
 static void
-assert_rb_http2k_curl_handler_ctx(rb_http2k_curl_handler_t *handler) {
+assert_zz_http2k_curl_handler_ctx(zz_http2k_curl_handler_t *handler) {
 #ifdef RB_HTTP2K_CURL_HANDLER_MAGIC
 	assert(RB_HTTP2K_CURL_HANDLER_MAGIC == handler->magic);
 #else
@@ -67,7 +67,7 @@ static CURL *my_rd_fifoq_pop_timedwait(rd_fifoq_t *fifoq, int timeout_ms) {
 }
 
 static void
-curl_handler_add_curl(rb_http2k_curl_handler_t *handler, CURL *curl_handler) {
+curl_handler_add_curl(zz_http2k_curl_handler_t *handler, CURL *curl_handler) {
 	rdlog(LOG_DEBUG, "Adding HTTP PUT %p", curl_handler);
 	curl_multi_add_handle(handler->curl_multi_handler, curl_handler);
 }
@@ -76,7 +76,7 @@ curl_handler_add_curl(rb_http2k_curl_handler_t *handler, CURL *curl_handler) {
   @param handler Handler to purge
   @return Number of transfers cleaned
   */
-static int curl_handler_purge_completed(rb_http2k_curl_handler_t *handler) {
+static int curl_handler_purge_completed(zz_http2k_curl_handler_t *handler) {
 	CURLMsg *msg;
 	int cleaned = 0;
 	int msgs_in_queue;
@@ -97,7 +97,7 @@ static int curl_handler_purge_completed(rb_http2k_curl_handler_t *handler) {
 	return cleaned;
 }
 
-static void curl_handler_entry_point0(rb_http2k_curl_handler_t *handler) {
+static void curl_handler_entry_point0(zz_http2k_curl_handler_t *handler) {
 	static int fifoq_pop_timeout_ms = 500;
 	int my_still_running = 0;
 	while (ATOMIC_OP(fetch, add, &handler->run, 0)) {
@@ -121,13 +121,13 @@ static void curl_handler_entry_point0(rb_http2k_curl_handler_t *handler) {
 }
 
 static void *curl_handler_entry_point(void *ctx) {
-	rb_http2k_curl_handler_t *handler = ctx;
-	assert_rb_http2k_curl_handler_ctx(handler);
+	zz_http2k_curl_handler_t *handler = ctx;
+	assert_zz_http2k_curl_handler_ctx(handler);
 	curl_handler_entry_point0(handler);
 	return NULL;
 }
 
-int rb_http2k_curl_handler_init(rb_http2k_curl_handler_t *handler,
+int zz_http2k_curl_handler_init(zz_http2k_curl_handler_t *handler,
 				int max_msgs_size) {
 	char err[BUFSIZ];
 #ifdef RB_HTTP2K_CURL_HANDLER_MAGIC
@@ -159,7 +159,7 @@ int rb_http2k_curl_handler_init(rb_http2k_curl_handler_t *handler,
 	return pthread_create_rc;
 }
 
-void rb_http2k_curl_handler_done(rb_http2k_curl_handler_t *handler) {
+void zz_http2k_curl_handler_done(zz_http2k_curl_handler_t *handler) {
 	ATOMIC_OP(fetch, and, &handler->run, 0);
 	pthread_join(handler->thread, NULL);
 	curl_multi_cleanup(handler->curl_multi_handler);
@@ -173,7 +173,7 @@ static void curl_easy_set_http_put_method(CURL *curl_handler, const char *url) {
 }
 
 /// @TODO test full queue
-void rb_http2k_curl_handler_put_empty(rb_http2k_curl_handler_t *handler,
+void zz_http2k_curl_handler_put_empty(zz_http2k_curl_handler_t *handler,
 				      const char *url) {
 	CURL *curl_handler = curl_easy_init(), *purged = NULL;
 	curl_easy_set_http_put_method(curl_handler, url);

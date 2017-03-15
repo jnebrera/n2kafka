@@ -21,7 +21,7 @@
 
 #include "config.h"
 
-#include "rb_http2k_sensors_database.h"
+#include "zz_http2k_sensors_database.h"
 #include "util/rb_json.h"
 
 #include <librd/rdlog.h>

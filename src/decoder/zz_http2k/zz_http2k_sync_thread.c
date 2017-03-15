@@ -19,8 +19,8 @@
 ** along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "rb_http2k_sync_thread.h"
-#include "rb_http2k_sync_common.h"
+#include "zz_http2k_sync_thread.h"
+#include "zz_http2k_sync_common.h"
 #include "util/util.h"
 
 #include "engine/global_config.h"

@@ -21,8 +21,8 @@
 
 #pragma once
 
-#include "rb_http2k_organizations_database.h"
-#include "rb_http2k_sensors_database.h"
+#include "zz_http2k_organizations_database.h"
+#include "zz_http2k_sensors_database.h"
 #include "util/topic_database.h"
 
 #include "util/rb_timer.h"
@@ -30,7 +30,7 @@
 #include <jansson.h>
 #include <pthread.h>
 
-struct rb_database {
+struct zz_database {
 	/* UUID enrichment read-only database */
 	pthread_rwlock_t rwlock;
 	/// sensors UUID database.
@@ -43,12 +43,12 @@ struct rb_database {
 	void *topics_memory;
 };
 
-/** Initialized a rb_database
+/** Initialized a zz_database
   @param db database to init
   @return 0 if success, !0 in other case
   */
-int init_rb_database(struct rb_database *db);
-void free_valid_rb_database(struct rb_database *db);
+int init_zz_database(struct zz_database *db);
+void free_valid_zz_database(struct zz_database *db);
 
 /**
 	Get sensor enrichment and topic of an specific database.
@@ -62,11 +62,11 @@ void free_valid_rb_database(struct rb_database *db);
 	with sensor_db_entry_decref
 	@return 0 if OK, !=0 in other case
 	*/
-int rb_http2k_database_get_topic_client(struct rb_database *db,
+int zz_http2k_database_get_topic_client(struct zz_database *db,
 					const char *topic,
 					const char *sensor_uuid,
 					struct topic_s **topic_handler,
 					sensor_db_entry_t **sensor_info);
 
-int rb_http2k_validate_uuid(struct rb_database *db, const char *uuid);
-int rb_http2k_validate_topic(struct rb_database *db, const char *topic);
+int zz_http2k_validate_uuid(struct zz_database *db, const char *uuid);
+int zz_http2k_validate_topic(struct zz_database *db, const char *topic);

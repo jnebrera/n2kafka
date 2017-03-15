@@ -74,12 +74,12 @@ const char *default_topic_name() {
 * Called once for each message.
 * See rdkafka.h for more information.
 */
-static void msg_delivered(rd_kafka_t *_rk RB_UNUSED,
+static void msg_delivered(rd_kafka_t *_rk ZZ_UNUSED,
 			  void *payload,
 			  size_t len,
 			  int error_code,
-			  void *opaque RB_UNUSED,
-			  void *msg_opaque RB_UNUSED) {
+			  void *opaque ZZ_UNUSED,
+			  void *msg_opaque ZZ_UNUSED) {
 
 	if (error_code) {
 		rblog(LOG_ERR,
@@ -120,8 +120,9 @@ void init_rdkafka() {
 	assert(global_config.kafka_topic_conf);
 
 	if (only_stdout_output()) {
-		rblog(LOG_DEBUG, "No brokers and no topic specified. Output "
-				 "will be printed in stdout.");
+		rblog(LOG_DEBUG,
+		      "No brokers and no topic specified. Output "
+		      "will be printed in stdout.");
 		return;
 	}
 

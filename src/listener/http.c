@@ -445,9 +445,9 @@ client_addr(char *buf, size_t buf_size, struct MHD_Connection *con_info) {
 }
 
 /// @TODO this should be in the decoder, not here
-static int rb_http2k_validation(struct MHD_Connection *con_info,
+static int zz_http2k_validation(struct MHD_Connection *con_info,
 				const char *url,
-				struct rb_database *rb_database,
+				struct zz_database *zz_database,
 				int *allok,
 				char **ret_topic,
 				char **ret_uuid,
@@ -496,7 +496,7 @@ static int rb_http2k_validation(struct MHD_Connection *con_info,
 	      topic,
 	      source);
 
-	const int valid_uuid = rb_http2k_validate_uuid(rb_database, uuid);
+	const int valid_uuid = zz_http2k_validate_uuid(zz_database, uuid);
 	if (!valid_uuid) {
 		rdlog(LOG_WARNING,
 		      "Received invalid uuid %s from %s. Closing connection.",
@@ -507,7 +507,7 @@ static int rb_http2k_validation(struct MHD_Connection *con_info,
 	}
 
 	if (NULL != topic) {
-		const int valid_topic = rb_http2k_validate_topic(
+		const int valid_topic = zz_http2k_validate_topic(
 				&global_config.rb.database, topic);
 
 		if (!valid_topic) {
@@ -685,7 +685,7 @@ static int post_handle(void *_cls,
 		char *topic = NULL, *uuid = NULL;
 		if (cls->redborder_uri) {
 			int aok = 1;
-			const int rc = rb_http2k_validation(
+			const int rc = zz_http2k_validation(
 					connection,
 					url,
 					&global_config.rb.database,

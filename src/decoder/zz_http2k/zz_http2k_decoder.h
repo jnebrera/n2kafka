@@ -21,9 +21,9 @@
 
 #pragma once
 
-#include "rb_database.h"
-#include "rb_http2k_curl_handler.h"
-#include "rb_http2k_sync_thread.h"
+#include "zz_database.h"
+#include "zz_http2k_curl_handler.h"
+#include "zz_http2k_sync_thread.h"
 
 #include "util/pair.h"
 
@@ -36,16 +36,13 @@
 #include <stdint.h>
 #include <string.h>
 
-#ifndef NDEBUG
-/// MAGIC to check rb_config between void * conversions
-#define RB_CONFIG_MAGIC 0xbc01a1cbc01a1cL
-#endif
-
 /* All functions are thread-safe here, excepting free_valid_mse_database */
 struct json_t;
-struct rb_config {
-#ifdef RB_CONFIG_MAGIC
-	/// This value always have to be RB_CONFIG_MAGIC
+struct zz_config {
+#ifndef NDEBUG
+/// MAGIC to check zz_config between void * conversions
+#define ZZ_CONFIG_MAGIC 0xbc01a1cbc01a1cL
+	/// This value always have to be ZZ_CONFIG_MAGIC
 	uint64_t magic;
 #endif
 
@@ -64,36 +61,36 @@ struct rb_config {
 		/// http related
 		struct {
 			/// CURL handler to send PUT when done
-			rb_http2k_curl_handler_t curl_handler;
+			zz_http2k_curl_handler_t curl_handler;
 			/// Url to send PUT request.
 			char *url;
 		} http;
 	} organizations_sync;
-	struct rb_database database;
+	struct zz_database database;
 };
 
-#ifdef RB_CONFIG_MAGIC
-/// Checks that rb_config magic field has the right value
-#define assert_rb_config(cfg)                                                  \
+#ifdef ZZ_CONFIG_MAGIC
+/// Checks that zz_config magic field has the right value
+#define assert_zz_config(cfg)                                                  \
 	do {                                                                   \
-		assert(RB_CONFIG_MAGIC == (cfg)->magic);                       \
+		assert(ZZ_CONFIG_MAGIC == (cfg)->magic);                       \
 	} while (0)
 #else
-#define assert_rb_config(cfg)
+#define assert_zz_config(cfg)
 #endif
 
-int parse_rb_config(void *_db, const struct json_t *rb_config);
+int parse_zz_config(void *_db, const struct json_t *zz_config);
 /** Release all resources used */
-void rb_decoder_done(void *rb_config);
+void zz_decoder_done(void *zz_config);
 /** Does nothing, since this decoder does not save anything related to
     listener
     */
-int rb_decoder_reload(void *_db, const struct json_t *rb_config);
+int zz_decoder_reload(void *_db, const struct json_t *zz_config);
 
-int rb_opaque_creator(struct json_t *config, void **opaque);
-int rb_opaque_reload(struct json_t *config, void *opaque);
-void rb_opaque_done(void *opaque);
-void rb_decode(char *buffer,
+int zz_opaque_creator(struct json_t *config, void **opaque);
+int zz_opaque_reload(struct json_t *config, void *opaque);
+void zz_opaque_done(void *opaque);
+void zz_decode(char *buffer,
 	       size_t buf_size,
 	       const keyval_list_t *props,
 	       void *listener_callback_opaque,

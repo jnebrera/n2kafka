@@ -19,7 +19,7 @@
 ** along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "rb_http2k_tests.c"
+#include "zz_http2k_tests.c"
 #include "rb_json_tests.c"
 
 #include "../src/listener/http.c"
@@ -32,7 +32,7 @@ static const char TEMP_TEMPLATE[] = "n2ktXXXXXX";
 
 static const char CONFIG_TEST[] = "{"
 				  "\"brokers\": \"localhost\","
-				  "\"rb_http2k_config\": {"
+				  "\"zz_http2k_config\": {"
 				  "\"sensors_uuids\" : {"
 				  "\"abc\" : {"
 				  "\"enrichment\":{"
@@ -98,7 +98,7 @@ static void prepare_args(const char *topic,
 	add_key_value_pair(list, &mem[2]);
 }
 
-static void check_rb_decoder_two_keys(struct rb_session **sess,
+static void check_zz_decoder_two_keys(struct zz_session **sess,
 				      void *unused __attribute__((unused))) {
 	rd_kafka_message_t rkm;
 	json_error_t jerr;
@@ -131,12 +131,12 @@ static void check_rb_decoder_two_keys(struct rb_session **sess,
 }
 
 static void
-check_rb_decoder_premature_closing(struct rb_session **sess, void *opaque) {
-	check_rb_decoder_two_keys(sess, opaque);
+check_zz_decoder_premature_closing(struct zz_session **sess, void *opaque) {
+	check_zz_decoder_two_keys(sess, opaque);
 }
 
 /// Simple decoding with another enrichment
-static void test_rb_decoder_two_keys() {
+static void test_zz_decoder_two_keys() {
 	struct pair mem[3];
 	keyval_list_t args;
 	keyval_list_init(&args);
@@ -155,7 +155,7 @@ static void test_rb_decoder_two_keys() {
 	  "{\"client_mac\": \"54:26:96:db:88:02\", "                           \
 	  "\"application_name\": \"wwww\", \"sensor_uuid\":\"def\", "          \
 	  "\"a\":5, \"u\":true}",                                              \
-	  check_rb_decoder_two_keys)                                           \
+	  check_zz_decoder_two_keys)                                           \
 	/* Free & Check that session has been freed */                         \
 	X(NULL, check_null_session)
 
@@ -171,7 +171,7 @@ static void test_rb_decoder_two_keys() {
 #undef X
 	};
 
-	test_rb_decoder0(CONFIG_TEST,
+	test_zz_decoder0(CONFIG_TEST,
 			 &args,
 			 msgs,
 			 callbacks_functions,
@@ -182,7 +182,7 @@ static void test_rb_decoder_two_keys() {
 }
 
 /// Trying to decode a JSON closing when you still have not open any json
-static void test_rb_decoder_closing() {
+static void test_zz_decoder_closing() {
 	struct pair mem[3];
 	keyval_list_t args;
 	keyval_list_init(&args);
@@ -221,7 +221,7 @@ static void test_rb_decoder_closing() {
 #undef X
 	};
 
-	test_rb_decoder0(CONFIG_TEST,
+	test_zz_decoder0(CONFIG_TEST,
 			 &args,
 			 msgs,
 			 callbacks_functions,
@@ -231,8 +231,8 @@ static void test_rb_decoder_closing() {
 #undef MESSAGES
 }
 
-static void check_invalid_key_type(struct rb_session **sess, void *opaque) {
-	check_rb_decoder_two_keys(sess, opaque);
+static void check_invalid_key_type(struct zz_session **sess, void *opaque) {
+	check_zz_decoder_two_keys(sess, opaque);
 }
 
 /** Test that the system is able to skip non-string keys is we are partitioning
@@ -313,7 +313,7 @@ static void test_invalid_key_type() {
 #undef X
 	};
 
-	test_rb_decoder0(CONFIG_TEST,
+	test_zz_decoder0(CONFIG_TEST,
 			 &args,
 			 msgs,
 			 callbacks_functions,
@@ -325,8 +325,8 @@ static void test_invalid_key_type() {
 
 int main() {
 	const struct CMUnitTest tests[] = {
-			cmocka_unit_test(test_rb_decoder_two_keys),
-			cmocka_unit_test(test_rb_decoder_closing),
+			cmocka_unit_test(test_zz_decoder_two_keys),
+			cmocka_unit_test(test_zz_decoder_closing),
 			cmocka_unit_test(test_invalid_key_type),
 	};
 

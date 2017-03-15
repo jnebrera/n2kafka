@@ -290,7 +290,7 @@ int main() {
 
 		execlp("./n2kafka",
 		       "n2kafka",
-		       "configs_example/n2kafka_config_rbhttp.json",
+		       "configs_example/n2kafka_config_zzhttp.json",
 		       (char *)0);
 		printf("Error executing n2kafka\n");
 		exit(1);

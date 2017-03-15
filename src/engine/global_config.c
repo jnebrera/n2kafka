@@ -54,7 +54,7 @@
 #define CONFIG_BLACKLIST_KEY "blacklist"
 #define CONFIG_MSE_SENSORS_KEY "mse-sensors"
 #define CONFIG_MERAKI_SECRETS_KEY "meraki-secrets"
-#define CONFIG_RBHTTP2K_CONFIG "rb_http2k_config"
+#define CONFIG_ZZHTTP2K_CONFIG "zz_http2k_config"
 #define CONFIG_RDKAFKA_KEY "rdkafka."
 #define CONFIG_TCP_KEEPALIVE "tcp_keepalive"
 
@@ -65,7 +65,7 @@
 #define CONFIG_DECODE_AS_NULL ""
 #define CONFIG_DECODE_AS_MSE "MSE"
 #define CONFIG_DECODE_AS_MERAKI "meraki"
-#define CONFIG_DECODE_AS_RBHTTP2K "rb_http2k"
+#define CONFIG_DECODE_AS_ZZHTTP2K "zz_http2k"
 
 struct n2kafka_config global_config;
 
@@ -107,12 +107,12 @@ static const struct registered_decoder {
 			    meraki_opaque_reload,
 			    meraki_opaque_destructor,
 			    0},
-			   {CONFIG_DECODE_AS_RBHTTP2K,
-			    CONFIG_RBHTTP2K_CONFIG,
-			    rb_decode,
-			    rb_opaque_creator,
-			    rb_opaque_reload,
-			    rb_opaque_done,
+			   {CONFIG_DECODE_AS_ZZHTTP2K,
+			    CONFIG_ZZHTTP2K_CONFIG,
+			    zz_decode,
+			    zz_opaque_creator,
+			    zz_opaque_reload,
+			    zz_opaque_done,
 			    DECODER_F_SUPPORT_STREAMING}};
 
 static const struct registered_listener {
@@ -389,7 +389,7 @@ static void parse_config_keyval(const char *key, const json_t *value) {
 		// Already parsed
 	} else if (!strcasecmp(key, CONFIG_MERAKI_SECRETS_KEY)) {
 		// Already parsed
-	} else if (!strcasecmp(key, CONFIG_RBHTTP2K_CONFIG)) {
+	} else if (!strcasecmp(key, CONFIG_ZZHTTP2K_CONFIG)) {
 		// Already parsed
 	} else {
 		fatal("Unknown config key %s", key);
@@ -418,7 +418,7 @@ static void parse_rdkafka_config_keyval(const char *key, const json_t *value) {
 
 static void parse_config0(json_t *root) {
 	json_error_t jerr;
-	json_t *mse = NULL, *meraki = NULL, *rb_http2k = NULL;
+	json_t *mse = NULL, *meraki = NULL, *zz_http2k = NULL;
 	const char *key;
 	json_t *value;
 	char err[BUFSIZ];
@@ -441,8 +441,8 @@ static void parse_config0(json_t *root) {
 					     &mse,
 					     CONFIG_MERAKI_SECRETS_KEY,
 					     &meraki,
-					     CONFIG_RBHTTP2K_CONFIG,
-					     &rb_http2k);
+					     CONFIG_ZZHTTP2K_CONFIG,
+					     &zz_http2k);
 
 	if (unpack_rc != 0) {
 		rdlog(LOG_ERR, "Can't parse config file: %s", jerr.text);
@@ -465,11 +465,11 @@ static void parse_config0(json_t *root) {
 			exit(-1);
 		}
 	}
-	if (rb_http2k) {
+	if (zz_http2k) {
 		const int parse_rc =
-				parse_rb_config(&global_config.rb, rb_http2k);
+				parse_zz_config(&global_config.rb, zz_http2k);
 		if (0 != parse_rc) {
-			rdlog(LOG_ERR, "Can't parse rb_http2k config: %s", err);
+			rdlog(LOG_ERR, "Can't parse zz_http2k config: %s", err);
 			exit(-1);
 		}
 	}
@@ -692,19 +692,19 @@ static void reload_meraki_config(struct n2kafka_config *config) {
 		       parse_meraki_secrets);
 }
 
-static void reload_rbhttp2k_config(struct n2kafka_config *config) {
-	rblog(LOG_INFO, "Reloading rbhttp2k uuids");
+static void reload_zzhttp2k_config(struct n2kafka_config *config) {
+	rblog(LOG_INFO, "Reloading zzhttp2k uuids");
 	reload_decoder(config,
-		       CONFIG_RBHTTP2K_CONFIG,
+		       CONFIG_ZZHTTP2K_CONFIG,
 		       &config->rb,
-		       rb_decoder_reload);
+		       zz_decoder_reload);
 }
 
 /// @TODO reload every decoder using new config
 static void reload_decoders(struct n2kafka_config *config) {
 	reload_mse_config(config);
 	reload_meraki_config(config);
-	reload_rbhttp2k_config(config);
+	reload_zzhttp2k_config(config);
 }
 
 void reload_config(struct n2kafka_config *config) {
@@ -775,7 +775,7 @@ void free_global_config() {
 	shutdown_listeners(&global_config);
 
 	free_valid_mse_database(&global_config.mse.database);
-	rb_decoder_done(&global_config.rb);
+	zz_decoder_done(&global_config.rb);
 
 	if (!only_stdout_output()) {
 		flush_kafka();

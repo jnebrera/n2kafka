@@ -23,7 +23,7 @@
 
 #include "decoder/meraki/rb_meraki.h"
 #include "decoder/mse/rb_mse.h"
-#include "decoder/rb_http2k/rb_http2k_decoder.h"
+#include "decoder/zz_http2k/zz_http2k_decoder.h"
 #include "util/in_addr_list.h"
 #include "util/kafka.h"
 #include "util/pair.h"
@@ -108,7 +108,7 @@ struct n2kafka_config {
 	/// @TODO this should belong to decoders, not here.
 	struct mse_config mse;
 	struct meraki_config meraki;
-	struct rb_config rb;
+	struct zz_config rb;
 
 	char *response;
 	int response_len;

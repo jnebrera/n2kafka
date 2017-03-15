@@ -19,11 +19,11 @@
 ** along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "rb_http2k_parser.h"
+#include "zz_http2k_parser.h"
 
 /// @TODO this include is only for config. Separate config in another file,
 /// since we have crossed includes
-#include "rb_http2k_decoder.h"
+#include "zz_http2k_decoder.h"
 #include "util/topic_database.h"
 
 #include <jansson.h>
@@ -132,7 +132,7 @@ int gen_jansson_object(yajl_gen gen, json_t *object) {
 	return 1;
 }
 
-static void rb_session_reset_kafka_msg(struct rb_session *sess) {
+static void zz_session_reset_kafka_msg(struct zz_session *sess) {
 	sess->message.current_key_offset = CURRENT_KEY_OFFSET_NOT_SETTED;
 	sess->message.current_key_length = 0;
 	sess->message.valid = 1;
@@ -208,8 +208,8 @@ static void rb_session_reset_kafka_msg(struct rb_session *sess) {
 		return 1;                                                      \
 	}
 
-static int rb_parse_null(void *ctx) {
-	struct rb_session *sess = ctx;
+static int zz_parse_null(void *ctx) {
+	struct zz_session *sess = ctx;
 	yajl_gen g = sess->gen;
 
 	SKIP_IF_MESSAGE_NOT_VALID(sess)
@@ -218,8 +218,8 @@ static int rb_parse_null(void *ctx) {
 	GEN_OR_SKIP(sess, yajl_gen_null(g));
 }
 
-static int rb_parse_boolean(void *ctx, int boolean) {
-	struct rb_session *sess = ctx;
+static int zz_parse_boolean(void *ctx, int boolean) {
+	struct zz_session *sess = ctx;
 	yajl_gen g = sess->gen;
 
 	SKIP_IF_MESSAGE_NOT_VALID(sess)
@@ -229,8 +229,8 @@ static int rb_parse_boolean(void *ctx, int boolean) {
 	GEN_OR_SKIP(sess, yajl_gen_bool(g, boolean));
 }
 
-static int rb_parse_number(void *ctx, const char *s, size_t l) {
-	struct rb_session *sess = ctx;
+static int zz_parse_number(void *ctx, const char *s, size_t l) {
+	struct zz_session *sess = ctx;
 	yajl_gen g = sess->gen;
 
 	SKIP_IF_MESSAGE_NOT_VALID(sess)
@@ -240,8 +240,8 @@ static int rb_parse_number(void *ctx, const char *s, size_t l) {
 }
 
 static int
-rb_parse_string(void *ctx, const unsigned char *stringVal, size_t stringLen) {
-	struct rb_session *sess = ctx;
+zz_parse_string(void *ctx, const unsigned char *stringVal, size_t stringLen) {
+	struct zz_session *sess = ctx;
 	yajl_gen g = sess->gen;
 
 	SKIP_IF_MESSAGE_NOT_VALID(sess)
@@ -275,9 +275,9 @@ rb_parse_string(void *ctx, const unsigned char *stringVal, size_t stringLen) {
 }
 
 static int
-rb_parse_map_key(void *ctx, const unsigned char *stringVal, size_t stringLen) {
+zz_parse_map_key(void *ctx, const unsigned char *stringVal, size_t stringLen) {
 	char buf[stringLen + 1];
-	struct rb_session *sess = ctx;
+	struct zz_session *sess = ctx;
 	yajl_gen g = sess->gen;
 
 	SKIP_IF_MESSAGE_NOT_VALID(sess)
@@ -320,8 +320,8 @@ rb_parse_map_key(void *ctx, const unsigned char *stringVal, size_t stringLen) {
 	}
 }
 
-static int rb_parse_start_map(void *ctx) {
-	struct rb_session *sess = ctx;
+static int zz_parse_start_map(void *ctx) {
+	struct zz_session *sess = ctx;
 	yajl_gen g = sess->gen;
 
 	++sess->object_array_parsing_stack;
@@ -334,7 +334,7 @@ static int rb_parse_start_map(void *ctx) {
 /** Generate kafka message and updates organization entry. If organization
     reach limit, parsing returns.
     */
-static int rb_parse_generate_rdkafka_message(const struct rb_session *sess,
+static int zz_parse_generate_rdkafka_message(const struct zz_session *sess,
 					     rd_kafka_message_t *msg) {
 	const int message_key_offset = sess->message.current_key_offset;
 	const unsigned char *buf;
@@ -368,8 +368,8 @@ static int rb_parse_generate_rdkafka_message(const struct rb_session *sess,
 	return 0;
 }
 
-static int rb_parse_end_map(void *ctx) {
-	struct rb_session *sess = ctx;
+static int zz_parse_end_map(void *ctx) {
+	struct zz_session *sess = ctx;
 	yajl_gen g = sess->gen;
 
 	--sess->object_array_parsing_stack;
@@ -384,13 +384,13 @@ static int rb_parse_end_map(void *ctx) {
 			gen_jansson_object(g, client_enrichment);
 			yajl_gen_map_close(g);
 			if (0 ==
-			    rb_parse_generate_rdkafka_message(sess, &msg)) {
+			    zz_parse_generate_rdkafka_message(sess, &msg)) {
 				rd_kafka_msg_q_add(&sess->msg_queue, &msg);
 			}
 		}
 
 		memset(&sess->message, 0, sizeof(sess->message));
-		rb_session_reset_kafka_msg(sess);
+		zz_session_reset_kafka_msg(sess);
 
 		yajl_gen_reset(sess->gen, NULL);
 		yajl_gen_clear(sess->gen);
@@ -401,8 +401,8 @@ static int rb_parse_end_map(void *ctx) {
 	}
 }
 
-static int rb_parse_start_array(void *ctx) {
-	struct rb_session *sess = ctx;
+static int zz_parse_start_array(void *ctx) {
+	struct zz_session *sess = ctx;
 	yajl_gen g = sess->gen;
 
 	++sess->object_array_parsing_stack;
@@ -412,8 +412,8 @@ static int rb_parse_start_array(void *ctx) {
 	GEN_OR_SKIP_NO_ROOT(sess, yajl_gen_array_open(g));
 }
 
-static int rb_parse_end_array(void *ctx) {
-	struct rb_session *sess = ctx;
+static int zz_parse_end_array(void *ctx) {
+	struct zz_session *sess = ctx;
 	yajl_gen g = sess->gen;
 
 	--sess->object_array_parsing_stack;
@@ -421,21 +421,21 @@ static int rb_parse_end_array(void *ctx) {
 	GEN_OR_SKIP(sess, yajl_gen_array_close(g));
 }
 
-static const yajl_callbacks callbacks = {rb_parse_null,
-					 rb_parse_boolean,
+static const yajl_callbacks callbacks = {zz_parse_null,
+					 zz_parse_boolean,
 					 NULL,
 					 NULL,
-					 rb_parse_number,
-					 rb_parse_string,
-					 rb_parse_start_map,
-					 rb_parse_map_key,
-					 rb_parse_end_map,
-					 rb_parse_start_array,
-					 rb_parse_end_array};
+					 zz_parse_number,
+					 zz_parse_string,
+					 zz_parse_start_map,
+					 zz_parse_map_key,
+					 zz_parse_end_map,
+					 zz_parse_start_array,
+					 zz_parse_end_array};
 
-/// @TODO do not use rb_config, but rb_config->database!
-struct rb_session *
-new_rb_session(struct rb_config *rb_config, const keyval_list_t *msg_vars) {
+/// @TODO do not use zz_config, but zz_config->database!
+struct zz_session *
+new_zz_session(struct zz_config *zz_config, const keyval_list_t *msg_vars) {
 
 	const char *client_ip = valueof(msg_vars, "client_ip");
 	const char *sensor_uuid = valueof(msg_vars, "sensor_uuid");
@@ -443,7 +443,7 @@ new_rb_session(struct rb_config *rb_config, const keyval_list_t *msg_vars) {
 	struct topic_s *topic_handler = NULL;
 	sensor_db_entry_t *sensor = NULL;
 
-	rb_http2k_database_get_topic_client(&rb_config->database,
+	zz_http2k_database_get_topic_client(&zz_config->database,
 					    topic,
 					    sensor_uuid,
 					    &topic_handler,
@@ -467,7 +467,7 @@ new_rb_session(struct rb_config *rb_config, const keyval_list_t *msg_vars) {
 	const char *kafka_partitioner_key =
 			topics_db_partition_key(topic_handler);
 
-	struct rb_session *sess = NULL;
+	struct zz_session *sess = NULL;
 	rd_calloc_struct(&sess,
 			 sizeof(*sess),
 			 -1,
@@ -512,7 +512,7 @@ new_rb_session(struct rb_config *rb_config, const keyval_list_t *msg_vars) {
 	yajl_config(sess->handler, yajl_allow_multiple_values, 1);
 	yajl_config(sess->handler, yajl_allow_trailing_garbage, 1);
 
-	rb_session_reset_kafka_msg(sess);
+	zz_session_reset_kafka_msg(sess);
 
 	return sess;
 
@@ -528,7 +528,7 @@ sensor_err:
 	return NULL;
 }
 
-void free_rb_session(struct rb_session *sess) {
+void free_zz_session(struct zz_session *sess) {
 	yajl_free(sess->handler);
 	yajl_gen_free(sess->gen);
 

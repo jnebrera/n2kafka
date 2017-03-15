@@ -1,5 +1,5 @@
 SUBDIRS := \
-	rb_http2k \
+	zz_http2k \
 	mse \
 	meraki
 

@@ -58,7 +58,7 @@ void dumb_decoder(char *buffer,
 		  void *listener_callback_opaque,
 		  void **sessionp);
 
-/// @TODO join with rb_http2k_decoder mac partitioner
+/// @TODO join with zz_http2k_decoder mac partitioner
 int32_t rb_client_mac_partitioner(const rd_kafka_topic_t *_rkt,
 				  const void *key,
 				  size_t keylen,

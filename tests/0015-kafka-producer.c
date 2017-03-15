@@ -44,9 +44,7 @@
 #define SENT_MESSAGE_TCP_1 "{\"message\": \"Hello world TCP\"}"
 #define SENT_MESSAGE_TCP_2 "{\"message\": \"Sayounara baby TCP\"}"
 #define N_MESSAGES_EXPECTED 10
-#define VALID_UUID "/abc"
-#define VALID_URL "http://localhost:2057/rbdata"
-#define VALID_TOPIC "/rb_flow"
+#define VALID_URL "http://localhost:2057"
 #define TCP_HOST "127.0.0.1"
 #define TCP_PORT 2056
 #define TCP_MESSAGES_DELAY 5
@@ -169,12 +167,6 @@ static void test_send_message_http() {
 	// Init curl
 	curl = curl_easy_init();
 
-	// Build the URL
-	char *url = calloc(128, sizeof(char));
-	strcat(url, VALID_URL);
-	strcat(url, VALID_UUID);
-	strcat(url, VALID_TOPIC);
-
 	// Use the assertion_handler to proccess assertions asynchronously
 	assertion_handler = assertion_handler_new();
 
@@ -192,7 +184,7 @@ static void test_send_message_http() {
 		assertion_handler_push_assertion(assertion_handler, assertion2);
 
 		// Send message via curl
-		curl_easy_setopt(curl, CURLOPT_URL, url);
+		curl_easy_setopt(curl, CURLOPT_URL, VALID_URL);
 		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, SENT_MESSAGE_HTTP_1);
 		res = curl_easy_perform(curl);
 		curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
@@ -202,7 +194,7 @@ static void test_send_message_http() {
 		assert_true(http_code == 200);
 
 		// Send message 2 via curl
-		curl_easy_setopt(curl, CURLOPT_URL, url);
+		curl_easy_setopt(curl, CURLOPT_URL, VALID_URL);
 		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, SENT_MESSAGE_HTTP_2);
 		res = curl_easy_perform(curl);
 		curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
@@ -213,8 +205,6 @@ static void test_send_message_http() {
 
 		curl_easy_cleanup(curl);
 	}
-
-	free(url);
 
 	// Try to read the message from kafka and push it to the assertion
 	// handler

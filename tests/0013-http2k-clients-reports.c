@@ -19,8 +19,8 @@
 ** along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "decoder/rb_http2k/rb_http2k_organizations_database.h"
-#include "decoder/rb_http2k/rb_http2k_sync_thread.c"
+#include "decoder/zz_http2k/zz_http2k_organizations_database.h"
+#include "decoder/zz_http2k/zz_http2k_sync_thread.c"
 #include "engine/global_config.h"
 #include "util/kafka.h"
 

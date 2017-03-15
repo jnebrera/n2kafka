@@ -21,7 +21,7 @@
 
 #pragma once
 
-#include "rb_http2k_sensors_database.h"
+#include "zz_http2k_sensors_database.h"
 
 #include <jansson.h>
 #include <util/kafka_message_list.h>
@@ -32,7 +32,7 @@
 /// @TODO many of the fields here could be a state machine
 /// @TODO separate parsing <-> not parsing fields
 /// @TODO could this be private?
-struct rb_session {
+struct zz_session {
 	/// Output generator.
 	yajl_gen gen;
 
@@ -69,10 +69,10 @@ struct rb_session {
 	int skip_value;
 };
 
-struct rb_config;
-struct rb_session *
-new_rb_session(struct rb_config *rb_config, const keyval_list_t *msg_vars);
+struct zz_config;
+struct zz_session *
+new_zz_session(struct zz_config *zz_config, const keyval_list_t *msg_vars);
 
 int gen_jansson_object(yajl_gen gen, json_t *enrichment_data);
 
-void free_rb_session(struct rb_session *sess);
+void free_zz_session(struct zz_session *sess);

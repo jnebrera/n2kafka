@@ -19,7 +19,7 @@
 ** along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "rb_http2k_tests.c"
+#include "zz_http2k_tests.c"
 #include "rb_json_tests.c"
 
 #include "../src/listener/http.c"
@@ -32,7 +32,7 @@ static const char TEMP_TEMPLATE[] = "n2ktXXXXXX";
 
 static const char CONFIG_TEST[] = "{"
 				  "\"brokers\": \"localhost\","
-				  "\"rb_http2k_config\": {"
+				  "\"zz_http2k_config\": {"
 				  "\"sensors_uuids\" : {"
 				  "\"abc\" : {"
 				  "\"enrichment\":{},"
@@ -106,7 +106,7 @@ static void prepare_args(const char *topic,
 	add_key_value_pair(list, &mem[2]);
 }
 
-static void check_rb_decoder_in_quota(struct rb_session **sess,
+static void check_zz_decoder_in_quota(struct zz_session **sess,
 				      void *unused __attribute__((unused))) {
 	rd_kafka_message_t rkm;
 	json_error_t jerr;
@@ -138,7 +138,7 @@ static void check_rb_decoder_in_quota(struct rb_session **sess,
 	free(rkm.payload);
 }
 
-static void check_rb_decoder_out_quota(struct rb_session **sess, void *unused) {
+static void check_zz_decoder_out_quota(struct zz_session **sess, void *unused) {
 	check_zero_messages(sess, unused);
 	organization_db_entry_t *org = (*sess)->sensor->organization;
 	assert(4 * strlen(MSG500("abc")) == organization_consumed_bytes(org));
@@ -157,10 +157,10 @@ static void test_limited_client() {
 		     &args);
 
 #define MESSAGES                                                               \
-	X(MSG500("abc"), check_rb_decoder_in_quota)                            \
-	X(MSG500("abc"), check_rb_decoder_in_quota)                            \
+	X(MSG500("abc"), check_zz_decoder_in_quota)                            \
+	X(MSG500("abc"), check_zz_decoder_in_quota)                            \
 	X(MSG500("abc"), check_zero_messages)                                  \
-	X(MSG500("abc"), check_rb_decoder_out_quota)                           \
+	X(MSG500("abc"), check_zz_decoder_out_quota)                           \
 	/* Free & Check that session has been freed */                         \
 	X(NULL, check_null_session)
 
@@ -176,7 +176,7 @@ static void test_limited_client() {
 #undef X
 	};
 
-	test_rb_decoder0(CONFIG_TEST,
+	test_zz_decoder0(CONFIG_TEST,
 			 &args,
 			 msgs,
 			 callbacks_functions,

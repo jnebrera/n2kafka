@@ -1,6 +1,7 @@
 /*
 **
-** Copyright (c) 2014, Eneo Tecnologia
+** Copyright (C) 2014-2016, Eneo Tecnologia S.L.
+** Copyright (C) 2017, Eugenio Perez <eupm90@gmail.com>
 ** Author: Eugenio Perez <eupm90@gmail.com>
 ** All rights reserved.
 **

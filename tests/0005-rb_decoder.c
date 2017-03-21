@@ -19,8 +19,8 @@
 ** along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "zz_http2k_tests.c"
 #include "rb_json_tests.c"
+#include "zz_http2k_tests.c"
 
 #include "../src/listener/http.c"
 
@@ -82,8 +82,6 @@ static const char CONFIG_TEST[] = "{"
 				  "},"
 				  "\"topics\" : {"
 				  "\"rb_flow\": {"
-				  "\"partition_key\":\"client_mac\","
-				  "\"partition_algo\":\"mac\""
 				  "},"
 				  "\"rb_event\": {"
 				  "}"

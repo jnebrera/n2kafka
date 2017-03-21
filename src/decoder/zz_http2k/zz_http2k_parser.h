@@ -46,24 +46,17 @@ struct zz_session {
 	size_t object_array_parsing_stack;
 
 	/// Per POST business.
-	const char *client_ip, *sensor_uuid, *topic, *kafka_partitioner_key;
+	const char *client_ip, *sensor_uuid;
 
 	/// Topid handler
 	struct topic_s *topic_handler;
 
 	struct {
-#define CURRENT_KEY_OFFSET_NOT_SETTED -1
-		/// current kafka message key offset
-		int current_key_offset;
-		size_t current_key_length;
 		int valid;
 	} message;
 
 	/// Message list in this call to decode()
 	rd_kafka_message_queue_t msg_queue;
-
-	/// We are parsing value of kafka_partitioner_key
-	int in_partition_key;
 
 	/// Skip next parsing value
 	int skip_value;

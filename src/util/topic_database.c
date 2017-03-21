@@ -23,6 +23,7 @@
 #include "config.h"
 
 #include <librd/rdavl.h>
+#include <librd/rdlog.h>
 #include <librd/rdmem.h>
 
 typedef TAILQ_HEAD(, topic_s) topics_list;
@@ -44,8 +45,6 @@ struct topic_s {
 
 	rd_avl_node_t avl_node;
 	TAILQ_ENTRY(topic_s) list_node;
-
-	const char *partition_key;
 };
 
 rd_kafka_topic_t *topics_db_get_rdkafka_topic(struct topic_s *topic) {
@@ -87,10 +86,6 @@ struct topics_db {
 	/// @TODO change by a memctx
 	topics_list list;
 };
-
-const char *topics_db_partition_key(struct topic_s *topic) {
-	return topic->partition_key;
-}
 
 struct topics_db *topics_db_new() {
 	struct topics_db *ret = calloc(1, sizeof(*ret));
@@ -139,47 +134,25 @@ int topics_db_topic_exists(struct topics_db *db, const char *topic) {
 	return NULL != get_topic_borrow(db, topic);
 }
 
-int topics_db_add(struct topics_db *db,
-		  rd_kafka_topic_t *rkt,
-		  const char *partition_key,
-		  size_t partition_key_len) {
-	/* Quick hack to finalize partition_key with '\0' */
-	char zero = '\0', *aux_zero = NULL;
-
-	struct topic_s *topic_s = NULL;
-
-	const char *topic_name = rd_kafka_topic_name(rkt);
-
-	rd_calloc_struct(&topic_s,
-			 sizeof(*topic_s),
-			 -1,
-			 topic_name,
-			 &topic_s->topic_name,
-			 partition_key_len,
-			 partition_key,
-			 &topic_s->partition_key,
-			 1,
-			 &zero,
-			 aux_zero,
-			 RD_MEM_END_TOKEN);
-
-	if (topic_s) {
-#ifdef TOPIC_S_MAGIC
-		topic_s->magic = TOPIC_S_MAGIC;
-#endif
-
-		if (0 == partition_key_len) {
-			topic_s->partition_key = NULL;
-		}
-
-		topic_s->rkt = rkt;
-		topic_s->refcnt = 1;
-
-		RD_AVL_INSERT(&db->topics, topic_s, avl_node);
-		topic_list_push(&db->list, topic_s);
+struct topic_s *topics_db_add(struct topics_db *db, rd_kafka_topic_t *rkt) {
+	struct topic_s *topic_s = calloc(1, sizeof(*topic_s));
+	if (unlikely(NULL == topic_s)) {
+		rdlog(LOG_ERR, "Couldn't add topic (out of memory?)");
+		return NULL;
 	}
 
-	return topic_s != NULL;
+#ifdef TOPIC_S_MAGIC
+	topic_s->magic = TOPIC_S_MAGIC;
+#endif
+
+	topic_s->rkt = rkt;
+	topic_s->topic_name = rd_kafka_topic_name(rkt);
+	topic_s->refcnt = 1;
+
+	RD_AVL_INSERT(&db->topics, topic_s, avl_node);
+	topic_list_push(&db->list, topic_s);
+
+	return topic_s;
 }
 
 void topics_db_done(struct topics_db *db) {

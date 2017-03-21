@@ -42,10 +42,8 @@
 #include <stdint.h>
 #include <string.h>
 
-static const char RB_HTTP2K_CONFIG_KEY[] = "zz_http2k_config";
 static const char RB_SENSORS_UUID_KEY[] = "sensors_uuids";
 static const char RB_ORGANIZATIONS_UUID_KEY[] = "organizations_uuids";
-static const char RB_N2KAFKA_ID[] = "n2kafka_id";
 static const char RB_ORGANIZATIONS_SYNC_KEY[] = "organizations_sync";
 static const char RB_ORGANIZATIONS_SYNC_TOPICS_KEY[] = "topics";
 static const char RB_ORGANIZATIONS_SYNC_INTERVAL_S_KEY[] = "interval_s";
@@ -56,10 +54,6 @@ static const char RB_ORGANIZATIONS_SYNC_CLEAN_TIMESTAMP_OFFSET_KEY[] =
 		"timestamp_s_offset";
 static const char RB_ORGANIZATIONS_SYNC_PUT_URL_KEY[] = "put_url";
 static const char RB_TOPICS_KEY[] = "topics";
-static const char RB_SENSOR_UUID_KEY[] = "uuid";
-
-static const char RB_TOPIC_PARTITIONER_KEY[] = "partition_key";
-static const char RB_TOPIC_PARTITIONER_ALGORITHM_KEY[] = "partition_algo";
 
 typedef int32_t (*partitioner_cb)(const rd_kafka_topic_t *rkt,
 				  const void *keydata,
@@ -67,29 +61,6 @@ typedef int32_t (*partitioner_cb)(const rd_kafka_topic_t *rkt,
 				  int32_t partition_cnt,
 				  void *rkt_opaque,
 				  void *msg_opaque);
-
-static int32_t(mac_partitioner)(const rd_kafka_topic_t *rkt,
-				const void *keydata,
-				size_t keylen,
-				int32_t partition_cnt,
-				void *rkt_opaque,
-				void *msg_opaque);
-
-/** Algorithm of messages partitioner */
-enum partitioner_algorithm {
-	/** Random partitioning */
-	none,
-	/** Mac partitioning */
-	mac,
-};
-
-struct {
-	enum partitioner_algorithm algoritm;
-	const char *name;
-	partitioner_cb partitioner;
-} partitioner_algorithm_list[] = {
-		{mac, "mac", mac_partitioner},
-};
 
 enum warning_times_pos {
 	LAST_WARNING_TIME__QUEUE_FULL,
@@ -136,82 +107,6 @@ kafka_error_to_warning_time_pos(rd_kafka_resp_err_t err) {
 	};
 }
 
-static int32_t mac_partitioner(const rd_kafka_topic_t *rkt,
-			       const void *keydata,
-			       size_t keylen,
-			       int32_t partition_cnt,
-			       void *rkt_opaque,
-			       void *msg_opaque) {
-	size_t toks = 0;
-	uint64_t intmac = 0;
-	char mac_key[sizeof("00:00:00:00:00:00")];
-
-	if (keylen != strlen("00:00:00:00:00:00")) {
-		if (keylen != 0) {
-			/* We were expecting a MAC and we do not have it */
-			rdlog(LOG_WARNING,
-			      "Invalid mac %.*s len",
-			      (int)keylen,
-			      (const char *)keydata);
-		}
-		goto fallback_behavior;
-	}
-
-	mac_key[0] = '\0';
-	strncat(mac_key, (const char *)keydata, sizeof(mac_key) - 1);
-
-	for (toks = 1; toks < 6; ++toks) {
-		const size_t semicolon_pos = 3 * toks - 1;
-		if (':' != mac_key[semicolon_pos]) {
-			rdlog(LOG_WARNING,
-			      "Invalid mac %.*s (it does not have ':' in char "
-			      "%zu.",
-			      (int)keylen,
-			      mac_key,
-			      semicolon_pos);
-			goto fallback_behavior;
-		}
-	}
-
-	for (toks = 0; toks < 6; ++toks) {
-		char *endptr = NULL;
-		intmac = (intmac << 8) +
-			 strtoul(&mac_key[3 * toks], &endptr, 16);
-		/// The key should end with '"' in json format
-		if ((toks < 5 && *endptr != ':') ||
-		    (toks == 5 && *endptr != '\0')) {
-			rdlog(LOG_WARNING,
-			      "Invalid mac %.*s, unexpected %c end of %zu "
-			      "token",
-			      (int)keylen,
-			      mac_key,
-			      *endptr,
-			      toks);
-			goto fallback_behavior;
-		}
-
-		if (endptr != mac_key + 3 * (toks + 1) - 1) {
-			rdlog(LOG_WARNING,
-			      "Invalid mac %.*s, unexpected token length at "
-			      "%zu token",
-			      (int)keylen,
-			      mac_key,
-			      toks);
-			goto fallback_behavior;
-		}
-	}
-
-	return intmac % (uint32_t)partition_cnt;
-
-fallback_behavior:
-	return rd_kafka_msg_partitioner_random(rkt,
-					       keydata,
-					       keylen,
-					       partition_cnt,
-					       rkt_opaque,
-					       msg_opaque);
-}
-
 /** Parsing of per uuid enrichment.
 	@param config original config with RB_SENSORS_UUID_KEY to extract it.
 	@return new uuid database
@@ -231,20 +126,6 @@ parse_per_uuid_opaque_config(json_t *config,
 	}
 
 	return sensors_db_new(sensors_config, organizations_db);
-}
-
-static partitioner_cb partitioner_of_name(const char *name) {
-	size_t i = 0;
-
-	assert(name);
-
-	for (i = 0; i < RD_ARRAYSIZE(partitioner_algorithm_list); ++i) {
-		if (0 == strcmp(partitioner_algorithm_list[i].name, name)) {
-			return partitioner_algorithm_list[i].partitioner;
-		}
-	}
-
-	return NULL;
 }
 
 static int
@@ -277,8 +158,6 @@ parse_topic_list_config(json_t *config, struct topics_db *new_topics_db) {
 	}
 
 	json_object_foreach(topic_list, key, value) {
-		const char *partition_key = NULL, *partition_algo = NULL;
-		size_t partition_key_len = 0;
 		const char *topic_name = key;
 		rd_kafka_topic_t *rkt = NULL;
 
@@ -291,26 +170,6 @@ parse_topic_list_config(json_t *config, struct topics_db *new_topics_db) {
 			continue;
 		}
 
-		const int topic_unpack_rc = json_unpack_ex(
-				value,
-				&jerr,
-				0,
-				"{s?s%,s?s}",
-				RB_TOPIC_PARTITIONER_KEY,
-				&partition_key,
-				&partition_key_len,
-				RB_TOPIC_PARTITIONER_ALGORITHM_KEY,
-				&partition_algo);
-
-		if (0 != topic_unpack_rc) {
-			rdlog(LOG_ERR,
-			      "Can't extract information of topic %s (%s). "
-			      "Discarding.",
-			      topic_name,
-			      jerr.text);
-			continue;
-		}
-
 		rd_kafka_topic_conf_t *my_rkt_conf = rd_kafka_topic_conf_dup(
 				global_config.kafka_topic_conf);
 		if (NULL == my_rkt_conf) {
@@ -318,21 +177,6 @@ parse_topic_list_config(json_t *config, struct topics_db *new_topics_db) {
 			      "Couldn't topic_conf_dup in topic %s",
 			      topic_name);
 			continue;
-		}
-
-		if (NULL != partition_algo) {
-			partitioner_cb partitioner =
-					partitioner_of_name(partition_algo);
-			if (NULL != partitioner) {
-				rd_kafka_topic_conf_set_partitioner_cb(
-						my_rkt_conf, partitioner);
-			} else {
-				rdlog(LOG_ERR,
-				      "Can't found partitioner algorithm %s "
-				      "for topic %s",
-				      partition_algo,
-				      topic_name);
-			}
 		}
 
 		rkt = rd_kafka_topic_new(
@@ -348,10 +192,7 @@ parse_topic_list_config(json_t *config, struct topics_db *new_topics_db) {
 			continue;
 		}
 
-		topics_db_add(new_topics_db,
-			      rkt,
-			      partition_key,
-			      partition_key_len);
+		topics_db_add(new_topics_db, rkt);
 	}
 
 	return 0;
@@ -1167,7 +1008,7 @@ void zz_decode(char *buffer,
 		rd_kafka_message_t msgs[n_messages];
 		rd_kafka_msg_q_dump(&(*sessionp)->msg_queue, msgs);
 
-		if ((*sessionp)->topic) {
+		if ((*sessionp)->topic_handler) {
 			produce_or_free(zz_opaque,
 					(*sessionp)->topic_handler,
 					msgs,

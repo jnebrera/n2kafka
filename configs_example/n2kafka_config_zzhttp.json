@@ -61,10 +61,7 @@
       }
     },
     "topics": {
-      "rb_flow": {
-        "partition_key": "client_mac",
-        "partition_algo": "mac"
-      },
+      "rb_flow": {},
       "rb_event": {}
     }
   }

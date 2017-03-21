@@ -20,8 +20,8 @@
 */
 
 #include "engine/global_config.h"
-#include "zz_http2k_tests.c"
 #include "rb_json_tests.c"
+#include "zz_http2k_tests.c"
 
 #include <assert.h>
 #include <cmocka.h>
@@ -52,8 +52,6 @@ static const char TEMP_TEMPLATE[] = "n2ktXXXXXX";
 	"},"                                                                   \
 	"\"topics\" : {"                                                       \
 	"\"rb_flow\": {"                                                       \
-	"\"partition_key\":\"client_mac\","                                    \
-	"\"partition_algo\":\"mac\""                                           \
 	"},"                                                                   \
 	"\"rb_event\": {"                                                      \
 	"}"                                                                    \
@@ -79,8 +77,6 @@ static const char CONFIG_TEST_BASIC_NO_DEF[] =
 		"},"
 		"\"topics\" : {"
 		"\"rb_flow\": {"
-		"\"partition_key\":\"client_mac\","
-		"\"partition_algo\":\"mac\""
 		"},"
 		"\"rb_event\": {"
 		"}"

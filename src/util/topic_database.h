@@ -35,21 +35,12 @@ struct topics_db;
 struct topics_db *topics_db_new();
 
 /** Add a topic into a database
-	@param topics_db Topics database
-	@param topic Topic to produce
-	@param partition_key Field to extract partition key
-	@param partition_key_len Length of partition key
-	@return 1 if OK, 0 ioc.
-	*/
-int topics_db_add(struct topics_db *topics_db,
-		  rd_kafka_topic_t *rkt,
-		  const char *partition_key,
-		  size_t partition_key_len);
-
-/** Returns JSON key for what message has to be partitioned
-	@param topic Topic.
-	@return JSON key */
-const char *topics_db_partition_key(struct topic_s *topic);
+  @param topics_db Topics database
+  @param topic Topic to produce
+  @return Newly created topic handler.
+  */
+struct topic_s *
+topics_db_add(struct topics_db *topics_db, rd_kafka_topic_t *rkt);
 
 /** Get a topic from database.
 	@param db Database

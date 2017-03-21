@@ -19,8 +19,8 @@
 ** along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "zz_http2k_tests.c"
 #include "rb_json_tests.c"
+#include "zz_http2k_tests.c"
 
 #include "../src/listener/http.c"
 
@@ -57,8 +57,6 @@ static const char CONFIG_TEST[] = "{"
 				  "},"
 				  "\"topics\" : {"
 				  "\"rb_flow\": {"
-				  "\"partition_key\":\"client_mac\","
-				  "\"partition_algo\":\"mac\""
 				  "},"
 				  "\"rb_event\": {"
 				  "}"
@@ -110,8 +108,6 @@ static void check_zz_decoder_in_quota(struct zz_session **sess,
 				      void *unused __attribute__((unused))) {
 	rd_kafka_message_t rkm;
 	json_error_t jerr;
-	const char *client_mac;
-	static const char expected_mac[] = "54:26:96:db:88:02";
 
 	assert(1 == rd_kafka_msg_q_size(&(*sess)->msg_queue));
 	rd_kafka_msg_q_dump(&(*sess)->msg_queue, &rkm);
@@ -124,15 +120,12 @@ static void check_zz_decoder_in_quota(struct zz_session **sess,
 	}
 
 	const int rc = json_unpack_ex(
-			root, &jerr, 0, "{s:s}", "client_mac", &client_mac);
+			root, &jerr, JSON_VALIDATE_ONLY, "{s:s}", "client_mac");
 
 	if (rc != 0) {
 		rdlog(LOG_ERR, "Couldn't unpack values: %s", jerr.text);
 		assert(0);
 	}
-
-	assert(0 == strcmp(client_mac, expected_mac));
-	assert(0 == strncmp(rkm.key, expected_mac, strlen(expected_mac)));
 
 	json_decref(root);
 	free(rkm.payload);

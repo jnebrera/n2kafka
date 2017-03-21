@@ -23,8 +23,8 @@
 
 /// @TODO this include is only for config. Separate config in another file,
 /// since we have crossed includes
-#include "zz_http2k_decoder.h"
 #include "util/topic_database.h"
+#include "zz_http2k_decoder.h"
 
 #include <jansson.h>
 #include <librd/rdlog.h>
@@ -133,8 +133,6 @@ int gen_jansson_object(yajl_gen gen, json_t *object) {
 }
 
 static void zz_session_reset_kafka_msg(struct zz_session *sess) {
-	sess->message.current_key_offset = CURRENT_KEY_OFFSET_NOT_SETTED;
-	sess->message.current_key_length = 0;
 	sess->message.valid = 1;
 }
 
@@ -171,19 +169,6 @@ static void zz_session_reset_kafka_msg(struct zz_session *sess) {
 	*/
 #define GEN_OR_SKIP_NO_ROOT(sess, func) GEN_OR_SKIP0(sess, func, 0)
 
-#define CHECK_PARTITIONER_KEY_IS(sess, expected_val, ...)                      \
-	if (expected_val != (sess)->in_partition_key) {                        \
-		rdlog(LOG_ERR, __VA_ARGS__);                                   \
-		/* Stop parsing this message */                                \
-		(sess)->message.valid = 0;                                     \
-		/* We are not in partition key anymore */                      \
-		(sess)->in_partition_key = 0;                                  \
-		return 1;                                                      \
-	}
-
-#define CHECK_NOT_EXPECTING_PARTITIONER_KEY(sess, ...)                         \
-	CHECK_PARTITIONER_KEY_IS(sess, 0, __VA_ARGS__)
-
 #define CHECK_SESSION_IN_ROOT_OBJECT(sess, ...)                                \
 	if ((sess)->object_array_parsing_stack != 1) {                         \
 		rdlog(LOG_WARNING, __VA_ARGS__);                               \
@@ -213,8 +198,6 @@ static int zz_parse_null(void *ctx) {
 	yajl_gen g = sess->gen;
 
 	SKIP_IF_MESSAGE_NOT_VALID(sess)
-	CHECK_NOT_EXPECTING_PARTITIONER_KEY(
-			sess, "%s as partition key", "null");
 	GEN_OR_SKIP(sess, yajl_gen_null(g));
 }
 
@@ -223,9 +206,6 @@ static int zz_parse_boolean(void *ctx, int boolean) {
 	yajl_gen g = sess->gen;
 
 	SKIP_IF_MESSAGE_NOT_VALID(sess)
-	CHECK_NOT_EXPECTING_PARTITIONER_KEY(sess,
-					    "%s as partition key",
-					    boolean ? "true" : "false");
 	GEN_OR_SKIP(sess, yajl_gen_bool(g, boolean));
 }
 
@@ -234,8 +214,6 @@ static int zz_parse_number(void *ctx, const char *s, size_t l) {
 	yajl_gen g = sess->gen;
 
 	SKIP_IF_MESSAGE_NOT_VALID(sess)
-	CHECK_NOT_EXPECTING_PARTITIONER_KEY(
-			sess, "%.*s as partition key", (int)l, s);
 	GEN_OR_SKIP(sess, yajl_gen_number(g, s, l));
 }
 
@@ -245,31 +223,6 @@ zz_parse_string(void *ctx, const unsigned char *stringVal, size_t stringLen) {
 	yajl_gen g = sess->gen;
 
 	SKIP_IF_MESSAGE_NOT_VALID(sess)
-
-	if (sess->in_partition_key) {
-		const unsigned char *buffer = NULL;
-		size_t buffer_len = 0;
-
-		if (sess->message.current_key_offset !=
-		    CURRENT_KEY_OFFSET_NOT_SETTED) {
-			rdlog(LOG_ERR,
-			      "Partition key already present (%s key twice?)",
-			      sess->kafka_partitioner_key);
-			sess->message.valid = 0;
-		}
-
-		const int get_buf_rc =
-				yajl_gen_get_buf(g, &buffer, &buffer_len);
-
-		if (get_buf_rc != yajl_gen_status_ok) {
-			/// @TODO manage this
-		}
-
-		// Message key will be the next stuff printed.
-		sess->message.current_key_offset = buffer_len + strlen(":\"");
-		sess->message.current_key_length = stringLen;
-		sess->in_partition_key = 0;
-	}
 
 	GEN_OR_SKIP(sess, yajl_gen_string(g, stringVal, stringLen));
 }
@@ -293,14 +246,6 @@ zz_parse_map_key(void *ctx, const unsigned char *stringVal, size_t stringLen) {
 	} else {
 		const json_t *sensor_enrichment =
 				sensor_db_entry_json_enrichment(sess->sensor);
-		if (sess->kafka_partitioner_key &&
-		    0 == strncmp(sess->kafka_partitioner_key,
-				 (const char *)stringVal,
-				 stringLen)) {
-			/* We are in kafka partitioner key, need to watch for
-									it */
-			sess->in_partition_key = 1;
-		}
 
 		buf[stringLen] = '\0';
 		memcpy(buf, stringVal, stringLen);
@@ -325,7 +270,6 @@ static int zz_parse_start_map(void *ctx) {
 	yajl_gen g = sess->gen;
 
 	++sess->object_array_parsing_stack;
-	CHECK_NOT_EXPECTING_PARTITIONER_KEY(sess, "Object as partitioner key");
 	SKIP_IF_MESSAGE_NOT_VALID(sess)
 
 	GEN_OR_SKIP_NO_ROOT(sess, yajl_gen_map_open(g));
@@ -336,7 +280,6 @@ static int zz_parse_start_map(void *ctx) {
     */
 static int zz_parse_generate_rdkafka_message(const struct zz_session *sess,
 					     rd_kafka_message_t *msg) {
-	const int message_key_offset = sess->message.current_key_offset;
 	const unsigned char *buf;
 	organization_db_entry_t *organization =
 			sensor_db_entry_organization(sess->sensor);
@@ -358,11 +301,6 @@ static int zz_parse_generate_rdkafka_message(const struct zz_session *sess,
 	if (NULL == msg->payload) {
 		rdlog(LOG_ERR, "Unable to duplicate buffer");
 		return -1;
-	}
-
-	if (message_key_offset != CURRENT_KEY_OFFSET_NOT_SETTED) {
-		msg->key = (char *)msg->payload + message_key_offset;
-		msg->key_len = sess->message.current_key_length;
 	}
 
 	return 0;
@@ -406,9 +344,6 @@ static int zz_parse_start_array(void *ctx) {
 	yajl_gen g = sess->gen;
 
 	++sess->object_array_parsing_stack;
-	CHECK_NOT_EXPECTING_PARTITIONER_KEY(sess,
-					    "array start as partition key");
-
 	GEN_OR_SKIP_NO_ROOT(sess, yajl_gen_array_open(g));
 }
 
@@ -464,9 +399,6 @@ new_zz_session(struct zz_config *zz_config, const keyval_list_t *msg_vars) {
 		return NULL;
 	}
 
-	const char *kafka_partitioner_key =
-			topics_db_partition_key(topic_handler);
-
 	struct zz_session *sess = NULL;
 	rd_calloc_struct(&sess,
 			 sizeof(*sess),
@@ -476,12 +408,6 @@ new_zz_session(struct zz_config *zz_config, const keyval_list_t *msg_vars) {
 			 -1,
 			 sensor_uuid,
 			 &sess->sensor_uuid,
-			 -1,
-			 topic,
-			 &sess->topic,
-			 kafka_partitioner_key ? -1 : 0,
-			 kafka_partitioner_key,
-			 &sess->kafka_partitioner_key,
 			 RD_MEM_END_TOKEN);
 
 	if (NULL == sess) {
@@ -492,10 +418,6 @@ new_zz_session(struct zz_config *zz_config, const keyval_list_t *msg_vars) {
 	rd_kafka_msg_q_init(&sess->msg_queue);
 	sess->sensor = sensor;
 	sess->topic_handler = topic_handler;
-
-	if (NULL == kafka_partitioner_key) {
-		sess->kafka_partitioner_key = NULL;
-	}
 
 	sess->gen = yajl_gen_alloc(NULL);
 	if (NULL == sess->gen) {

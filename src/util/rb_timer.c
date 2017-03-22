@@ -64,21 +64,17 @@ struct rb_timer {
   */
 int rb_timer_set_interval0(rb_timer_t *timer,
 			   int flags,
-			   const struct itimerspec *ts,
-			   char *err,
-			   size_t errsize) {
+			   const struct itimerspec *ts) {
 	struct itimerspec *old_value = NULL;
 
 	const int settime_rc =
 			timer_settime(timer->timerid, flags, ts, old_value);
 
 	if (0 != settime_rc) {
-		char buf[BUFSIZ];
-		snprintf(err,
-			 errsize,
-			 "Couldn't set timer %p: %s",
-			 timer,
-			 mystrerror(errno, buf, sizeof(buf)));
+		rdlog(LOG_ERR,
+		      "Couldn't set timer %p: %s",
+		      timer,
+		      gnu_strerror_r(errno));
 	}
 
 	return settime_rc;
@@ -148,18 +144,14 @@ rb_timer_t *rb_timer_create(rb_timers_list_t *tlist,
 	const int create_rc = timer_create(
 			CLOCK_REALTIME, &sevp, &new_timer->timerid);
 	if (0 != create_rc) {
-		char buf[BUFSIZ];
-
-		snprintf(err,
-			 errsize,
-			 "Couldn't create kernel timer: %s",
-			 mystrerror(errno, buf, sizeof(buf)));
+		rdlog(LOG_ERR,
+		      "Couldn't create kernel timer: %s",
+		      gnu_strerror_r(errno));
 
 		goto err;
 	}
 
-	const int settime_rc = rb_timer_set_interval(
-			new_timer, interval, err, errsize);
+	const int settime_rc = rb_timer_set_interval(new_timer, interval);
 	if (0 != settime_rc) {
 		goto settime_err;
 	}

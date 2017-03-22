@@ -32,39 +32,23 @@
 #include <string.h>
 
 int init_zz_database(struct zz_database *db) {
-	char errbuf[BUFSIZ];
-
-	memset(db, 0, sizeof(*db));
-	const int pthread_rc = pthread_rwlock_init(&db->rwlock, 0);
-
-	if (pthread_rc != 0) {
-		strerror_r(errno, errbuf, sizeof(errbuf));
-		rdlog(LOG_ERR, "Can't start rwlock: %s", errbuf);
-		return pthread_rc;
-	}
-
-	return 0;
+	db->topics_db = topics_db_new();
+	return db->topics_db != NULL ? 0 : 1;
 }
 
 void free_valid_zz_database(struct zz_database *db) {
-	if (db) {
-		if (db->topics_db) {
-			topics_db_done(db->topics_db);
-		}
-
-		pthread_rwlock_destroy(&db->rwlock);
+	if (db->topics_db) {
+		topics_db_done(db->topics_db);
 	}
 }
 
 struct topic_s *zz_http2k_database_get_topic(struct zz_database *db,
 					     const char *topic,
-					     const char *client_uuid) {
+					     const time_t now) {
 	assert(db);
-	assert(client_uuid);
+	assert(topic);
 
-	pthread_rwlock_rdlock(&db->rwlock);
-	struct topic_s *ret = topics_db_get_topic(db->topics_db, topic);
-	pthread_rwlock_unlock(&db->rwlock);
+	struct topic_s *ret = topics_db_get_topic(db->topics_db, topic, now);
 
 	return ret;
 }

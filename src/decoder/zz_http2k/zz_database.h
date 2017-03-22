@@ -27,9 +27,7 @@
 #include <pthread.h>
 
 struct zz_database {
-	pthread_rwlock_t rwlock;     ///< Topics db lock
 	struct topics_db *topics_db; ///< Topics db
-	void *topics_memory;	 ///< Topics memory pool
 };
 
 /** Initialized a zz_database
@@ -44,12 +42,10 @@ void free_valid_zz_database(struct zz_database *db);
 
 	@param db Database to extract topic handler from
 	@param topic Topic to search for
-	@param client_uuid Sensor uuid to search for
-	@param sensor_info Returned sensor information. Need to be freed
-	with sensor_db_entry_decref
+	@param now Current timestamp for old topic removal
 	@return topic_handler Returned topic handler. Need to be freed with
 	topic_decref. NULL in case of error.
 	*/
 struct topic_s *zz_http2k_database_get_topic(struct zz_database *db,
 					     const char *topic,
-					     const char *client_uuid);
+					     const time_t now);

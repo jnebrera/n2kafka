@@ -158,7 +158,6 @@ static int
 parse_per_listener_opaque_config(struct mse_opaque *opaque, json_t *config) {
 	assert(opaque);
 	assert(config);
-	char err[BUFSIZ];
 	const char *topic_name = NULL;
 
 	const int rc = parse_decoder_info(
@@ -173,30 +172,17 @@ parse_per_listener_opaque_config(struct mse_opaque *opaque, json_t *config) {
 	}
 
 	opaque->rkt = new_rkt_global_config(topic_name,
-					    rb_client_mac_partitioner,
-					    err,
-					    sizeof(err));
+					    rb_client_mac_partitioner);
 
-	if (NULL == opaque->rkt) {
-		rdlog(LOG_ERR,
-		      "Can't create MSE topic %s: %s",
-		      topic_name,
-		      err);
-		return -1;
-	}
-
-	return 0;
+	return (NULL == opaque->rkt) ? -1 : 0;
 }
 
 static int mse_decoder_info_create(struct mse_decoder_info *decoder_info) {
-	char errbuf[BUFSIZ];
-
 	memset(decoder_info, 0, sizeof(*decoder_info));
 	const int rwlock_init_rc = pthread_rwlock_init(
 			&decoder_info->per_listener_enrichment_rwlock, NULL);
 	if (rwlock_init_rc != 0) {
-		strerror_r(errno, errbuf, sizeof(errbuf));
-		rdlog(LOG_ERR, "Can't start rwlock: %s", errbuf);
+		rdlog(LOG_ERR, "Can't start rwlock: %s", gnu_strerror_r(errno));
 	}
 
 	return rwlock_init_rc;
@@ -287,7 +273,6 @@ int mse_opaque_reload(json_t *config, void *_opaque) {
 #ifdef MSE_OPAQUE_MAGIC
 	assert(MSE_OPAQUE_MAGIC == opaque->magic);
 #endif
-	char err[BUFSIZ];
 	const char *topic_name = NULL;
 	json_t *enrichment_aux = NULL;
 	rd_kafka_topic_t *rkt_aux = NULL;
@@ -321,16 +306,9 @@ int mse_opaque_reload(json_t *config, void *_opaque) {
 		topic_name = global_config.topic;
 	}
 
-	rkt_aux = new_rkt_global_config(topic_name,
-					rb_client_mac_partitioner,
-					err,
-					sizeof(err));
+	rkt_aux = new_rkt_global_config(topic_name, rb_client_mac_partitioner);
 
 	if (NULL == rkt_aux) {
-		rdlog(LOG_ERR,
-		      "Can't create MSE topic %s: %s",
-		      topic_name,
-		      err);
 		goto rkt_err;
 	}
 
@@ -727,8 +705,9 @@ process_mse_buffer(const char *buffer,
 		json_error_t _err;
 
 		if (db && !to->subscriptionName) {
-			rdlog(LOG_ERR, "Received MSE message with no "
-				       "subscription name. Discarding.");
+			rdlog(LOG_ERR,
+			      "Received MSE message with no "
+			      "subscription name. Discarding.");
 			continue;
 		}
 

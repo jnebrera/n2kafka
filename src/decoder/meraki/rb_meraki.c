@@ -150,8 +150,6 @@ static struct meraki_opaque *meraki_opaque_cast(void *_opaque) {
 
 static int
 meraki_decoder_info_create(struct meraki_decoder_info *decoder_info) {
-	char errbuf[BUFSIZ];
-
 	memset(decoder_info, 0, sizeof(*decoder_info));
 
 	/// @TODO move global_config to static allocated buffer
@@ -160,8 +158,7 @@ meraki_decoder_info_create(struct meraki_decoder_info *decoder_info) {
 	const int rwlock_init_rc = pthread_rwlock_init(
 			&decoder_info->per_listener_enrichment_rwlock, NULL);
 	if (rwlock_init_rc != 0) {
-		strerror_r(errno, errbuf, sizeof(errbuf));
-		rdlog(LOG_ERR, "Can't start rwlock: %s", errbuf);
+		rdlog(LOG_ERR, "Can't start rwlock: %s", gnu_strerror_r(errno));
 	}
 
 	return rwlock_init_rc;
@@ -205,7 +202,6 @@ parse_per_listener_opaque_config(struct meraki_opaque *opaque, json_t *config) {
 	assert(opaque);
 	assert(config);
 	const char *topic_name = NULL;
-	char err[BUFSIZ];
 
 	const int rc = parse_meraki_decoder_info(
 			&opaque->decoder_info, &topic_name, config);
@@ -219,19 +215,9 @@ parse_per_listener_opaque_config(struct meraki_opaque *opaque, json_t *config) {
 	}
 
 	opaque->rkt = new_rkt_global_config(topic_name,
-					    rb_client_mac_partitioner,
-					    err,
-					    sizeof(err));
+					    rb_client_mac_partitioner);
 
-	if (NULL == opaque->rkt) {
-		rdlog(LOG_ERR,
-		      "Can't create Meraki topic %s: %s",
-		      topic_name,
-		      err);
-		return -1;
-	}
-
-	return rc;
+	return (NULL == opaque->rkt) ? -1 : 0;
 }
 
 int meraki_opaque_creator(struct json_t *config, void **_opaque) {
@@ -282,7 +268,6 @@ int meraki_opaque_reload(json_t *config, void *vopaque) {
 	opaque = meraki_opaque_cast(vopaque);
 	int rc = 0;
 	const char *topic_name = NULL;
-	char err[BUFSIZ];
 
 	json_t *enrichment_aux = opaque->decoder_info.per_listener_enrichment;
 	rd_kafka_topic_t *rkt_aux = NULL;
@@ -308,16 +293,9 @@ int meraki_opaque_reload(json_t *config, void *vopaque) {
 		topic_name = global_config.topic;
 	}
 
-	rkt_aux = new_rkt_global_config(topic_name,
-					rb_client_mac_partitioner,
-					err,
-					sizeof(err));
+	rkt_aux = new_rkt_global_config(topic_name, rb_client_mac_partitioner);
 
 	if (NULL == rkt_aux) {
-		rdlog(LOG_ERR,
-		      "Can't create Meraki topic %s: %s",
-		      topic_name,
-		      err);
 		goto rkt_err;
 	}
 

@@ -33,75 +33,19 @@ static const char TEMP_TEMPLATE[] = "n2ktXXXXXX";
 static const char CONFIG_TEST[] = "{"
 				  "\"brokers\": \"localhost\","
 				  "\"zz_http2k_config\": {"
-				  "\"sensors_uuids\" : {"
-				  "\"abc\" : {"
-				  "\"enrichment\":{"
-				  "\"sensor_uuid\":\"abc\","
-				  "\"a\":1,"
-				  "\"b\":\"c\","
-				  "\"d\":true,"
-				  "\"e\":null"
-				  "}"
-				  "},"
-				  "\"def\" : {"
-				  "\"enrichment\":{"
-				  "\"sensor_uuid\":\"def\","
-				  "\"f\":1,"
-				  "\"g\":\"w\","
-				  "\"h\":false,"
-				  "\"i\":null,"
-				  "\"j\":2.5"
-				  "}"
-				  "},"
-				  "\"ghi\" : {"
-				  "\"enrichment\":{"
-				  "\"o\": {"
-				  "\"a\":90"
-				  "}"
-				  "}"
-				  "},"
-				  "\"jkl\" : {"
-				  "\"enrichment\":{"
-				  "\"v\":[1,2,3,4,5]"
-				  "}"
-				  "}"
-				  "},"
 				  "\"topics\" : {"
-				  "\"rb_flow\": {"
-				  "},"
-				  "\"rb_event\": {"
-				  "}"
+				  "\"def_rb_flow\": {},"
+				  "\"def_rb_event\": {}"
 				  "}"
 				  "}"
 				  "}";
 
-static void prepare_args(const char *topic,
-			 const char *sensor_uuid,
-			 const char *client_ip,
-			 struct pair *mem,
-			 size_t memsiz,
-			 keyval_list_t *list) {
-	assert(3 == memsiz);
-	memset(mem, 0, sizeof(*mem) * 3);
-
-	mem[0].key = "topic";
-	mem[0].value = topic;
-	mem[1].key = "sensor_uuid";
-	mem[1].value = sensor_uuid;
-	mem[2].key = "client_ip";
-	mem[2].value = client_ip;
-
-	add_key_value_pair(list, &mem[0]);
-	add_key_value_pair(list, &mem[1]);
-	add_key_value_pair(list, &mem[2]);
-}
-
 /// Trying to decode a JSON closing when you still have not open any json
 static void test_zz_decoder_closing() {
-	struct pair mem[3];
+	struct pair mem[7];
 	keyval_list_t args;
 	keyval_list_init(&args);
-	prepare_args("rb_flow",
+	prepare_args("/v1/rb_flow",
 		     "def",
 		     "127.0.0.1",
 		     mem,

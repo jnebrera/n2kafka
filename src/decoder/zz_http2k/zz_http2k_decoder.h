@@ -26,9 +26,6 @@
 #include "util/pair.h"
 
 #include <jansson.h>
-#include <librd/rdavl.h>
-#include <librd/rdsysqueue.h>
-#include <librdkafka/rdkafka.h>
 
 #include <pthread.h>
 #include <stdint.h>

@@ -39,9 +39,7 @@
     @param partitioner Partitioner function
     @return New topic handler */
 rd_kafka_topic_t *new_rkt_global_config(const char *topic_name,
-					rb_rd_kafka_partitioner_t partitioner,
-					char *err,
-					size_t errsize) {
+					rb_rd_kafka_partitioner_t partitioner) {
 	rd_kafka_topic_conf_t *template_config = global_config.kafka_topic_conf;
 	rd_kafka_topic_conf_t *my_rkt_conf =
 			rd_kafka_topic_conf_dup(template_config);
@@ -58,7 +56,9 @@ rd_kafka_topic_t *new_rkt_global_config(const char *topic_name,
 	rd_kafka_topic_t *ret = rd_kafka_topic_new(
 			global_config.rk, topic_name, my_rkt_conf);
 	if (NULL == ret) {
-		strerror_r(errno, err, errsize);
+		rdlog(LOG_ERR,
+		      "Couldn't create kafka topic: %s",
+		      gnu_strerror_r(errno));
 		rd_kafka_topic_conf_destroy(my_rkt_conf);
 	}
 
@@ -160,7 +160,6 @@ void send_to_kafka(rd_kafka_topic_t *rkt,
 		   int flags,
 		   void *opaque) {
 	int retried = 0;
-	char errbuf[ERROR_BUFFER_SIZE];
 
 	do {
 		if (NULL == rkt) {
@@ -190,7 +189,7 @@ void send_to_kafka(rd_kafka_topic_t *rkt,
 			// %s",rd_kafka_errno2err(errno));
 			rblog(LOG_ERR,
 			      "Failed to produce message: %s",
-			      mystrerror(errno, errbuf, ERROR_BUFFER_SIZE));
+			      gnu_strerror_r(errno));
 			if (flags & RD_KAFKA_MSG_F_FREE)
 				free(buf);
 			break;
@@ -282,30 +281,14 @@ int send_array_to_kafka(rd_kafka_topic_t *rkt,
 	return send_array_to_rkt(rkt, RD_KAFKA_MSG_F_FREE, msgs);
 }
 
-int send_array_to_kafka_topics(struct rkt_array *rkt_array,
-			       struct kafka_message_array *msgs) {
-	int produce_rc = 0;
-	size_t rkt;
-
-	for (rkt = 0; rkt < rkt_array->count; ++rkt) {
-		const int flags = rkt == rkt_array->count - 1
-						  ? RD_KAFKA_MSG_F_FREE
-						  : RD_KAFKA_MSG_F_COPY;
-		produce_rc += send_array_to_rkt(
-				rkt_array->rkt[rkt], flags, msgs);
-	}
-
-	return produce_rc;
-}
-
 void dumb_decoder(char *buffer,
 		  size_t buf_size,
 		  const keyval_list_t *keyval __attribute__((unused)),
 		  void *listener_callback_opaque,
 		  void **sessionp __attribute__((unused))) {
 
-	rd_kafka_topic_t *rkt = new_rkt_global_config(
-			default_topic_name(), NULL, NULL, 0);
+	rd_kafka_topic_t *rkt =
+			new_rkt_global_config(default_topic_name(), NULL);
 	send_to_kafka(rkt,
 		      buffer,
 		      buf_size,
@@ -336,39 +319,4 @@ void stop_rdkafka() {
 	rd_kafka_destroy(global_config.rk);
 	while (0 != rd_kafka_wait_destroyed(5000))
 		;
-}
-
-void rkt_array_swap(struct rkt_array *a, struct rkt_array *b) {
-	struct rkt_array temp;
-	memcpy(&temp, a, sizeof(temp));
-	memcpy(a, b, sizeof(*a));
-	memcpy(b, &temp, sizeof(*b));
-}
-
-void rkt_array_done(struct rkt_array *rkt_array) {
-	size_t i;
-	for (i = 0; i < rkt_array->count; ++i) {
-		rd_kafka_topic_destroy(rkt_array->rkt[i]);
-	}
-	free(rkt_array->rkt);
-	memset(rkt_array, 0, sizeof(*rkt_array));
-}
-
-int kafka_get_topic_metadata(rd_kafka_topic_t *rkt,
-			     const struct rd_kafka_metadata **metadata,
-			     int timeout_ms) {
-	rd_kafka_resp_err_t err = RD_KAFKA_RESP_ERR__TIMED_OUT;
-
-	while (err == RD_KAFKA_RESP_ERR__TIMED_OUT) {
-		/* Fetch metadata */
-		err = rd_kafka_metadata(
-				global_config.rk, 0, rkt, metadata, timeout_ms);
-		if (err != RD_KAFKA_RESP_ERR_NO_ERROR) {
-			fprintf(stderr,
-				"%% Failed to acquire metadata: %s\n",
-				rd_kafka_err2str(err));
-		}
-	}
-
-	return err;
 }

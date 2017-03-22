@@ -23,10 +23,10 @@
 #include <librd/rdlog.h>
 #include <stdio.h>
 
+#include "util/util.h"
+
 const char *
 sockaddr2str(char *buf, size_t buf_size, struct sockaddr *sockaddr) {
-	char errbuf[BUFSIZ];
-
 	const void *addr_buf = NULL;
 	const char *ret = NULL;
 
@@ -48,8 +48,9 @@ sockaddr2str(char *buf, size_t buf_size, struct sockaddr *sockaddr) {
 	}
 
 	if (NULL == ret) {
-		strerror_r(errno, errbuf, sizeof(errbuf));
-		rdlog(LOG_ERR, "Can't print client address: %s", errbuf);
+		rdlog(LOG_ERR,
+		      "Can't print client address: %s",
+		      gnu_strerror_r(errno));
 	}
 
 	return ret;

@@ -84,8 +84,6 @@ static enum thread_mode thread_mode_str(const char *mode_str) {
 #define READ_BUFFER_SIZE 4096
 static const struct timeval READ_SELECT_TIMEVAL = {.tv_sec = 20, .tv_usec = 0};
 static const struct timeval WRITE_SELECT_TIMEVAL = {.tv_sec = 5, .tv_usec = 0};
-#define ERROR_BUFFER_SIZE 256
-static __thread char errbuf[ERROR_BUFFER_SIZE];
 
 static int do_shutdown = 0;
 
@@ -108,7 +106,7 @@ static int createListenSocket(const char *proto, uint16_t listen_port) {
 	if (listenfd == -1) {
 		rdlog(LOG_ERR,
 		      "Error creating socket: %s",
-		      mystrerror(errno, errbuf, ERROR_BUFFER_SIZE));
+		      gnu_strerror_r(errno));
 		return 0;
 	}
 
@@ -121,7 +119,7 @@ static int createListenSocket(const char *proto, uint16_t listen_port) {
 	if (setsockopt_ret < 0) {
 		rdlog(LOG_WARNING,
 		      "Error setting socket option: %s",
-		      mystrerror(errno, errbuf, ERROR_BUFFER_SIZE));
+		      gnu_strerror_r(errno));
 	}
 
 	struct sockaddr_in server_addr;
@@ -138,7 +136,7 @@ static int createListenSocket(const char *proto, uint16_t listen_port) {
 	if (bind_ret == -1) {
 		rdlog(LOG_ERR,
 		      "Error binding socket: %s",
-		      mystrerror(errno, errbuf, ERROR_BUFFER_SIZE));
+		      gnu_strerror_r(errno));
 		close(listenfd);
 		return -1;
 	}
@@ -148,7 +146,7 @@ static int createListenSocket(const char *proto, uint16_t listen_port) {
 		if (listen_ret == -1) {
 			rdlog(LOG_ERR,
 			      "Error in listen: %s",
-			      mystrerror(errno, errbuf, ERROR_BUFFER_SIZE));
+			      gnu_strerror_r(errno));
 			close(listenfd);
 			return -1;
 		}
@@ -258,7 +256,7 @@ static int send_to_socket(int fd, const char *data, size_t len) {
 	} else {
 		rdlog(LOG_ERR,
 		      "Error writing to socket: %s",
-		      mystrerror(errno, errbuf, ERROR_BUFFER_SIZE));
+		      gnu_strerror_r(errno));
 		return select_result;
 	}
 }
@@ -286,7 +284,7 @@ static void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 	if (EV_ERROR & revents) {
 		rdlog(LOG_ERR,
 		      "Read callback error: %s",
-		      mystrerror(errno, errbuf, ERROR_BUFFER_SIZE));
+		      gnu_strerror_r(errno));
 	}
 
 	struct connection_private *connection =
@@ -312,9 +310,7 @@ static void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 			free(buffer);
 			return;
 		} else {
-			rdlog(LOG_ERR,
-			      "Recv error: %s",
-			      mystrerror(errno, errbuf, ERROR_BUFFER_SIZE));
+			rdlog(LOG_ERR, "Recv error: %s", gnu_strerror_r(errno));
 			free(buffer);
 			close_socket_and_stop_watcher(loop, watcher);
 			return;
@@ -347,7 +343,7 @@ static void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 			rdlog(LOG_ERR,
 			      "Cannot send first response to %s socket: %s",
 			      connection->client,
-			      mystrerror(errno, errbuf, ERROR_BUFFER_SIZE));
+			      gnu_strerror_r(errno));
 			close_socket_and_stop_watcher(loop, watcher);
 		}
 
@@ -393,11 +389,9 @@ static void accept_cb(struct ev_loop *loop __attribute__((unused)),
 			(struct socket_listener_private *)watcher->data;
 	int client_sd;
 	char client_buf[BUFSIZ];
-	char buf[512];
 
 	if (EV_ERROR & revents) {
-		strerror_r(errno, buf, sizeof(buf));
-		rdlog(LOG_ERR, "Invalid event: %s", buf);
+		rdlog(LOG_ERR, "Invalid event: %s", gnu_strerror_r(errno));
 		return;
 	}
 
@@ -406,8 +400,7 @@ static void accept_cb(struct ev_loop *loop __attribute__((unused)),
 			   &client_len);
 
 	if (client_sd < 0) {
-		strerror_r(errno, buf, sizeof(buf));
-		rdlog(LOG_ERR, "accept error: %s", buf);
+		rdlog(LOG_ERR, "accept error: %s", gnu_strerror_r(errno));
 		return;
 	}
 
@@ -498,11 +491,8 @@ static void async_cb(struct ev_loop *loop,
 		     int revents) {
 	struct worker_args *args = ev_userdata(loop);
 
-	char buf[512];
-
 	if (EV_ERROR & revents) {
-		strerror_r(errno, buf, sizeof(buf));
-		rdlog(LOG_ERR, "Invalid event: %s", buf);
+		rdlog(LOG_ERR, "Invalid event: %s", gnu_strerror_r(errno));
 		return;
 	}
 
@@ -626,9 +616,7 @@ static void *main_consumer_loop_udp(void *_thread_info) {
 			    errno != EINTR) { /* NOT INTERRUPTED */
 				rdlog(LOG_ERR,
 				      "listen select error: %s",
-				      mystrerror(errno,
-						 errbuf,
-						 ERROR_BUFFER_SIZE));
+				      gnu_strerror_r(errno));
 			} else if (select_result > 0) {
 				recv_result = receive_from_socket(
 						thread_info->listenfd,
@@ -646,9 +634,7 @@ static void *main_consumer_loop_udp(void *_thread_info) {
 			} else {
 				rdlog(LOG_ERR,
 				      "Recv error: %s",
-				      mystrerror(errno,
-						 errbuf,
-						 ERROR_BUFFER_SIZE));
+				      gnu_strerror_r(errno));
 				free(buffer);
 				break;
 			}
@@ -840,8 +826,9 @@ create_socket_listener(struct json_t *config,
 	const int pcreate_rc = pthread_create(
 			&priv->main_loop, NULL, main_socket_loop, priv);
 	if (pcreate_rc != 0) {
-		char err[BUFSIZ];
-		strerror_r(pcreate_rc, err, sizeof(err));
+		rdlog(LOG_ERR,
+		      "Couldn't create pthread: %s",
+		      gnu_strerror_r(errno));
 		free(priv);
 		free(l);
 		return NULL;

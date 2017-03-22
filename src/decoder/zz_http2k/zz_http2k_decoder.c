@@ -44,7 +44,6 @@
 #include <string.h>
 
 static const char RB_HTTP2K_CONFIG_KEY[] = "zz_http2k_config";
-static const char RB_TOPICS_KEY[] = "topics";
 
 enum warning_times_pos {
 	LAST_WARNING_TIME__QUEUE_FULL,
@@ -91,76 +90,6 @@ kafka_error_to_warning_time_pos(rd_kafka_resp_err_t err) {
 	};
 }
 
-static int
-parse_topic_list_config(json_t *config, struct topics_db *new_topics_db) {
-	const char *key;
-	json_t *value;
-	json_error_t jerr;
-	json_t *topic_list = NULL;
-	int pass = 0;
-
-	assert(config);
-
-	const int json_unpack_rc = json_unpack_ex(
-			config, &jerr, 0, "{s:o}", RB_TOPICS_KEY, &topic_list);
-
-	if (0 != json_unpack_rc) {
-		rdlog(LOG_ERR, "%s", jerr.text);
-		return json_unpack_rc;
-	}
-
-	if (!json_is_object(topic_list)) {
-		rdlog(LOG_ERR, "%s is not an object", RB_TOPICS_KEY);
-		return -1;
-	}
-
-	const size_t array_size = json_object_size(topic_list);
-	if (0 == array_size) {
-		rdlog(LOG_ERR, "%s has no childs", RB_TOPICS_KEY);
-		return -1;
-	}
-
-	json_object_foreach(topic_list, key, value) {
-		const char *topic_name = key;
-		rd_kafka_topic_t *rkt = NULL;
-
-		if (!json_is_object(value)) {
-			if (pass == 0) {
-				rdlog(LOG_ERR,
-				      "Topic %s is not an object. Discarding.",
-				      topic_name);
-			}
-			continue;
-		}
-
-		rd_kafka_topic_conf_t *my_rkt_conf = rd_kafka_topic_conf_dup(
-				global_config.kafka_topic_conf);
-		if (NULL == my_rkt_conf) {
-			rdlog(LOG_ERR,
-			      "Couldn't topic_conf_dup in topic %s",
-			      topic_name);
-			continue;
-		}
-
-		rkt = rd_kafka_topic_new(
-				global_config.rk, topic_name, my_rkt_conf);
-		if (NULL == rkt) {
-			char buf[BUFSIZ];
-			strerror_r(errno, buf, sizeof(buf));
-			rdlog(LOG_ERR,
-			      "Can't create topic %s: %s",
-			      topic_name,
-			      buf);
-			rd_kafka_topic_conf_destroy(my_rkt_conf);
-			continue;
-		}
-
-		topics_db_add(new_topics_db, rkt);
-	}
-
-	return 0;
-}
-
 int zz_opaque_creator(json_t *config __attribute__((unused)), void **_opaque) {
 	size_t i;
 
@@ -197,40 +126,9 @@ int zz_opaque_reload(json_t *config, void *opaque) {
 }
 
 int zz_decoder_reload(void *vzz_config, const json_t *config) {
-	int rc = 0;
-	struct zz_config *zz_config = vzz_config;
-	struct topics_db *topics_db = NULL;
-
-	assert(zz_config);
-	assert_zz_config(zz_config);
-	assert(config);
-
-	json_t *my_config = json_deep_copy(config);
-	if (unlikely(my_config == NULL)) {
-		rdlog(LOG_ERR, "Couldn't deep_copy config (out of memory?)");
-		return -1;
-	}
-
-	topics_db = topics_db_new();
-	const int topic_list_rc = parse_topic_list_config(my_config, topics_db);
-	if (topic_list_rc != 0) {
-		rc = -1;
-		goto err;
-	}
-
-	pthread_rwlock_wrlock(&zz_config->database.rwlock);
-	swap_ptrs(topics_db, zz_config->database.topics_db);
-	pthread_rwlock_unlock(&zz_config->database.rwlock);
-
-err:
-
-	if (topics_db) {
-		topics_db_done(topics_db);
-	}
-
-	json_decref(my_config);
-
-	return rc;
+	(void)vzz_config;
+	(void)config;
+	return 0;
 }
 
 void zz_opaque_done(void *_opaque) {
@@ -243,6 +141,7 @@ void zz_opaque_done(void *_opaque) {
 }
 
 int parse_zz_config(void *vconfig, const struct json_t *config) {
+	(void)config;
 	struct zz_config *zz_config = vconfig;
 
 	assert(vconfig);
@@ -255,12 +154,6 @@ int parse_zz_config(void *vconfig, const struct json_t *config) {
 		return -1;
 	}
 
-	rd_kafka_conf_t *rk_conf = rd_kafka_conf_dup(global_config.kafka_conf);
-	if (NULL == rk_conf) {
-		rdlog(LOG_CRIT, "Couldn't dup conf (out of memory?)");
-		goto rk_conf_dup_err;
-	}
-
 #ifdef ZZ_CONFIG_MAGIC
 	zz_config->magic = ZZ_CONFIG_MAGIC;
 #endif // ZZ_CONFIG_MAGIC
@@ -270,20 +163,7 @@ int parse_zz_config(void *vconfig, const struct json_t *config) {
 		return -1;
 	}
 
-	/// @TODO error treatment
-	const int decoder_reload_rc = zz_decoder_reload(zz_config, config);
-	if (decoder_reload_rc != 0) {
-		goto reload_err;
-	}
-
 	return 0;
-
-reload_err:
-	free_valid_zz_database(&zz_config->database);
-/// @TODO: Can't say if we have consumed it!
-// rd_kafka_conf_destroy(rk_conf);
-rk_conf_dup_err:
-	return -1;
 }
 
 /** Produce a batch of messages

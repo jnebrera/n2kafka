@@ -11,7 +11,7 @@ mkl_meta_set "description" "oneline"   "The Network to kafka conversion service"
 mkl_meta_set "description" "long"      "Consume messages from tcp/udp/http and send them via kafka"
 mkl_meta_set "description" "copyright" "Copyright (c) 2014-2016 Eneo Tecnologia S.L."
 
-mkl_mkvar_append CPPFLAGS CPPFLAGS "-DFORTIFY_SOURCE=2"
+mkl_mkvar_append CPPFLAGS CPPFLAGS "-DFORTIFY_SOURCE=2 -D_GNU_SOURCE"
 mkl_mkvar_append CPPFLAGS CPPFLAGS "-fno-strict-aliasing" # Needed by libev
 mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wunused -Wcast-qual -Wextra -Wsign-conversion -Wshadow"
 #mkl_mkvar_append CPPFLAGS CPPFLAGS "-ftrack-macro-expansion=2"

@@ -22,66 +22,65 @@
 #include "rb_json_tests.c"
 #include "zz_http2k_tests.c"
 
-#include "../src/listener/http.c"
+#include "src/decoder/zz_http2k/zz_http2k_parser.c"
 
 static const char CONFIG_TEST[] = "{"
 				  "\"brokers\": \"kafka\","
 				  "\"zz_http2k_config\": {"
 				  "\"topics\" : {"
-				  "\"rb_flow\": {"
-				  "\"partition_key\":\"client_mac\","
-				  "\"partition_algo\":\"mac\""
-				  "},"
-				  "\"rb_event\": {"
-				  "}"
+				  "\"abc_topic1\": {},"
+				  "\"abc_topic2\": {},"
+				  "\"def_topic1\": {},"
+				  "\"def_topic2\": {}"
 				  "}"
 				  "}"
 				  "}";
 
-static const char *VALID_URL = "/rbdata/abc/rb_flow";
+static const char *VALID_URL[] = {
+		"/v1/topic1",
+		"/v1/topic1/blabla",
+		"/v1/topic1;blabla",
+		"/v1/topic1/blabla",
+		"/v1/topic1?blabla",
+		"/v1/topic1:blabla",
+		"/v1/topic1@blabla",
+		"/v1/topic1=blabla",
+		"/v1/topic1&blabla",
+};
+
+static const char *INVALID_URL[] = {
+		"", "/", "/noversion", "/v2/topic", "/v1/", "?v1/topic",
+};
 
 static void test_validate_uri() {
 	test_zz_decoder_setup(CONFIG_TEST);
 
-	int allok = 1;
-	char *topic = NULL, *uuid = NULL;
-	int validation_rc = zz_http2k_validation(
-			NULL /* @TODO this should change */,
-			VALID_URL,
-			&allok,
-			&topic,
-			&uuid,
-			"test_ip");
+	size_t i;
+	for (i = 0; i < RD_ARRAYSIZE(VALID_URL); ++i) {
+		struct {
+			const char *buf;
+			size_t buf_size;
+		} topic;
 
-	assert_true(MHD_YES == validation_rc);
-	assert_true(0 == strcmp(topic, "rb_flow"));
-	assert_true(0 == strcmp(uuid, "abc"));
+		const int extract_rc = extract_url_topic(
+				VALID_URL[i], &topic.buf, &topic.buf_size);
 
-	free(topic);
-	free(uuid);
+		assert_int_equal(0, extract_rc);
+		assert_true(0 == strncmp(topic.buf, "topic1", topic.buf_size));
+	}
+
+	for (i = 0; i < RD_ARRAYSIZE(INVALID_URL); ++i) {
+		struct {
+			const char *buf;
+			size_t buf_size;
+		} topic;
+
+		const int extract_rc = extract_url_topic(
+				INVALID_URL[i], &topic.buf, &topic.buf_size);
+		assert_int_not_equal(extract_rc, 0);
+	}
 
 	test_zz_decoder_teardown();
-}
-
-static void prepare_args(const char *topic,
-			 const char *sensor_uuid,
-			 const char *client_ip,
-			 struct pair *mem,
-			 size_t memsiz,
-			 keyval_list_t *list) {
-	assert_true(3 == memsiz);
-	memset(mem, 0, sizeof(*mem) * 3);
-
-	mem[0].key = "topic";
-	mem[0].value = topic;
-	mem[1].key = "sensor_uuid";
-	mem[1].value = sensor_uuid;
-	mem[2].key = "client_ip";
-	mem[2].value = client_ip;
-
-	add_key_value_pair(list, &mem[0]);
-	add_key_value_pair(list, &mem[1]);
-	add_key_value_pair(list, &mem[2]);
 }
 
 static void check_zz_decoder_double0(struct zz_session **sess,
@@ -238,10 +237,10 @@ static void check_zz_decoder_object(struct zz_session **sess,
 }
 
 static void test_zz_decoder_simple() {
-	struct pair mem[3];
+	struct pair mem[7];
 	keyval_list_t args;
 	keyval_list_init(&args);
-	prepare_args("rb_flow",
+	prepare_args("/v1/topic1",
 		     "abc",
 		     "127.0.0.1",
 		     mem,
@@ -279,10 +278,10 @@ static void test_zz_decoder_simple() {
 
 /// Simple decoding with another enrichment
 static void test_zz_decoder_simple_def() {
-	struct pair mem[3];
+	struct pair mem[7];
 	keyval_list_t args;
 	keyval_list_init(&args);
-	prepare_args("rb_flow",
+	prepare_args("/v1/topic1",
 		     "def",
 		     "127.0.0.1",
 		     mem,
@@ -321,10 +320,10 @@ static void test_zz_decoder_simple_def() {
 
 /** Two messages in the same input string */
 static void test_zz_decoder_double() {
-	struct pair mem[3];
+	struct pair mem[7];
 	keyval_list_t args;
 	keyval_list_init(&args);
-	prepare_args("rb_flow",
+	prepare_args("/v1/topic1",
 		     "abc",
 		     "127.0.0.1",
 		     mem,
@@ -363,10 +362,10 @@ static void test_zz_decoder_double() {
 }
 
 static void test_zz_decoder_half() {
-	struct pair mem[3];
+	struct pair mem[7];
 	keyval_list_t args;
 	keyval_list_init(&args);
-	prepare_args("rb_flow",
+	prepare_args("/v1/topic1",
 		     "abc",
 		     "127.0.0.1",
 		     mem,
@@ -404,10 +403,10 @@ static void test_zz_decoder_half() {
 
 /** Checks that the decoder can handle to receive the half of a string */
 static void test_zz_decoder_half_string() {
-	struct pair mem[3];
+	struct pair mem[7];
 	keyval_list_t args;
 	keyval_list_init(&args);
-	prepare_args("rb_flow",
+	prepare_args("/v1/topic1",
 		     "abc",
 		     "127.0.0.1",
 		     mem,
@@ -450,10 +449,10 @@ static void test_zz_decoder_half_string() {
 
 /** Checks that the decoder can handle to receive the half of a key */
 static void test_zz_decoder_half_key() {
-	struct pair mem[3];
+	struct pair mem[7];
 	keyval_list_t args;
 	keyval_list_init(&args);
-	prepare_args("rb_flow",
+	prepare_args("/v1/topic1",
 		     "abc",
 		     "127.0.0.1",
 		     mem,
@@ -496,10 +495,10 @@ static void test_zz_decoder_half_key() {
 
 /** Test object that don't need to enrich */
 static void test_zz_decoder_objects() {
-	struct pair mem[3];
+	struct pair mem[7];
 	keyval_list_t args;
 	keyval_list_init(&args);
-	prepare_args("rb_flow",
+	prepare_args("/v1/topic1",
 		     "abc",
 		     "127.0.0.1",
 		     mem,

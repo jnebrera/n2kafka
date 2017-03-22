@@ -756,15 +756,7 @@ void decoder_deregister_timer(rb_timer_t *timer) {
 int decoder_timer_set_interval0(struct rb_timer *timer,
 				int flags,
 				const struct itimerspec *ts) {
-	char err[BUFSIZ];
-
-	const int rc = rb_timer_set_interval0(
-			timer, flags, ts, err, sizeof(err));
-	if (0 != rc) {
-		rdlog(LOG_ERR, "Couldn't set timer %p interva: %s", timer, err);
-	}
-
-	return rc;
+	return rb_timer_set_interval0(timer, flags, ts);
 }
 
 void execute_global_timers() {

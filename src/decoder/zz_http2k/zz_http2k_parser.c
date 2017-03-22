@@ -166,13 +166,69 @@ static const yajl_callbacks callbacks = {zz_parse_null,
 					 zz_parse_start_array,
 					 zz_parse_end_array};
 
+/* Return code: Valid uri prefix (i.e., /v1/)*/
+static int
+extract_url_topic(const char *url, const char **topic, size_t *topic_size) {
+	assert(url);
+	assert(topic);
+	assert(topic_size);
+
+	if (unlikely('/' != url[0])) {
+		return -1;
+	}
+
+	url++; // skip slash
+	*topic = strchrnul(url, '/');
+	if (unlikely(NULL == *topic)) {
+		return -1;
+	}
+
+	(*topic)++;
+	const int valid_version =
+			0 == strncmp(url, "v1/", (size_t)(*topic - url));
+	if (unlikely(!valid_version)) {
+		return -1;
+	}
+	*topic_size = strcspn(*topic, ";/?:@=&");
+	if (unlikely(*topic_size == 0)) {
+		return -1;
+	}
+
+	return 0;
+}
+
 /// @TODO do not use zz_config, but zz_config->database!
 struct zz_session *
 new_zz_session(struct zz_config *zz_config, const keyval_list_t *msg_vars) {
+	const char *client_ip = valueof(msg_vars, "D-Client-IP");
+	const char *url = valueof(msg_vars, "D-HTTP-URI");
+	struct {
+		const char *buf;
+		size_t buf_len;
+	} topic, client_uuid;
 
-	const char *client_ip = valueof(msg_vars, "client_ip");
-	const char *sensor_uuid = valueof(msg_vars, "sensor_uuid");
-	const char *topic = valueof(msg_vars, "topic");
+	const int parse_url_rc =
+			extract_url_topic(url, &topic.buf, &topic.buf_len);
+	if (unlikely(0 != parse_url_rc)) {
+		rdlog(LOG_ERR, "Couldn't extract url topic from %s", url);
+		return NULL;
+	}
+	client_uuid.buf = valueof(msg_vars, "X-Consumer-ID");
+
+	if (unlikely(NULL == client_uuid.buf)) {
+		return NULL;
+	}
+	client_uuid.buf_len = strlen(client_uuid.buf);
+
+	char uuid_topic[topic.buf_len + sizeof((char)'_') +
+			client_uuid.buf_len + sizeof((char)'\0')];
+	memcpy(uuid_topic, client_uuid.buf, client_uuid.buf_len);
+	uuid_topic[client_uuid.buf_len] = '_';
+	memcpy(&uuid_topic[client_uuid.buf_len + sizeof((char)'_')],
+	       topic.buf,
+	       topic.buf_len);
+	uuid_topic[client_uuid.buf_len + sizeof((char)'_') + topic.buf_len] =
+			'\0';
 
 	struct zz_session *sess = calloc(1, sizeof(*sess));
 	if (unlikely(NULL == sess)) {
@@ -181,11 +237,11 @@ new_zz_session(struct zz_config *zz_config, const keyval_list_t *msg_vars) {
 	}
 
 	sess->topic_handler = zz_http2k_database_get_topic(
-			&zz_config->database, topic, sensor_uuid);
+			&zz_config->database, uuid_topic, time(NULL));
 	if (unlikely(NULL == sess->topic_handler)) {
 		rdlog(LOG_ERR,
 		      "Invalid topic %s received from client %s",
-		      topic,
+		      topic.buf,
 		      client_ip);
 		goto topic_err;
 	}

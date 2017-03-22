@@ -50,7 +50,7 @@
 		p2 = aux;                                                      \
 	} while (0)
 
-static inline char *mystrerror(int _errno, char *buffer, size_t buffer_size) {
-	strerror_r(_errno, buffer, buffer_size);
-	return buffer;
+static __attribute__((unused)) const char *gnu_strerror_r(int t_errno) {
+	static __thread char buffer[512];
+	return strerror_r(t_errno, buffer, sizeof(buffer));
 }

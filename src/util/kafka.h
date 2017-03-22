@@ -33,19 +33,6 @@ struct kafka_message_array {
 	struct rd_kafka_message_s *msgs; /* Real msgs */
 };
 
-/// Array of topics
-struct rkt_array {
-	/// Topics
-	rd_kafka_topic_t **rkt;
-	/// Number of topics
-	size_t count;
-};
-
-/** Swap two topics array */
-void rkt_array_swap(struct rkt_array *a, struct rkt_array *b);
-/** deallocate topics array resources */
-void rkt_array_done(struct rkt_array *rkt_array);
-
 void init_rdkafka();
 void send_to_kafka(rd_kafka_topic_t *rkt,
 		   char *buffer,
@@ -95,17 +82,6 @@ int save_kafka_msg_key_partition_in_array(struct kafka_message_array *array,
 int send_array_to_kafka(rd_kafka_topic_t *rkt,
 			struct kafka_message_array *msgs);
 
-/** Send an array of messages to many kafka topics
-  @rkt_array Topics to send messages
-  @msgs Messages to send
-  @return Messages sent. It should be rkt_size*msgs->count.
-  @note msgs[i]->opaque will be lost if you use it!
-  @note You CAN'T use msgs[i].msg anymore, regardless of what this function
-  return
-  */
-int send_array_to_kafka_topics(struct rkt_array *rkt_array,
-			       struct kafka_message_array *msgs);
-
 void kafka_poll();
 
 typedef int32_t (*rb_rd_kafka_partitioner_t)(const rd_kafka_topic_t *rkt,
@@ -120,26 +96,12 @@ typedef int32_t (*rb_rd_kafka_partitioner_t)(const rd_kafka_topic_t *rkt,
     @param partitioner Partitioner function
     @return New topic handler */
 rd_kafka_topic_t *new_rkt_global_config(const char *topic_name,
-					rb_rd_kafka_partitioner_t partitioner,
-					char *err,
-					size_t errsiz);
+					rb_rd_kafka_partitioner_t partitioner);
 
 /** Default kafka topic name (if any)
 	@return Default kafka topic name (if any)
 	*/
 const char *default_topic_name();
-
-/** Get metadata topic
-  @param rkt Topic to obtain information
-  @param metadata pointer to hold metadata result. The \p *metadatap pointer
-	must be released with rd_kafka_metadata_destroy().
-  @param maximum response time before failing. If we get this timeout, this
-	function will retry forever.
-  @return RD_KAFKA_RESP_ERR_X code
-	*/
-int kafka_get_topic_metadata(rd_kafka_topic_t *rkt,
-			     const struct rd_kafka_metadata **metadata,
-			     int timeout_ms);
 
 void flush_kafka();
 void stop_rdkafka();

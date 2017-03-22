@@ -28,31 +28,20 @@ struct topic_s;
 void topic_decref(struct topic_s *topic);
 
 /** Topics database.
-	@warning The only function thread safe is topics_db_get_topic */
+  @note All functions are thread safe, and you can keep a topic even after
+   call topics_db_done */
 struct topics_db;
 
 /** It creates a new database */
 struct topics_db *topics_db_new();
 
-/** Add a topic into a database
-  @param topics_db Topics database
-  @param topic Topic to produce
-  @return Newly created topic handler.
-  */
-struct topic_s *
-topics_db_add(struct topics_db *topics_db, rd_kafka_topic_t *rkt);
-
 /** Get a topic from database.
 	@param db Database
 	@param topic Topic name to search
+	@param now current timestamp for old topics removal
 	@return Associated topic. Need to decref returned value when finish. */
-struct topic_s *topics_db_get_topic(struct topics_db *db, const char *topic);
-
-/** Check if a topic exists in database
-	@param db Database to search in.
-	@param topic Topic to search for.
-	@return 1 if exists, 0 if not */
-int topics_db_topic_exists(struct topics_db *db, const char *topic);
+struct topic_s *
+topics_db_get_topic(struct topics_db *db, const char *topic, const time_t now);
 
 /** Extract rdkafka topic from topic handler
 	@param topic topic handler

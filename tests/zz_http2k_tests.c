@@ -50,6 +50,34 @@ static void test_zz_decoder_teardown() {
 	free_global_config();
 }
 
+/// Prepare decoder args
+static void prepare_args(const char *uri,
+			 const char *consumer_uuid,
+			 const char *client_ip,
+			 struct pair *mem,
+			 size_t memsiz,
+			 keyval_list_t *list) {
+	const struct pair template[] = {
+			// clang-format off
+		{ .key = "D-Client-IP", .value = client_ip, },
+		{ .key = "D-HTTP-URI", .value = uri, },
+		{ .key = "X-Consumer-ID", .value = consumer_uuid},
+		{ .key = "X-Consumer-Custom-ID", .value = "not_important"},
+		{ .key = "X-Consumer-Username", .value = "not_important"},
+		{ .key = "X-Credential-Username", .value = "not_important"},
+		{ .key = "X-Anonymous-Consumer", .value = "false",}
+			// clang-format on
+	};
+
+	assert_true(memsiz >= RD_ARRAYSIZE(template));
+	memcpy(mem, template, sizeof(template));
+
+	size_t i;
+	for (i = 0; i < RD_ARRAYSIZE(template); ++i) {
+		add_key_value_pair(list, &mem[i]);
+	}
+}
+
 /** Template for zz_decoder test
 	@param args Arguments like client_ip, topic, etc
 	@param msgs Input messages

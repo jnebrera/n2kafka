@@ -22,7 +22,6 @@
 #ifdef HAVE_LIBMICROHTTPD
 
 #define HTTP_UNUSED __attribute__((unused))
-#define POSTBUFFERSIZE (10 * 1024)
 
 #define MODE_THREAD_PER_CONNECTION "thread_per_connection"
 #define MODE_SELECT "select"
@@ -68,9 +67,6 @@ struct http_private {
 	/// Associated daemon
 	struct MHD_Daemon *d;
 
-	/// Check redborder-style URI
-	int redborder_uri;
-
 	/// Callback associated with received data
 	decoder_callback callback;
 
@@ -114,18 +110,11 @@ static size_t string_grow(struct string *str, size_t delta) {
 
 /// Per connection information
 struct conn_info {
-	/// URL specified Topic
-	const char *topic;
-	/// URL specified client
-	const char *client;
-	/// URL specified sensor uuid
-	const char *sensor_uuid;
 	/// Per connection string
 	struct string str;
 	/// Decoders parameters
+	/// @todo no need for a linked list, it's better with a pair array
 	keyval_list_t decoder_params;
-	/// Memory pool for decoder_params
-	struct pair decoder_opts[3];
 
 	/// libz related
 	struct {
@@ -137,32 +126,18 @@ struct conn_info {
 
 	/// Session pointer.
 	void *decoder_sessp;
+
+	/// Number of decoder options
+	size_t decoder_opts_size;
+
+	/// Memory pool for decoder_params
+	struct pair decoder_opts[0];
 };
 
 static void free_con_info(struct conn_info *con_info) {
 	free(con_info->str.buf);
 	con_info->str.buf = NULL;
 	free(con_info);
-}
-
-static void prepare_decoder_params(struct conn_info *con_info,
-				   struct pair *mem,
-				   size_t memsiz,
-				   keyval_list_t *list) {
-	assert(3 == memsiz);
-	(void)memsiz;
-	memset(mem, 0, sizeof(*mem) * 3);
-
-	mem[0].key = "topic";
-	mem[0].value = con_info->topic;
-	mem[1].key = "sensor_uuid";
-	mem[1].value = con_info->sensor_uuid;
-	mem[2].key = "client_ip";
-	mem[2].value = con_info->client;
-
-	add_key_value_pair(list, &mem[0]);
-	add_key_value_pair(list, &mem[1]);
-	add_key_value_pair(list, &mem[2]);
 }
 
 static void request_completed(void *cls,
@@ -208,29 +183,26 @@ static void request_completed(void *cls,
 	*con_cls = NULL;
 }
 
-static int connection_gzip_iterator(void *cls,
+static int connection_args_iterator(void *cls,
 				    enum MHD_ValueKind kind,
 				    const char *key,
 				    const char *value) {
-	int *ret = cls;
+	struct conn_info *con_info = cls;
+	const size_t i = con_info->decoder_opts_size++;
 
-	(void)kind;
+	if (kind != MHD_HEADER_KIND) {
+		return MHD_YES; // Not interested in
+	}
 
 	if (key && value && 0 == strcmp("Content-Encoding", key) &&
 	    0 == strcmp("deflate", value)) {
-		*ret = 1;
-		return MHD_NO; /* We have found what we were looking for */
-	} else {
-		return MHD_YES;
+		con_info->zlib.enable = 1;
 	}
-}
 
-/** Find if 'Content-Encoding' header of the connection is gzipped */
-static int is_connection_gzip(struct MHD_Connection *conn) {
-	int ret = 0;
-	MHD_get_connection_values(
-			conn, MHD_HEADER_KIND, connection_gzip_iterator, &ret);
-	return ret;
+	con_info->decoder_opts[i].key = key;
+	con_info->decoder_opts[i].value = value;
+
+	return MHD_YES; // keep iterating
 }
 
 static const char *zlib_error2str(const int z_status) {
@@ -256,34 +228,54 @@ static const char *zlib_error2str(const int z_status) {
 
 static struct conn_info *
 create_connection_info(size_t string_size,
-		       const char *topic,
+		       const char *uri,
 		       const char *client,
-		       const char *s_uuid,
 		       struct MHD_Connection *connection) {
 
 	/* First call, creating all needed structs */
-
+	const int num_post_headers =
+			MHD_get_connection_values(connection,
+						  MHD_HEADER_KIND,
+						  /* iterator */ NULL,
+						  /* iterator opaque */ NULL);
+	const size_t num_decoder_opts =
+			(size_t)num_post_headers + 2 /* URI & client IP */;
 	struct conn_info *con_info = NULL;
 
+	const size_t con_info_size =
+			sizeof(*con_info) +
+			num_decoder_opts * sizeof(con_info->decoder_opts[0]);
 	rd_calloc_struct(&con_info,
-			 sizeof(*con_info),
-			 topic ? -1 : 0,
-			 topic,
-			 &con_info->topic,
+			 con_info_size,
 			 client ? -1 : 0,
 			 client,
-			 &con_info->client,
-			 s_uuid ? -1 : 0,
-			 s_uuid,
-			 &con_info->sensor_uuid,
+			 &con_info->decoder_opts[0].value,
 			 RD_MEM_END_TOKEN);
 
-	if (NULL == con_info) {
+	if (unlikely(NULL == con_info)) {
 		rdlog(LOG_ERR,
 		      "Can't allocate conection context (out of memory?)");
 		return NULL; /* Doesn't have resources */
 	}
 
+	con_info->decoder_opts[0].key = "D-Client-IP";
+	con_info->decoder_opts[1].key = "D-HTTP-URI";
+	con_info->decoder_opts[1].value = uri;
+	con_info->decoder_opts_size = 2;
+
+	MHD_get_connection_values(connection,
+				  MHD_HEADER_KIND,
+				  connection_args_iterator,
+				  con_info);
+
+	keyval_list_init(&con_info->decoder_params);
+	size_t i;
+	for (i = 0; i < con_info->decoder_opts_size; ++i) {
+		add_key_value_pair(&con_info->decoder_params,
+				   &con_info->decoder_opts[i]);
+	}
+
+	/// @todo delay this! it could be not needed!
 	if (!init_string(&con_info->str, string_size)) {
 		rdlog(LOG_ERR,
 		      "Can't allocate connection string buffer (out "
@@ -292,14 +284,6 @@ create_connection_info(size_t string_size,
 		return NULL; /* Doesn't have resources */
 	}
 
-	keyval_list_init(&con_info->decoder_params);
-
-	prepare_decoder_params(con_info,
-			       con_info->decoder_opts,
-			       RD_ARRAY_SIZE(con_info->decoder_opts),
-			       &con_info->decoder_params);
-
-	con_info->zlib.enable = is_connection_gzip(connection);
 	if (con_info->zlib.enable) {
 		con_info->zlib.strm.zalloc = Z_NULL;
 		con_info->zlib.strm.zfree = Z_NULL;
@@ -391,29 +375,6 @@ static size_t append_http_data_to_connection_data(struct conn_info *con_info,
 	return ncopy;
 }
 
-/* Return code: Valid prefix (i.e., /rbdata/)*/
-static int extract_rb_url_info(const char *url,
-			       size_t url_len,
-			       char *dst,
-			       const char **uuid,
-			       const char **topic) {
-	assert(url);
-	assert(dst);
-	assert(uuid);
-	assert(topic);
-
-	char *aux = NULL;
-	memcpy(dst, url, url_len + 1);
-
-	const char *rbdata = strtok_r(dst, "/", &aux);
-	const int invalid_rbdata = (NULL == rbdata) || strcmp(rbdata, "rbdata");
-	if (!invalid_rbdata) {
-		*uuid = strtok_r(NULL, "/", &aux);
-		*topic = strtok_r(NULL, "/", &aux);
-	}
-	return !invalid_rbdata;
-}
-
 static const char *
 client_addr(char *buf, size_t buf_size, struct MHD_Connection *con_info) {
 	const union MHD_ConnectionInfo *cinfo = MHD_get_connection_info(
@@ -426,79 +387,6 @@ client_addr(char *buf, size_t buf_size, struct MHD_Connection *con_info) {
 	}
 
 	return sockaddr2str(buf, buf_size, cinfo->client_addr);
-}
-
-/// @TODO this should be in the decoder, not here
-static int zz_http2k_validation(struct MHD_Connection *con_info,
-				const char *url,
-				int *allok,
-				char **ret_topic,
-				char **ret_uuid,
-				const char *source) {
-
-	/*
-	 * Need to validate that URL is valid:
-	 * POST https://<host>/<sensor_uuid>/<topic>
-	 */
-	const char *uuid = NULL, *topic = NULL;
-	const size_t url_len = strlen(url);
-	char my_url[url_len + 1];
-	const int valid_prefix = extract_rb_url_info(
-			url, url_len, my_url, &uuid, &topic);
-
-	/// @TODO check uuid url/message equality
-	if (!valid_prefix || NULL == uuid || NULL == topic) {
-		if (!valid_prefix) {
-			rdlog(LOG_WARNING,
-			      "Received no expected prefix url [%s] from %s. "
-			      "Closing connection.",
-			      url,
-			      source);
-		}
-		if (NULL == uuid) {
-			rdlog(LOG_WARNING,
-			      "Received no uuid/topic in url [%s] from %s. "
-			      "Closing connection.",
-			      url,
-			      source);
-		} else if (NULL == topic) {
-			rdlog(LOG_WARNING,
-			      "Received no topic in url [%s] from %s. "
-			      "Closing connection.",
-			      url,
-			      source);
-		}
-		*allok = 0;
-		return send_http_bad_request(con_info);
-	}
-
-	rdlog(LOG_DEBUG,
-	      "Receiving message with uuid '%s' and topic '%s' from "
-	      "client %s",
-	      uuid,
-	      topic,
-	      source);
-
-	if (unlikely(NULL == topic)) {
-		rdlog(LOG_WARNING,
-		      "Received no topic in url [%s] from %s. Closing "
-		      "connection.",
-		      url,
-		      source);
-		*allok = 0;
-		return send_http_bad_request(con_info);
-	}
-
-	*allok = 1;
-
-	if (ret_topic) {
-		*ret_topic = strdup(topic);
-	}
-	if (ret_uuid) {
-		*ret_uuid = strdup(uuid);
-	}
-
-	return MHD_YES;
 }
 
 static size_t compressed_callback(struct http_private *cls,
@@ -537,37 +425,35 @@ static size_t compressed_callback(struct http_private *cls,
 					&last_zlib_warning_timestamp_mutex);
 
 			if (warn) {
+				const char *client_ip =
+						con_info->decoder_opts[0].value;
 				switch (ret) {
 				case Z_STREAM_ERROR:
 					rdlog(LOG_ERR,
-					      "Input from uuid %s (ip %s) is "
-					      "not a valid zlib stream",
-					      con_info->sensor_uuid,
-					      con_info->client);
+					      "Input from ip %s is not a valid "
+					      "zlib stream",
+					      client_ip);
 					break;
 
 				case Z_NEED_DICT:
 					rdlog(LOG_ERR,
 					      "Need unkown dict in input "
-					      "stream from %s(%s)",
-					      con_info->sensor_uuid,
-					      con_info->client);
+					      "stream from ip %s",
+					      client_ip);
 					break;
 
 				case Z_DATA_ERROR:
 					rdlog(LOG_ERR,
 					      "Error in compressed input from "
-					      "%s(%s)",
-					      con_info->sensor_uuid,
-					      con_info->client);
+					      "ip %s",
+					      client_ip);
 					break;
 
 				case Z_MEM_ERROR:
 					rdlog(LOG_ERR,
 					      "Memory error, couldn't allocate "
-					      "memory for %s(%s)",
-					      con_info->sensor_uuid,
-					      con_info->client);
+					      "memory for ip %s",
+					      client_ip);
 					break;
 
 				case Z_OK:
@@ -578,10 +464,9 @@ static size_t compressed_callback(struct http_private *cls,
 				default:
 					rdlog(LOG_ERR,
 					      "Unknown error: inflate returned "
-					      "%d for %s uuid (%s ip)",
+					      "%d for %s ip",
 					      ret,
-					      con_info->sensor_uuid,
-					      con_info->client);
+					      client_ip);
 					break;
 				};
 			}
@@ -642,29 +527,10 @@ static int post_handle(void *_cls,
 		if (NULL == client) {
 			return MHD_NO;
 		}
-		/* First message of connection */
-		char *topic = NULL, *uuid = NULL;
-		if (cls->redborder_uri) {
-			int aok = 1;
-			const int rc = zz_http2k_validation(connection,
-							    url,
-							    &aok,
-							    &topic,
-							    &uuid,
-							    client);
-			if (0 == aok) {
-				free(topic);
-				free(uuid);
-				return rc;
-			}
-		}
-		*ptr = create_connection_info(STRING_INITIAL_SIZE,
-					      topic,
-					      client,
-					      uuid,
-					      connection);
-		free(topic);
-		free(uuid);
+
+		*ptr = create_connection_info(
+				STRING_INITIAL_SIZE, client, url, connection);
+
 		return (NULL == *ptr) ? MHD_NO : MHD_YES;
 	} else if (*upload_data_size > 0) {
 		/* middle calls, process string sent */
@@ -694,6 +560,8 @@ static int post_handle(void *_cls,
 				      cls->callback_opaque,
 				      &con_info->decoder_sessp);
 			/// @TODO fix it
+			if (0 /* ERROR */) {
+			}
 			rc = *upload_data_size;
 		}
 		(*upload_data_size) -= rc;
@@ -715,7 +583,6 @@ struct http_loop_args {
 		int connection_timeout;
 		int per_ip_connection_limit;
 	} server_parameters;
-	int redborder_uri;
 };
 
 static struct http_private *start_http_loop(const struct http_loop_args *args,
@@ -757,7 +624,6 @@ static struct http_private *start_http_loop(const struct http_loop_args *args,
 	h->callback = callback;
 	h->callback_flags = callback_flags;
 	h->callback_opaque = cb_opaque;
-	h->redborder_uri = args->redborder_uri;
 
 	struct MHD_OptionItem opts[] = {
 			{MHD_OPTION_NOTIFY_COMPLETED,
@@ -861,7 +727,6 @@ struct listener *create_http_listener(struct json_t *config,
 			"s:i," /* port */
 			"s?s," /* mode */
 			"s?i," /* num_threads */
-			"s?b," /* redborder_uri */
 			"s?i," /* connection_memory_limit */
 			"s?i," /* connection_limit */
 			"s?i," /* connection_timeout */
@@ -873,8 +738,6 @@ struct listener *create_http_listener(struct json_t *config,
 			&handler_args.mode,
 			"num_threads",
 			&handler_args.num_threads,
-			"redborder_uri",
-			&handler_args.redborder_uri,
 			"connection_memory_limit",
 			&handler_args.server_parameters.connection_memory_limit,
 			"connection_limit",

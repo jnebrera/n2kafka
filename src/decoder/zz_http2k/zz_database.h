@@ -21,26 +21,15 @@
 
 #pragma once
 
-#include "zz_http2k_organizations_database.h"
-#include "zz_http2k_sensors_database.h"
 #include "util/topic_database.h"
-
-#include "util/rb_timer.h"
 
 #include <jansson.h>
 #include <pthread.h>
 
 struct zz_database {
-	/* UUID enrichment read-only database */
-	pthread_rwlock_t rwlock;
-	/// sensors UUID database.
-	sensors_db_t *sensors_db;
-	/// Organizations database
-	organizations_db_t organizations_db;
-	/// Timer to send stats via rb_monitor topic
-	struct topics_db *topics_db;
-
-	void *topics_memory;
+	pthread_rwlock_t rwlock;     ///< Topics db lock
+	struct topics_db *topics_db; ///< Topics db
+	void *topics_memory;	 ///< Topics memory pool
 };
 
 /** Initialized a zz_database
@@ -53,20 +42,14 @@ void free_valid_zz_database(struct zz_database *db);
 /**
 	Get sensor enrichment and topic of an specific database.
 
-	@param db Database to extract sensor and topic handler from
+	@param db Database to extract topic handler from
 	@param topic Topic to search for
-	@param sensor_uuid Sensor uuid to search for
-	@param topic_handler Returned topic handler. Need to be freed with
-	topic_decref
+	@param client_uuid Sensor uuid to search for
 	@param sensor_info Returned sensor information. Need to be freed
 	with sensor_db_entry_decref
-	@return 0 if OK, !=0 in other case
+	@return topic_handler Returned topic handler. Need to be freed with
+	topic_decref. NULL in case of error.
 	*/
-int zz_http2k_database_get_topic_client(struct zz_database *db,
-					const char *topic,
-					const char *sensor_uuid,
-					struct topic_s **topic_handler,
-					sensor_db_entry_t **sensor_info);
-
-int zz_http2k_validate_uuid(struct zz_database *db, const char *uuid);
-int zz_http2k_validate_topic(struct zz_database *db, const char *topic);
+struct topic_s *zz_http2k_database_get_topic(struct zz_database *db,
+					     const char *topic,
+					     const char *client_uuid);

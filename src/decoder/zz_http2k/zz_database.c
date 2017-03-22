@@ -43,61 +43,27 @@ int init_zz_database(struct zz_database *db) {
 		return pthread_rc;
 	}
 
-	const int odb_init = organizations_db_init(&db->organizations_db);
-	if (odb_init != 0) {
-		return odb_init;
-	}
-
 	return 0;
 }
 
 void free_valid_zz_database(struct zz_database *db) {
 	if (db) {
-		if (db->sensors_db) {
-			sensors_db_destroy(db->sensors_db);
-		}
-
 		if (db->topics_db) {
 			topics_db_done(db->topics_db);
 		}
 
-		organizations_db_done(&db->organizations_db);
 		pthread_rwlock_destroy(&db->rwlock);
 	}
 }
 
-int zz_http2k_database_get_topic_client(struct zz_database *db,
-					const char *topic,
-					const char *sensor_uuid,
-					struct topic_s **topic_handler,
-					sensor_db_entry_t **client_enrichment) {
+struct topic_s *zz_http2k_database_get_topic(struct zz_database *db,
+					     const char *topic,
+					     const char *client_uuid) {
 	assert(db);
-	assert(topic_handler);
-	assert(client_enrichment);
+	assert(client_uuid);
 
 	pthread_rwlock_rdlock(&db->rwlock);
-	*topic_handler = topics_db_get_topic(db->topics_db, topic);
-
-	if (*topic_handler) {
-		*client_enrichment =
-				sensors_db_get(db->sensors_db, sensor_uuid);
-	}
-	pthread_rwlock_unlock(&db->rwlock);
-
-	return NULL != *topic_handler && NULL != *client_enrichment;
-}
-
-int zz_http2k_validate_uuid(struct zz_database *db, const char *sensor_uuid) {
-	pthread_rwlock_rdlock(&db->rwlock);
-	const int ret = sensors_db_exists(db->sensors_db, sensor_uuid);
-	pthread_rwlock_unlock(&db->rwlock);
-
-	return ret;
-}
-
-int zz_http2k_validate_topic(struct zz_database *db, const char *topic) {
-	pthread_rwlock_rdlock(&db->rwlock);
-	const int ret = topics_db_topic_exists(db->topics_db, topic);
+	struct topic_s *ret = topics_db_get_topic(db->topics_db, topic);
 	pthread_rwlock_unlock(&db->rwlock);
 
 	return ret;

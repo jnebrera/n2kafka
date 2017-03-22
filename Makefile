@@ -80,7 +80,7 @@ tests/%.xml: tests/%.test $(BIN)
 tests/%.test: CPPFLAGS := -I. $(CPPFLAGS)
 tests/%.test: tests/%.o $(filter-out src/engine/n2kafka.o,$(OBJS))
 	@echo -e '\033[0;33m Building: $@ \033[0m'
-	@$(CC) $(CPPFLAGS) $(LDFLAGS) $< $(shell cat $(@:.test=.objdeps)) -o $@ $(LIBS) -lcmocka
+	@$(CC) $(CPPFLAGS) $(LDFLAGS) $< $(shell cat $(@:.test=.objdeps)) -o $@ $(LIBS) -lcmocka -lcurl
 
 check_coverage:
 	@( if [[ "x$(WITH_COVERAGE)" == "xn" ]]; then \

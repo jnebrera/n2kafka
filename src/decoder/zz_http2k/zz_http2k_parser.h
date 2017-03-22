@@ -21,8 +21,6 @@
 
 #pragma once
 
-#include "zz_http2k_sensors_database.h"
-
 #include <jansson.h>
 #include <util/kafka_message_list.h>
 #include <util/pair.h>
@@ -39,27 +37,14 @@ struct zz_session {
 	/// JSON handler
 	yajl_handle handler;
 
-	/// Sensor information.
-	sensor_db_entry_t *sensor;
-
-	/// Bookmark if we are skipping an object or array
-	size_t object_array_parsing_stack;
-
-	/// Per POST business.
-	const char *client_ip, *sensor_uuid;
-
 	/// Topid handler
 	struct topic_s *topic_handler;
 
-	struct {
-		int valid;
-	} message;
+	/// Parsing stack position
+	size_t stack_pos;
 
 	/// Message list in this call to decode()
 	rd_kafka_message_queue_t msg_queue;
-
-	/// Skip next parsing value
-	int skip_value;
 };
 
 struct zz_config;

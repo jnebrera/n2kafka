@@ -285,8 +285,9 @@ create_connection_info(size_t string_size,
 	}
 
 	if (!init_string(&con_info->str, string_size)) {
-		rdlog(LOG_ERR, "Can't allocate connection string buffer (out "
-			       "of memory?)");
+		rdlog(LOG_ERR,
+		      "Can't allocate connection string buffer (out "
+		      "of memory?)");
 		free_con_info(con_info);
 		return NULL; /* Doesn't have resources */
 	}
@@ -365,24 +366,6 @@ static int send_http_method_not_allowed(struct MHD_Connection *connection) {
 				      customize_method_not_allowed_response);
 }
 
-static int send_http_forbidden(struct MHD_Connection *connection) {
-	return send_buffered_response(connection,
-				      0,
-				      NULL,
-				      MHD_RESPMEM_PERSISTENT,
-				      MHD_HTTP_FORBIDDEN,
-				      NULL);
-}
-
-static int send_http_unauthorized(struct MHD_Connection *connection) {
-	return send_buffered_response(connection,
-				      0,
-				      NULL,
-				      MHD_RESPMEM_PERSISTENT,
-				      MHD_HTTP_UNAUTHORIZED,
-				      NULL);
-}
-
 static int send_http_bad_request(struct MHD_Connection *connection) {
 	return send_buffered_response(connection,
 				      0,
@@ -436,8 +419,9 @@ client_addr(char *buf, size_t buf_size, struct MHD_Connection *con_info) {
 	const union MHD_ConnectionInfo *cinfo = MHD_get_connection_info(
 			con_info, MHD_CONNECTION_INFO_CLIENT_ADDRESS);
 	if (NULL == cinfo || NULL == cinfo->client_addr) {
-		rdlog(LOG_WARNING, "Can't obtain client address info to print "
-				   "debug message.");
+		rdlog(LOG_WARNING,
+		      "Can't obtain client address info to print "
+		      "debug message.");
 		return NULL;
 	}
 
@@ -447,7 +431,6 @@ client_addr(char *buf, size_t buf_size, struct MHD_Connection *con_info) {
 /// @TODO this should be in the decoder, not here
 static int zz_http2k_validation(struct MHD_Connection *con_info,
 				const char *url,
-				struct zz_database *zz_database,
 				int *allok,
 				char **ret_topic,
 				char **ret_uuid,
@@ -496,29 +479,7 @@ static int zz_http2k_validation(struct MHD_Connection *con_info,
 	      topic,
 	      source);
 
-	const int valid_uuid = zz_http2k_validate_uuid(zz_database, uuid);
-	if (!valid_uuid) {
-		rdlog(LOG_WARNING,
-		      "Received invalid uuid %s from %s. Closing connection.",
-		      uuid,
-		      source);
-		*allok = 0;
-		return send_http_unauthorized(con_info);
-	}
-
-	if (NULL != topic) {
-		const int valid_topic = zz_http2k_validate_topic(
-				&global_config.rb.database, topic);
-
-		if (!valid_topic) {
-			rdlog(LOG_WARNING,
-			      "Received topic %s from %s. Closing connection.",
-			      topic ? topic : NULL,
-			      source);
-			*allok = 0;
-			return send_http_forbidden(con_info);
-		}
-	} else {
+	if (unlikely(NULL == topic)) {
 		rdlog(LOG_WARNING,
 		      "Received no topic in url [%s] from %s. Closing "
 		      "connection.",
@@ -685,14 +646,12 @@ static int post_handle(void *_cls,
 		char *topic = NULL, *uuid = NULL;
 		if (cls->redborder_uri) {
 			int aok = 1;
-			const int rc = zz_http2k_validation(
-					connection,
-					url,
-					&global_config.rb.database,
-					&aok,
-					&topic,
-					&uuid,
-					client);
+			const int rc = zz_http2k_validation(connection,
+							    url,
+							    &aok,
+							    &topic,
+							    &uuid,
+							    client);
 			if (0 == aok) {
 				free(topic);
 				free(uuid);

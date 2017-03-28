@@ -28,6 +28,9 @@
 # Coverage
 *.gcda
 *.gcno
+/coverage.info
+/coverage.out.html/
+
 
 # mklove
 Makefile.config
@@ -48,3 +51,6 @@ n2kafka
 
 # Clang complete tools
 .clang_complete
+
+# Editors garbage
+*~

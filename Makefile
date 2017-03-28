@@ -61,19 +61,19 @@ drdchecks: $(TESTS_DRD_XML)
 helchecks: $(TESTS_HELGRIND_XML)
 	@$(call run_tests,-h)
 
-tests/%.mem.xml: tests/%.test
+tests/%.mem.xml: tests/%.test $(BIN)
 	@echo -e '\033[0;33m Checking memory:\033[0m $<'
 	-@$(call run_valgrind,memcheck,"$@","./$<")
 
-tests/%.helgrind.xml: tests/%.test
+tests/%.helgrind.xml: tests/%.test $(BIN)
 	@echo -e '\033[0;33m Testing concurrency [HELGRIND]:\033[0m $<'
 	-@$(call run_valgrind,helgrind,"$@","./$<")
 
-tests/%.drd.xml: tests/%.test
+tests/%.drd.xml: tests/%.test $(BIN)
 	@echo -e '\033[0;33m Testing concurrency [DRD]:\033[0m $<'
 	-@$(call run_valgrind,drd,"$@","./$<")
 
-tests/%.xml: tests/%.test
+tests/%.xml: tests/%.test $(BIN)
 	@echo -e '\033[0;33m Testing:\033[0m $<'
 	@CMOCKA_XML_FILE="$@" CMOCKA_MESSAGE_OUTPUT=XML "./$<" >/dev/null 2>&1
 

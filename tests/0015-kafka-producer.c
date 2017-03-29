@@ -20,6 +20,7 @@
 */
 
 #include "assertion_handler.c"
+#include "n2k_kafka_tests.h"
 
 #include <curl/curl.h>
 #include <fcntl.h>
@@ -49,82 +50,6 @@
 #define TCP_PORT 2056
 #define TCP_MESSAGES_DELAY 5
 
-static rd_kafka_t *init_kafka() {
-	rd_kafka_t *rk;
-
-	// Kafka
-	char errstr[512];
-	char *brokers = "kafka:9092";
-	rd_kafka_topic_partition_list_t *topics;
-	rd_kafka_resp_err_t err;
-	rd_kafka_conf_t *conf = rd_kafka_conf_new();
-	rd_kafka_topic_conf_t *topic_conf = rd_kafka_topic_conf_new();
-
-	// Set group id
-	if (rd_kafka_conf_set(conf,
-			      "group.id",
-			      "tester",
-			      errstr,
-			      sizeof(errstr)) != RD_KAFKA_CONF_OK) {
-		fprintf(stderr, "%% %s\n", errstr);
-		exit(1);
-	}
-
-	// Version fallback. Needed for newer brokers
-	// if (rd_kafka_conf_set(conf, "broker.version", "0.8.2", errstr,
-	//                       sizeof(errstr)) != RD_KAFKA_CONF_OK) {
-	//   fprintf(stderr, "%% %s\n", errstr);
-	//   exit(1);
-	// }
-
-	// Use broker to store offset
-	if (rd_kafka_topic_conf_set(topic_conf,
-				    "offset.store.method",
-				    "broker",
-				    errstr,
-				    sizeof(errstr)) != RD_KAFKA_CONF_OK) {
-		fprintf(stderr, "%% %s\n", errstr);
-		exit(1);
-	}
-
-	rd_kafka_conf_set_default_topic_conf(conf, topic_conf);
-
-	// Create Kafka handle
-	if (!(rk = rd_kafka_new(RD_KAFKA_CONSUMER,
-				conf,
-				errstr,
-				sizeof(errstr)))) {
-		fprintf(stderr,
-			"%% Failed to create new consumer: %s\n",
-			errstr);
-		exit(1);
-	}
-
-	// Add brokers
-	if (rd_kafka_brokers_add(rk, brokers) == 0) {
-		fprintf(stderr, "%% No valid brokers specified\n");
-		exit(1);
-	}
-
-	// Redirect rd_kafka_poll() to consumer_poll()
-	rd_kafka_poll_set_consumer(rk);
-
-	// Topic list
-	topics = rd_kafka_topic_partition_list_new(1);
-	rd_kafka_topic_partition_list_add(topics, "rb_flow", 0);
-
-	// Assign partitions
-	if ((err = rd_kafka_assign(rk, topics))) {
-		fprintf(stderr,
-			"%% Failed to assign partitions: %s\n",
-			rd_kafka_err2str(err));
-	}
-
-	rd_kafka_topic_partition_list_destroy(topics);
-
-	return rk;
-}
-
 /**
  * Send a message using curl and expect to receive the enriched message via
  * kafka
@@ -133,7 +58,7 @@ static void test_send_message_http() {
 	CURL *curl;
 	CURLcode res;
 	long http_code = 0;
-	rd_kafka_t *rk = init_kafka();
+	rd_kafka_t *rk = init_kafka_consumer("kafka:9092", "rb_flow");
 	struct assertion_handler_s *assertion_handler = NULL;
 
 	curl_global_init(CURL_GLOBAL_ALL);
@@ -252,7 +177,7 @@ static void test_send_message_tcp() {
 	struct sockaddr_in server;
 	struct assertion_handler_s *assertion_handler = NULL;
 
-	rd_kafka_t *rk = init_kafka();
+	rd_kafka_t *rk = init_kafka_consumer("kafka:9092", "rb_flow");
 	if (rk == NULL) {
 		exit(1);
 	}

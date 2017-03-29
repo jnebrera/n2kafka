@@ -19,22 +19,18 @@
 ** along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "rb_json_tests.c"
-#include "zz_http2k_tests.c"
+#include "zz_http2k_tests.h"
 
 #include "src/decoder/zz_http2k/zz_http2k_parser.c"
 
-static const char CONFIG_TEST[] = "{"
-				  "\"brokers\": \"kafka\","
-				  "\"zz_http2k_config\": {"
-				  "\"topics\" : {"
-				  "\"abc_topic1\": {},"
-				  "\"abc_topic2\": {},"
-				  "\"def_topic1\": {},"
-				  "\"def_topic2\": {}"
-				  "}"
-				  "}"
-				  "}";
+#include "n2k_kafka_tests.h"
+
+#include <setjmp.h>
+
+#include <cmocka.h>
+
+static json_t *listener_cfg = NULL;
+static json_t *decoder_cfg = NULL;
 
 static const char *VALID_URL[] = {
 		"/v1/topic1",
@@ -52,52 +48,17 @@ static const char *INVALID_URL[] = {
 		"", "/", "/noversion", "/v2/topic", "/v1/", "?v1/topic",
 };
 
-static void test_validate_uri() {
-	test_zz_decoder_setup(CONFIG_TEST);
-
-	size_t i;
-	for (i = 0; i < RD_ARRAYSIZE(VALID_URL); ++i) {
-		struct {
-			const char *buf;
-			size_t buf_size;
-		} topic;
-
-		const int extract_rc = extract_url_topic(
-				VALID_URL[i], &topic.buf, &topic.buf_size);
-
-		assert_int_equal(0, extract_rc);
-		assert_true(0 == strncmp(topic.buf, "topic1", topic.buf_size));
-	}
-
-	for (i = 0; i < RD_ARRAYSIZE(INVALID_URL); ++i) {
-		struct {
-			const char *buf;
-			size_t buf_size;
-		} topic;
-
-		const int extract_rc = extract_url_topic(
-				INVALID_URL[i], &topic.buf, &topic.buf_size);
-		assert_int_not_equal(extract_rc, 0);
-	}
-
-	test_zz_decoder_teardown();
-}
-
-static void check_zz_decoder_double0(struct zz_session **sess,
+static void check_zz_decoder_double0(const rd_kafka_message_t *rkm[],
 				     void *unused __attribute__((unused)),
-				     size_t expected_size) {
+				     size_t msgs_size) {
 	size_t i = 0;
-	rd_kafka_message_t rkm[2];
 	json_error_t jerr;
 	const char *client_mac, *application_name, *sensor_uuid;
 	json_int_t a;
 
-	assert_true(expected_size == rd_kafka_msg_q_size(&(*sess)->msg_queue));
-	rd_kafka_msg_q_dump(&(*sess)->msg_queue, rkm);
-	assert_true(0 == rd_kafka_msg_q_size(&(*sess)->msg_queue));
-
-	for (i = 0; i < expected_size; ++i) {
-		json_t *root = json_loadb(rkm[i].payload, rkm[i].len, 0, &jerr);
+	for (i = 0; i < msgs_size; ++i) {
+		json_t *root = json_loadb(
+				rkm[i]->payload, rkm[i]->len, 0, &jerr);
 		if (NULL == root) {
 			rdlog(LOG_ERR, "Couldn't load file: %s", jerr.text);
 			assert_true(0);
@@ -133,30 +94,33 @@ static void check_zz_decoder_double0(struct zz_session **sess,
 		assert_true(a == 5);
 
 		json_decref(root);
-		free(rkm[i].payload);
 	}
 }
 
-static void check_zz_decoder_simple(struct zz_session **sess, void *opaque) {
-	check_zz_decoder_double0(sess, opaque, 1);
+static void check_zz_decoder_simple(const rd_kafka_message_t *rkm[],
+				    size_t rkm_len,
+				    void *opaque) {
+	assert_int_equal(rkm_len, 1);
+	check_zz_decoder_double0(rkm, opaque, 1);
 }
 
-static void check_zz_decoder_double(struct zz_session **sess, void *opaque) {
-	check_zz_decoder_double0(sess, opaque, 2);
+static void check_zz_decoder_double(const rd_kafka_message_t *rkm[],
+				    size_t rkm_len,
+				    void *opaque) {
+	assert_int_equal(rkm_len, 2);
+	check_zz_decoder_double0(rkm, opaque, 2);
 }
 
-static void check_zz_decoder_simple_def(struct zz_session **sess,
+static void check_zz_decoder_simple_def(const rd_kafka_message_t *rkm[],
+					size_t msgs_num,
 					void *unused __attribute__((unused))) {
-	rd_kafka_message_t rkm;
 	json_error_t jerr;
 	const char *client_mac, *application_name, *sensor_uuid;
 	int u;
 
-	assert_true(1 == rd_kafka_msg_q_size(&(*sess)->msg_queue));
-	rd_kafka_msg_q_dump(&(*sess)->msg_queue, &rkm);
-	assert_true(0 == rd_kafka_msg_q_size(&(*sess)->msg_queue));
+	assert_int_equal(1, msgs_num);
 
-	json_t *root = json_loadb(rkm.payload, rkm.len, 0, &jerr);
+	json_t *root = json_loadb(rkm[0]->payload, rkm[0]->len, 0, &jerr);
 	if (NULL == root) {
 		rdlog(LOG_ERR, "Couldn't load file: %s", jerr.text);
 		assert_true(0);
@@ -186,21 +150,17 @@ static void check_zz_decoder_simple_def(struct zz_session **sess,
 	assert_true(0 != u);
 
 	json_decref(root);
-	free(rkm.payload);
 }
 
-static void check_zz_decoder_object(struct zz_session **sess,
+static void check_zz_decoder_object(const rd_kafka_message_t *rkm[],
+				    size_t msgs_num,
 				    void *unused __attribute__((unused))) {
-	rd_kafka_message_t rkm;
 	json_error_t jerr;
 	const char *client_mac, *application_name, *sensor_uuid;
 	json_int_t a, t1;
 
-	assert_true(1 == rd_kafka_msg_q_size(&(*sess)->msg_queue));
-	rd_kafka_msg_q_dump(&(*sess)->msg_queue, &rkm);
-	assert_true(0 == rd_kafka_msg_q_size(&(*sess)->msg_queue));
-
-	json_t *root = json_loadb(rkm.payload, rkm.len, 0, &jerr);
+	assert_true(1 == msgs_num);
+	json_t *root = json_loadb(rkm[0]->payload, rkm[0]->len, 0, &jerr);
 	if (NULL == root) {
 		rdlog(LOG_ERR, "Couldn't load file: %s", jerr.text);
 		assert_true(0);
@@ -233,44 +193,62 @@ static void check_zz_decoder_object(struct zz_session **sess,
 	assert_true(a == 5);
 
 	json_decref(root);
-	free(rkm.payload);
 }
 
 static void test_zz_decoder_simple() {
-	struct pair mem[7];
-	keyval_list_t args;
-	keyval_list_init(&args);
-	prepare_args("/v1/topic1",
-		     "abc",
-		     "127.0.0.1",
-		     mem,
-		     RD_ARRAYSIZE(mem),
-		     &args);
+	/// @TODO join with all other tests!
+	static const char consumer_uuid[] = "abc";
+	char topic[sizeof(zz_topic_template)];
+	strcpy(topic, zz_topic_template);
+	random_topic_name(topic);
+
+	const size_t out_topic_len =
+			print_expected_topic(NULL, 0, consumer_uuid, topic);
+	char out_topic[out_topic_len];
+	print_expected_topic(out_topic, out_topic_len, consumer_uuid, topic);
+
+	const size_t uri_len =
+			print_expected_url(NULL, 0, consumer_uuid, topic);
+	char uri[uri_len];
+	print_expected_url(uri, uri_len, consumer_uuid, topic);
 
 #define MESSAGES                                                               \
 	X("{\"client_mac\": \"54:26:96:db:88:01\", "                           \
 	  "\"application_name\": \"wwww\", \"sensor_uuid\":\"abc\", \"a\":5}", \
-	  check_zz_decoder_simple)                                             \
+	  check_zz_decoder_simple,                                             \
+	  1)                                                                   \
 	/* Free & Check that session has been freed */                         \
-	X(NULL, check_null_session)
+	X(NULL, NO_MESSAGES_CHECK, 0)
 
 	struct message_in msgs[] = {
-#define X(a, fn) {a, sizeof(a) - 1},
+#define X(a, fn, kafka_msgs) {a, sizeof(a) - 1},
 			MESSAGES
 #undef X
 	};
 
-	check_callback_fn callbacks_functions[] = {
-#define X(a, fn) fn,
+	static const check_callback_fn callbacks_functions[] = {
+#define X(a, fn, kafka_msgs) fn,
 			MESSAGES
 #undef X
 	};
 
-	test_zz_decoder0(CONFIG_TEST,
-			 &args,
+	static const size_t expected_kafka_msgs[] = {
+#define X(a, fn, kafka_msgs) kafka_msgs,
+			MESSAGES
+#undef X
+	};
+
+	test_zz_decoder0(listener_cfg,
+			 decoder_cfg,
+			 &(struct zz_http2k_params){
+					 .uri = uri,
+					 .consumer_uuid = consumer_uuid,
+					 .topic = out_topic,
+			 },
 			 msgs,
 			 callbacks_functions,
 			 RD_ARRAYSIZE(msgs),
+			 expected_kafka_msgs,
 			 NULL);
 
 #undef MESSAGES
@@ -278,41 +256,60 @@ static void test_zz_decoder_simple() {
 
 /// Simple decoding with another enrichment
 static void test_zz_decoder_simple_def() {
-	struct pair mem[7];
-	keyval_list_t args;
-	keyval_list_init(&args);
-	prepare_args("/v1/topic1",
-		     "def",
-		     "127.0.0.1",
-		     mem,
-		     RD_ARRAYSIZE(mem),
-		     &args);
+	/// @TODO join with all other tests!
+	static const char consumer_uuid[] = "abc";
+	char topic[sizeof(zz_topic_template)];
+	strcpy(topic, zz_topic_template);
+	random_topic_name(topic);
+
+	const size_t out_topic_len =
+			print_expected_topic(NULL, 0, consumer_uuid, topic);
+	char out_topic[out_topic_len];
+	print_expected_topic(out_topic, out_topic_len, consumer_uuid, topic);
+
+	const size_t uri_len =
+			print_expected_url(NULL, 0, consumer_uuid, topic);
+	char uri[uri_len];
+	print_expected_url(uri, uri_len, consumer_uuid, topic);
 
 #define MESSAGES                                                               \
 	X("{\"client_mac\": \"54:26:96:db:88:02\", "                           \
 	  "\"application_name\": \"wwww\", \"sensor_uuid\":\"def\", "          \
 	  "\"a\":5, \"u\":true}",                                              \
-	  check_zz_decoder_simple_def)                                         \
+	  check_zz_decoder_simple_def,                                         \
+	  1)                                                                   \
 	/* Free & Check that session has been freed */                         \
-	X(NULL, check_null_session)
+	X(NULL, NO_MESSAGES_CHECK, 0)
 
 	struct message_in msgs[] = {
-#define X(a, fn) {a, sizeof(a) - 1},
+#define X(a, fn, kafka_msgs) {a, sizeof(a) - 1},
 			MESSAGES
 #undef X
 	};
 
 	check_callback_fn callbacks_functions[] = {
-#define X(a, fn) fn,
+#define X(a, fn, kafka_msgs) fn,
 			MESSAGES
 #undef X
 	};
 
-	test_zz_decoder0(CONFIG_TEST,
-			 &args,
+	static const size_t expected_kafka_msgs[] = {
+#define X(a, fn, kafka_msgs) kafka_msgs,
+			MESSAGES
+#undef X
+	};
+
+	test_zz_decoder0(listener_cfg,
+			 decoder_cfg,
+			 &(struct zz_http2k_params){
+					 .uri = uri,
+					 .consumer_uuid = consumer_uuid,
+					 .topic = out_topic,
+			 },
 			 msgs,
 			 callbacks_functions,
 			 RD_ARRAYSIZE(msgs),
+			 expected_kafka_msgs,
 			 NULL);
 
 #undef MESSAGES
@@ -320,82 +317,120 @@ static void test_zz_decoder_simple_def() {
 
 /** Two messages in the same input string */
 static void test_zz_decoder_double() {
-	struct pair mem[7];
-	keyval_list_t args;
-	keyval_list_init(&args);
-	prepare_args("/v1/topic1",
-		     "abc",
-		     "127.0.0.1",
-		     mem,
-		     RD_ARRAYSIZE(mem),
-		     &args);
+	/// @TODO join with all other tests!
+	static const char consumer_uuid[] = "abc";
+	char topic[sizeof(zz_topic_template)];
+	strcpy(topic, zz_topic_template);
+	random_topic_name(topic);
+
+	const size_t out_topic_len =
+			print_expected_topic(NULL, 0, consumer_uuid, topic);
+	char out_topic[out_topic_len];
+	print_expected_topic(out_topic, out_topic_len, consumer_uuid, topic);
+
+	const size_t uri_len =
+			print_expected_url(NULL, 0, consumer_uuid, topic);
+	char uri[uri_len];
+	print_expected_url(uri, uri_len, consumer_uuid, topic);
 
 #define MESSAGES                                                               \
 	X("{\"client_mac\": \"54:26:96:db:88:01\", "                           \
 	  "\"application_name\": \"wwww\", \"sensor_uuid\":\"abc\", \"a\":5}"  \
 	  "{\"client_mac\": \"54:26:96:db:88:02\", "                           \
 	  "\"application_name\": \"wwww\", \"sensor_uuid\":\"abc\", \"a\":5}", \
-	  check_zz_decoder_double)                                             \
+	  check_zz_decoder_double,                                             \
+	  2)                                                                   \
 	/* Free & Check that session has been freed */                         \
-	X(NULL, check_null_session)
+	X(NULL, NO_MESSAGES_CHECK, 0)
 
 	struct message_in msgs[] = {
-#define X(a, fn) {a, sizeof(a) - 1},
+#define X(a, fn, kafka_msgs) {a, sizeof(a) - 1},
 			MESSAGES
 #undef X
 	};
 
 	check_callback_fn callbacks_functions[] = {
-#define X(a, fn) fn,
+#define X(a, fn, kafka_msgs) fn,
 			MESSAGES
 #undef X
 	};
 
-	test_zz_decoder0(CONFIG_TEST,
-			 &args,
+	static const size_t expected_kafka_msgs[] = {
+#define X(a, fn, kafka_msgs) kafka_msgs,
+			MESSAGES
+#undef X
+	};
+
+	test_zz_decoder0(listener_cfg,
+			 decoder_cfg,
+			 &(struct zz_http2k_params){
+					 .uri = uri,
+					 .consumer_uuid = consumer_uuid,
+					 .topic = out_topic,
+			 },
 			 msgs,
 			 callbacks_functions,
 			 RD_ARRAYSIZE(msgs),
+			 expected_kafka_msgs,
 			 NULL);
 
 #undef MESSAGES
 }
 
 static void test_zz_decoder_half() {
-	struct pair mem[7];
-	keyval_list_t args;
-	keyval_list_init(&args);
-	prepare_args("/v1/topic1",
-		     "abc",
-		     "127.0.0.1",
-		     mem,
-		     RD_ARRAYSIZE(mem),
-		     &args);
+	/// @TODO join with all other tests!
+	static const char consumer_uuid[] = "abc";
+	char topic[sizeof(zz_topic_template)];
+	strcpy(topic, zz_topic_template);
+	random_topic_name(topic);
+
+	const size_t out_topic_len =
+			print_expected_topic(NULL, 0, consumer_uuid, topic);
+	char out_topic[out_topic_len];
+	print_expected_topic(out_topic, out_topic_len, consumer_uuid, topic);
+
+	const size_t uri_len =
+			print_expected_url(NULL, 0, consumer_uuid, topic);
+	char uri[uri_len];
+	print_expected_url(uri, uri_len, consumer_uuid, topic);
 
 #define MESSAGES                                                               \
-	X("{\"client_mac\": \"54:26:96:db:88:01\", ", check_zero_messages)     \
+	X("{\"client_mac\": \"54:26:96:db:88:01\", ", check_zero_messages, 0)  \
 	X("\"application_name\": \"wwww\", \"sensor_uuid\":\"abc\", \"a\":5}", \
-	  check_zz_decoder_simple)                                             \
+	  check_zz_decoder_simple,                                             \
+	  1)                                                                   \
 	/* Free & Check that session has been freed */                         \
-	X(NULL, check_null_session)
+	X(NULL, NO_MESSAGES_CHECK, 0)
 
 	struct message_in msgs[] = {
-#define X(a, fn) {a, sizeof(a) - 1},
+#define X(a, fn, kafka_msgs) {a, sizeof(a) - 1},
 			MESSAGES
 #undef X
 	};
 
 	check_callback_fn callbacks_functions[] = {
-#define X(a, fn) fn,
+#define X(a, fn, kafka_msgs) fn,
 			MESSAGES
 #undef X
 	};
 
-	test_zz_decoder0(CONFIG_TEST,
-			 &args,
+	static const size_t expected_kafka_msgs[] = {
+#define X(a, fn, kafka_msgs) kafka_msgs,
+			MESSAGES
+#undef X
+	};
+
+	test_zz_decoder0(listener_cfg,
+			 decoder_cfg,
+			 &(struct zz_http2k_params){
+					 .uri = uri,
+					 .consumer_uuid = consumer_uuid,
+					 .topic = out_topic,
+			 },
 			 msgs,
 			 callbacks_functions,
 			 RD_ARRAYSIZE(msgs),
+			 expected_kafka_msgs,
 			 NULL);
 
 #undef MESSAGES
@@ -403,45 +438,65 @@ static void test_zz_decoder_half() {
 
 /** Checks that the decoder can handle to receive the half of a string */
 static void test_zz_decoder_half_string() {
-	struct pair mem[7];
-	keyval_list_t args;
-	keyval_list_init(&args);
-	prepare_args("/v1/topic1",
-		     "abc",
-		     "127.0.0.1",
-		     mem,
-		     RD_ARRAYSIZE(mem),
-		     &args);
+	/// @TODO join with all other tests!
+	static const char consumer_uuid[] = "abc";
+	char topic[sizeof(zz_topic_template)];
+	strcpy(topic, zz_topic_template);
+	random_topic_name(topic);
+
+	const size_t out_topic_len =
+			print_expected_topic(NULL, 0, consumer_uuid, topic);
+	char out_topic[out_topic_len];
+	print_expected_topic(out_topic, out_topic_len, consumer_uuid, topic);
+
+	const size_t uri_len =
+			print_expected_url(NULL, 0, consumer_uuid, topic);
+	char uri[uri_len];
+	print_expected_url(uri, uri_len, consumer_uuid, topic);
 
 #define MESSAGES                                                               \
-	X("{\"client_mac\": \"54:26:96:", check_zero_messages)                 \
+	X("{\"client_mac\": \"54:26:96:", check_zero_messages, 0)              \
 	X("db:88:01\", \"application_name\": \"wwww\", "                       \
 	  "\"sensor_uuid\":\"abc\", \"a\":5}",                                 \
-	  check_zz_decoder_simple)                                             \
-	X("{\"client_mac\": \"", check_zero_messages)                          \
+	  check_zz_decoder_simple,                                             \
+	  1)                                                                   \
+	X("{\"client_mac\": \"", check_zero_messages, 0)                       \
 	X("54:26:96:db:88:01\", \"application_name\": \"wwww\", "              \
 	  "\"sensor_uuid\":\"abc\", \"a\":5}",                                 \
-	  check_zz_decoder_simple)                                             \
+	  check_zz_decoder_simple,                                             \
+	  1)                                                                   \
 	/* Free & Check that session has been freed */                         \
-	X(NULL, check_null_session)
+	X(NULL, NO_MESSAGES_CHECK, 0)
 
 	struct message_in msgs[] = {
-#define X(a, fn) {a, sizeof(a) - 1},
+#define X(a, fn, kafka_msgs) {a, sizeof(a) - 1},
 			MESSAGES
 #undef X
 	};
 
 	check_callback_fn callbacks_functions[] = {
-#define X(a, fn) fn,
+#define X(a, fn, kafka_msgs) fn,
 			MESSAGES
 #undef X
 	};
 
-	test_zz_decoder0(CONFIG_TEST,
-			 &args,
+	static const size_t expected_kafka_msgs[] = {
+#define X(a, fn, kafka_msgs) kafka_msgs,
+			MESSAGES
+#undef X
+	};
+
+	test_zz_decoder0(listener_cfg,
+			 decoder_cfg,
+			 &(struct zz_http2k_params){
+					 .uri = uri,
+					 .consumer_uuid = consumer_uuid,
+					 .topic = out_topic,
+			 },
 			 msgs,
 			 callbacks_functions,
 			 RD_ARRAYSIZE(msgs),
+			 expected_kafka_msgs,
 			 NULL);
 
 #undef MESSAGES
@@ -449,45 +504,65 @@ static void test_zz_decoder_half_string() {
 
 /** Checks that the decoder can handle to receive the half of a key */
 static void test_zz_decoder_half_key() {
-	struct pair mem[7];
-	keyval_list_t args;
-	keyval_list_init(&args);
-	prepare_args("/v1/topic1",
-		     "abc",
-		     "127.0.0.1",
-		     mem,
-		     RD_ARRAYSIZE(mem),
-		     &args);
+	/// @TODO join with all other tests!
+	static const char consumer_uuid[] = "abc";
+	char topic[sizeof(zz_topic_template)];
+	strcpy(topic, zz_topic_template);
+	random_topic_name(topic);
+
+	const size_t out_topic_len =
+			print_expected_topic(NULL, 0, consumer_uuid, topic);
+	char out_topic[out_topic_len];
+	print_expected_topic(out_topic, out_topic_len, consumer_uuid, topic);
+
+	const size_t uri_len =
+			print_expected_url(NULL, 0, consumer_uuid, topic);
+	char uri[uri_len];
+	print_expected_url(uri, uri_len, consumer_uuid, topic);
 
 #define MESSAGES                                                               \
-	X("{\"client_", check_zero_messages)                                   \
+	X("{\"client_", check_zero_messages, 0)                                \
 	X("mac\": \"54:26:96:db:88:01\", \"application_name\": \"wwww\", "     \
 	  "\"sensor_uuid\":\"abc\", \"a\":5}",                                 \
-	  check_zz_decoder_simple)                                             \
-	X("{\"client_mac", check_zero_messages)                                \
+	  check_zz_decoder_simple,                                             \
+	  1)                                                                   \
+	X("{\"client_mac", check_zero_messages, 0)                             \
 	X("\": \"54:26:96:db:88:01\", \"application_name\": \"wwww\", "        \
 	  "\"sensor_uuid\":\"abc\", \"a\":5}",                                 \
-	  check_zz_decoder_simple)                                             \
+	  check_zz_decoder_simple,                                             \
+	  1)                                                                   \
 	/* Free & Check that session has been freed */                         \
-	X(NULL, check_null_session)
+	X(NULL, NO_MESSAGES_CHECK, 0)
 
 	struct message_in msgs[] = {
-#define X(a, fn) {a, sizeof(a) - 1},
+#define X(a, fn, kafka_msgs) {a, sizeof(a) - 1},
 			MESSAGES
 #undef X
 	};
 
 	check_callback_fn callbacks_functions[] = {
-#define X(a, fn) fn,
+#define X(a, fn, kafka_msgs) fn,
 			MESSAGES
 #undef X
 	};
 
-	test_zz_decoder0(CONFIG_TEST,
-			 &args,
+	static const size_t expected_kafka_msgs[] = {
+#define X(a, fn, kafka_msgs) kafka_msgs,
+			MESSAGES
+#undef X
+	};
+
+	test_zz_decoder0(listener_cfg,
+			 decoder_cfg,
+			 &(struct zz_http2k_params){
+					 .uri = uri,
+					 .consumer_uuid = consumer_uuid,
+					 .topic = out_topic,
+			 },
 			 msgs,
 			 callbacks_functions,
 			 RD_ARRAYSIZE(msgs),
+			 expected_kafka_msgs,
 			 NULL);
 
 #undef MESSAGES
@@ -495,49 +570,78 @@ static void test_zz_decoder_half_key() {
 
 /** Test object that don't need to enrich */
 static void test_zz_decoder_objects() {
-	struct pair mem[7];
-	keyval_list_t args;
-	keyval_list_init(&args);
-	prepare_args("/v1/topic1",
-		     "abc",
-		     "127.0.0.1",
-		     mem,
-		     RD_ARRAYSIZE(mem),
-		     &args);
+	/// @TODO join with all other tests!
+	static const char consumer_uuid[] = "abc";
+	char topic[sizeof(zz_topic_template)];
+	strcpy(topic, zz_topic_template);
+	random_topic_name(topic);
+
+	const size_t out_topic_len =
+			print_expected_topic(NULL, 0, consumer_uuid, topic);
+	char out_topic[out_topic_len];
+	print_expected_topic(out_topic, out_topic_len, consumer_uuid, topic);
+
+	const size_t uri_len =
+			print_expected_url(NULL, 0, consumer_uuid, topic);
+	char uri[uri_len];
+	print_expected_url(uri, uri_len, consumer_uuid, topic);
 
 #define MESSAGES                                                               \
-	X("{\"client_", check_zero_messages)                                   \
+	X("{\"client_", check_zero_messages, 0)                                \
 	X("mac\": \"54:26:96:db:88:01\", \"application_name\": \"wwww\", "     \
 	  "\"sensor_uuid\":\"abc\", \"object\":{\"t1\":1}, \"a\":5}",          \
-	  check_zz_decoder_object)                                             \
+	  check_zz_decoder_object,                                             \
+	  1)                                                                   \
 	/* Free & Check that session has been freed */                         \
-	X(NULL, check_null_session)
+	X(NULL, NO_MESSAGES_CHECK, 0)
 
 	struct message_in msgs[] = {
-#define X(a, fn) {a, sizeof(a) - 1},
+#define X(a, fn, kafka_msgs) {a, sizeof(a) - 1},
 			MESSAGES
 #undef X
 	};
 
 	check_callback_fn callbacks_functions[] = {
-#define X(a, fn) fn,
+#define X(a, fn, kafka_msgs) fn,
 			MESSAGES
 #undef X
 	};
 
-	test_zz_decoder0(CONFIG_TEST,
-			 &args,
+	static const size_t expected_kafka_msgs[] = {
+#define X(a, fn, kafka_msgs) kafka_msgs,
+			MESSAGES
+#undef X
+	};
+
+	test_zz_decoder0(listener_cfg,
+			 decoder_cfg,
+			 &(struct zz_http2k_params){
+					 .uri = uri,
+					 .consumer_uuid = consumer_uuid,
+					 .topic = out_topic,
+			 },
 			 msgs,
 			 callbacks_functions,
 			 RD_ARRAYSIZE(msgs),
+			 expected_kafka_msgs,
 			 NULL);
 
 #undef MESSAGES
 }
 
 int main() {
-	const struct CMUnitTest tests[] = {
-			cmocka_unit_test(test_validate_uri),
+	decoder_cfg = assert_json_loads("{}");
+	// clang-format off
+	listener_cfg = assert_json_loads("{"
+			  "\"proto\": \"http\","
+			  "\"port\": 2057,"
+			  "\"mode\": \"epoll\","
+			  "\"num_threads\": 2,"
+			  "\"decode_as\": \"zz_http2k\""
+			"}");
+	// clang-format on
+
+	static const struct CMUnitTest tests[] = {
 			cmocka_unit_test(test_zz_decoder_simple),
 			cmocka_unit_test(test_zz_decoder_simple_def),
 			cmocka_unit_test(test_zz_decoder_double),
@@ -547,5 +651,8 @@ int main() {
 			cmocka_unit_test(test_zz_decoder_objects),
 	};
 
-	return cmocka_run_group_tests(tests, NULL, NULL);
+	const int cmocka_run_rc = cmocka_run_group_tests(tests, NULL, NULL);
+	json_decref(decoder_cfg);
+	json_decref(listener_cfg);
+	return cmocka_run_rc;
 }

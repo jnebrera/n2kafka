@@ -6,6 +6,9 @@ TESTS_C = $(wildcard tests/0*.c)
 
 TESTS = $(TESTS_C:.c=.test)
 TESTS_OBJS = $(TESTS:.test=.o)
+# TODO infividualize parsing objdeps!
+TEST_COMMON_OBJS_DEPS = tests/assertion_handler.o tests/n2k_kafka_tests.o \
+	tests/rb_json_tests.o tests/zz_http2k_tests.o
 TESTS_CHECKS_XML = $(TESTS_C:.c=.xml)
 TESTS_MEM_XML = $(TESTS_C:.c=.mem.xml)
 TESTS_HELGRIND_XML = $(TESTS_C:.c=.helgrind.xml)
@@ -77,10 +80,17 @@ tests/%.xml: tests/%.test $(BIN)
 	@echo -e '\033[0;33m Testing:\033[0m $<'
 	@CMOCKA_XML_FILE="$@" CMOCKA_MESSAGE_OUTPUT=XML "./$<" >/dev/null 2>&1
 
+#Transforms __wrap_fn in -Wl,-wrap,fn
+WRAP_BASH_FN = $(shell nm -P $(1) | grep -e "^__wrap" | cut -d ' ' -f 1 | \
+	sed 's/__wrap_/-Wl,-wrap=/' | xargs)
+
+tests/%.test: WRAP_LDFLAGS := -Wl,-wrap,MHD_get_connection_info
 tests/%.test: CPPFLAGS := -I. $(CPPFLAGS)
-tests/%.test: tests/%.o $(filter-out src/engine/n2kafka.o,$(OBJS))
+tests/%.test: tests/%.o $(TEST_COMMON_OBJS_DEPS) $(filter-out src/engine/n2kafka.o,$(OBJS))
 	@echo -e '\033[0;33m Building: $@ \033[0m'
-	@$(CC) $(CPPFLAGS) $(LDFLAGS) $< $(shell cat $(@:.test=.objdeps)) -o $@ $(LIBS) -lcmocka -lcurl
+	$(CC) $(CPPFLAGS) $(LDFLAGS) \
+		$(call WRAP_BASH_FN,$(shell cat $(@:.test=.objdeps))) \
+		$< $(shell cat $(@:.test=.objdeps)) -o $@ $(LIBS) -lcmocka -lcurl
 
 check_coverage:
 	@( if [[ "x$(WITH_COVERAGE)" == "xn" ]]; then \

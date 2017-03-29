@@ -7,6 +7,20 @@
    ...
 }
 
+{
+   MHD
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   fun:malloc
+   ...
+   obj:/usr/lib64/libgcrypt.so.11.8.2
+   fun:gcry_control
+   fun:MHD_init
+   fun:_dl_init
+   obj:/usr/lib64/ld-2.17.so
+}
+
+
 # My valgrind librdkafka suppressions
 {
    more_nss

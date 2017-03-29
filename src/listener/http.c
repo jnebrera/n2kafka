@@ -529,7 +529,7 @@ static int post_handle(void *_cls,
 		}
 
 		*ptr = create_connection_info(
-				STRING_INITIAL_SIZE, client, url, connection);
+				STRING_INITIAL_SIZE, url, client, connection);
 
 		return (NULL == *ptr) ? MHD_NO : MHD_YES;
 	} else if (*upload_data_size > 0) {

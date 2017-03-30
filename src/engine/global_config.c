@@ -403,8 +403,6 @@ static void parse_rdkafka_config_keyval(const char *key, const json_t *value) {
 		global_config.brokers = strdup(assert_json_string(key, value));
 		parse_rdkafka_keyval_config("rdkafka.metadata.broker.list",
 					    global_config.brokers);
-		parse_rdkafka_keyval_config("rdkafka.metadata.broker.list",
-					    global_config.brokers);
 	} else if (!strcasecmp(key, CONFIG_N2KAFKA_ID_KEY)) {
 		global_config.n2kafka_id =
 				strdup(assert_json_string(key, value));

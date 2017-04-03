@@ -39,7 +39,6 @@
 #include <librd/rdlog.h>
 #include <librd/rdmem.h>
 #include <librdkafka/rdkafka.h>
-#include <pthread.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -61,7 +60,6 @@ struct zz_opaque {
 
 	struct zz_config *zz_config;
 
-	pthread_mutex_t produce_error_last_time_mutex[LAST_WARNING_TIME__END];
 	time_t produce_error_last_time[LAST_WARNING_TIME__END];
 };
 
@@ -104,12 +102,6 @@ int zz_opaque_creator(json_t *config __attribute__((unused)), void **_opaque) {
 #ifdef ZZ_OPAQUE_MAGIC
 	opaque->magic = ZZ_OPAQUE_MAGIC;
 #endif
-
-	for (i = 0; i < RD_ARRAYSIZE(opaque->produce_error_last_time_mutex);
-	     ++i) {
-		pthread_mutex_init(&opaque->produce_error_last_time_mutex[i],
-				   NULL);
-	}
 
 	/// @TODO move global_config to static allocated buffer
 	opaque->zz_config = &global_config.rb;
@@ -180,56 +172,50 @@ static void produce_or_free(struct zz_opaque *opaque,
 
 	rd_kafka_topic_t *rkt = topics_db_get_rdkafka_topic(topic);
 
-	const int produce_ret = rd_kafka_produce_batch(rkt,
-						       RD_KAFKA_PARTITION_UA,
-						       RD_KAFKA_MSG_F_FREE,
-						       msgs,
-						       len);
+	int msgs_ok = rd_kafka_produce_batch(rkt,
+					     RD_KAFKA_PARTITION_UA,
+					     RD_KAFKA_MSG_F_FREE,
+					     msgs,
+					     len);
 
-	if (produce_ret != len) {
-		int i;
-		for (i = 0; i < len; ++i) {
-			if (msgs[i].err != RD_KAFKA_RESP_ERR_NO_ERROR) {
-				time_t last_warning_time = 0;
-				int warn = 0;
-				const size_t last_warning_time_pos =
-						kafka_error_to_warning_time_pos(
-								msgs[i].err);
+	if (likely(msgs_ok == len)) {
+		// all OK!
+		return;
+	}
 
-				if (last_warning_time_pos <
-				    LAST_WARNING_TIME__END) {
-					const time_t curr_time = time(NULL);
-					pthread_mutex_lock(
-							&opaque->produce_error_last_time_mutex
-									 [last_warning_time_pos]);
-					last_warning_time =
-							opaque->produce_error_last_time
-									[last_warning_time_pos];
-					if (difftime(curr_time,
-						     last_warning_time) >
-					    alert_threshold) {
-						opaque->produce_error_last_time
-								[last_warning_time_pos] =
-								curr_time;
-						warn = 1;
-					}
-					pthread_mutex_unlock(
-							&opaque->produce_error_last_time_mutex
-									 [last_warning_time_pos]);
-				}
+	int i;
+	for (i = 0; i < len && msgs_ok < len; ++i) {
+		int warn = 1;
+		if (msgs[i].err == RD_KAFKA_RESP_ERR_NO_ERROR) {
+			continue;
+		}
 
-				if (warn) {
-					/* If no alert threshold established or
-					 * last alert is too old */
-					rdlog(LOG_ERR,
-					      "Can't produce to topic %s: %s",
-					      rd_kafka_topic_name(rkt),
-					      rd_kafka_err2str(msgs[i].err));
-				}
+		msgs_ok++;
+		const size_t last_warning_time_pos =
+				kafka_error_to_warning_time_pos(msgs[i].err);
 
-				free(msgs[i].payload);
+		if (last_warning_time_pos <= LAST_WARNING_TIME__END) {
+			const time_t last_warning_time =
+					opaque->produce_error_last_time
+							[last_warning_time_pos];
+			const time_t now = time(NULL);
+			if (difftime(now, last_warning_time) <
+			    alert_threshold) {
+				warn = 0;
+			} else {
+				opaque->produce_error_last_time
+						[last_warning_time_pos] = now;
 			}
 		}
+
+		if (warn) {
+			rdlog(LOG_ERR,
+			      "Can't produce to topic %s: %s",
+			      rd_kafka_topic_name(rkt),
+			      rd_kafka_err2str(msgs[i].err));
+		}
+
+		free(msgs[i].payload);
 	}
 }
 

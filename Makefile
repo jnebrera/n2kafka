@@ -2,7 +2,7 @@ BIN=	n2kafka
 
 SRCS=   version.c
 OBJS = $(SRCS:.c=.o)
-TESTS_C = $(sort $(wildcard tests/0*.c))
+TESTS_C = $(wildcard tests/0*.c)
 
 TESTS = $(TESTS_C:.c=.test)
 TESTS_OBJS = $(TESTS:.test=.o)

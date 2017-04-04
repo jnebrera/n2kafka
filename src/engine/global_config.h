@@ -86,10 +86,6 @@ enum {
 typedef LIST_HEAD(, listener) listener_list;
 
 struct n2kafka_config {
-#ifdef HAVE_LIBMICROHTTPD
-#define N2KAFKA_HTTP 3
-#endif
-
 	/// Path to reload
 	char *config_path;
 
@@ -117,8 +113,6 @@ struct n2kafka_config {
 	int response_len;
 
 	listener_list listeners;
-
-	struct json_t *stream_enrichment;
 
 	bool debug;
 };

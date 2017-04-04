@@ -281,22 +281,6 @@ int send_array_to_kafka(rd_kafka_topic_t *rkt,
 	return send_array_to_rkt(rkt, RD_KAFKA_MSG_F_FREE, msgs);
 }
 
-void dumb_decoder(char *buffer,
-		  size_t buf_size,
-		  const keyval_list_t *keyval __attribute__((unused)),
-		  void *listener_callback_opaque,
-		  void **sessionp __attribute__((unused))) {
-
-	rd_kafka_topic_t *rkt =
-			new_rkt_global_config(default_topic_name(), NULL);
-	send_to_kafka(rkt,
-		      buffer,
-		      buf_size,
-		      RD_KAFKA_MSG_F_FREE,
-		      listener_callback_opaque);
-	rd_kafka_topic_destroy(rkt);
-}
-
 void flush_kafka() {
 	flush_kafka0(1000);
 }

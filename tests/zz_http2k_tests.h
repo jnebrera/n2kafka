@@ -36,10 +36,10 @@ static const char zz_uri_prefix[] = "/v1/";
 
 /// Prints uri based on uuid and topic
 #define print_expected_topic(dst, dst_size, uuid, topic)                       \
-	snprintf(dst, (int)dst_size, "%s_%s", uuid, topic)
+	snprintf(dst, dst_size, "%s_%s", uuid, topic)
 
 #define print_expected_url(dst, dst_size, uuid, topic)                         \
-	snprintf(dst, (int)dst_size, "/v1/%s", topic)
+	snprintf(dst, dst_size, "/v1/%s", topic)
 
 /// Prepare decoder args
 void prepare_args(const char *uri,
@@ -126,13 +126,11 @@ struct mock_MHD_connection {
 struct zz_test_state {
 	struct zz_config zz_config;
 	struct mock_MHD_connection mhd_connection;
-	void *decoder_opaque;
 	struct listener *listener;
 };
 
 /// @TODO make private!
 void test_zz_decoder_setup(struct zz_test_state *state,
-			   const json_t *listener_conf,
 			   const json_t *decoder_conf);
 
 /// @TODO make private!

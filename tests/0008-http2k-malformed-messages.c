@@ -27,13 +27,7 @@
 static const char TEMP_TEMPLATE[] = "n2ktXXXXXX";
 
 static const char CONFIG_TEST[] = "{"
-				  "\"brokers\": \"localhost\","
-				  "\"zz_http2k_config\": {"
-				  "\"topics\" : {"
-				  "\"def_rb_flow\": {},"
-				  "\"def_rb_event\": {}"
-				  "}"
-				  "}"
+				  "\"brokers\": \"localhost\""
 				  "}";
 
 static json_t *listener_cfg = NULL;

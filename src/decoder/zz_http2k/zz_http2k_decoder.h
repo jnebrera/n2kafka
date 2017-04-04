@@ -61,11 +61,4 @@ void zz_decoder_done(void *zz_config);
     */
 int zz_decoder_reload(void *_db, const struct json_t *zz_config);
 
-int zz_opaque_creator(struct json_t *config, void **opaque);
-int zz_opaque_reload(struct json_t *config, void *opaque);
-void zz_opaque_done(void *opaque);
-void zz_decode(char *buffer,
-	       size_t buf_size,
-	       const keyval_list_t *props,
-	       void *listener_callback_opaque,
-	       void **decoder_sessionp);
+extern const struct n2k_decoder zz_decoder;

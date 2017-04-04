@@ -36,10 +36,8 @@
 static const char ZZ_LOCK_FILE[] = "n2kt_listener.lck";
 
 void test_zz_decoder_setup(struct zz_test_state *state,
-			   const json_t *listener_conf,
 			   const json_t *decoder_conf) {
 	assert_non_null(state);
-	assert_non_null(listener_conf);
 	assert_non_null(decoder_conf);
 	char errstr[512];
 
@@ -63,31 +61,16 @@ void test_zz_decoder_setup(struct zz_test_state *state,
 						      decoder_conf);
 		assert_int_equal(zz_cfg_rc, 0);
 	}
-
-	{
-		const int opaque_creator_rc =
-				zz_opaque_creator(NULL, &state->decoder_opaque);
-		assert_int_equal(0, opaque_creator_rc);
-	}
-
-	{
-		// Need to copy because of listener only accept mutable conf
-		json_t *tmp_conf = json_deep_copy(listener_conf);
-		state->listener = create_http_listener(
-				tmp_conf,
-				zz_decode,
-				DECODER_F_SUPPORT_STREAMING,
-				&state->decoder_opaque);
-		json_decref(tmp_conf);
-	}
 }
 
 void test_zz_decoder_teardown(void *vstate) {
 	struct zz_test_state *state = vstate;
 
-	state->listener->join(state->listener->private);
-	free(state->listener);
-	zz_opaque_done(state->decoder_opaque);
+	const struct n2k_decoder *decoder = state->listener->decoder;
+	void *decoder_opaque = state->listener->decoder_opaque;
+
+	state->listener->join(state->listener);
+	decoder->opaque_destructor(decoder_opaque);
 	zz_decoder_done(&state->zz_config);
 
 	free_global_config();
@@ -172,6 +155,10 @@ void test_zz_decoder0(const json_t *listener_conf,
 		      void *check_callback_opaque) {
 
 	size_t i;
+	void *zz_opaque;
+	// Need to copy because listener creation accept mutable json
+	json_t *listener_conf_copy = json_deep_copy(listener_conf);
+
 #define CONNECTION_POST_VALUE(t_key, t_val)                                    \
 	{ .kind = MHD_HEADER_KIND, .key = t_key, .value = t_val, }
 
@@ -188,6 +175,14 @@ void test_zz_decoder0(const json_t *listener_conf,
 
 #undef CONNECTION_POST_VALUE
 
+	{
+		const int opaque_creator_rc =
+				zz_decoder.opaque_creator(
+						NULL,
+						&zz_opaque);
+		assert_int_equal(0, opaque_creator_rc);
+	}
+
 	struct zz_test_state zz_state = {
 		.mhd_connection = {
 			.magic = MOCK_MHD_CONNECTION_MAGIC,
@@ -203,24 +198,31 @@ void test_zz_decoder0(const json_t *listener_conf,
 				.values = conn_values
 
 			}
-		}
+		},
+		.listener = create_http_listener(listener_conf_copy, &zz_decoder,
+			zz_opaque)
 	};
 	// clang-format on
+	json_decref(listener_conf_copy);
+	listener_conf_copy = NULL;
 
 	static const char brokers[] = "kafka:9092";
 	rd_kafka_t *rk = init_kafka_consumer(brokers, params->topic);
 
-	test_zz_decoder_setup(&zz_state, listener_conf, decoder_conf);
+	test_zz_decoder_setup(&zz_state, decoder_conf);
 
-	struct http_private http_private = {
+	struct http_listener http_private = {
+// clang-format off
 #ifdef HTTP_PRIVATE_MAGIC
-			.magic = HTTP_PRIVATE_MAGIC,
+		.magic = HTTP_PRIVATE_MAGIC,
 #endif
 
-			.d = NULL,
-			.callback = zz_decode,
-			.callback_opaque = zz_state.decoder_opaque,
-			.callback_flags = DECODER_F_SUPPORT_STREAMING,
+		.d = NULL,
+		.listener = {
+			.decoder = &zz_decoder,
+			.decoder_opaque = zz_opaque,
+		}
+			// clang-format on
 	};
 
 	void *http_listener_private = NULL;

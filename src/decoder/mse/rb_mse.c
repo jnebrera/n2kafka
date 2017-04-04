@@ -195,7 +195,7 @@ static void mse_decoder_info_destroy(struct mse_decoder_info *decoder_info) {
 	}
 }
 
-int mse_opaque_creator(json_t *config, void **_opaque) {
+static int mse_opaque_creator(json_t *config, void **_opaque) {
 	assert(_opaque);
 
 	struct mse_opaque *opaque = (*_opaque) = calloc(1, sizeof(*opaque));
@@ -265,7 +265,7 @@ static void mse_warn_timestamp(struct mse_data *data,
 }
 
 /// @TODO join with mse_opaque_creator
-int mse_opaque_reload(json_t *config, void *_opaque) {
+static int mse_opaque_reload(json_t *config, void *_opaque) {
 	json_error_t jerr;
 	struct mse_opaque *opaque = _opaque;
 	assert(opaque);
@@ -333,7 +333,7 @@ enrichment_err:
 	return 0;
 }
 
-void mse_opaque_done(void *_opaque) {
+static void mse_opaque_done(void *_opaque) {
 	assert(_opaque);
 
 	struct mse_opaque *opaque = _opaque;
@@ -792,11 +792,11 @@ err:
 	return notifications;
 }
 
-void mse_decode(char *buffer,
-		size_t buf_size,
-		const keyval_list_t *keyval,
-		void *_listener_callback_opaque,
-		void **sessionp __attribute__((unused))) {
+static void mse_decode(char *buffer,
+		       size_t buf_size,
+		       const keyval_list_t *keyval,
+		       void *_listener_callback_opaque,
+		       void **sessionp __attribute__((unused))) {
 	size_t i;
 	struct mse_opaque *mse_opaque = _listener_callback_opaque;
 #ifdef MSE_OPAQUE_MAGIC
@@ -831,3 +831,28 @@ void mse_decode(char *buffer,
 		}
 	}
 }
+
+static const char *mse_decoder_name() {
+	return "MSE";
+}
+
+static const char *mse_config_parameter() {
+	return "mse-sensors";
+}
+
+static int mse_flags() {
+	return 0;
+}
+
+const struct n2k_decoder mse_decoder = {
+		.decoder_name = mse_decoder_name,
+		.config_parameter = mse_config_parameter,
+
+		.callback = mse_decode,
+
+		.opaque_creator = mse_opaque_creator,
+		.opaque_reload = mse_opaque_reload,
+		.opaque_destructor = mse_opaque_done,
+
+		.flags = mse_flags,
+};

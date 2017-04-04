@@ -22,9 +22,9 @@
 #include "engine/global_config.h"
 struct http_handler;
 struct json_t;
+
 struct listener *create_socket_listener(struct json_t *config,
-					decoder_callback callback,
-					int callback_flags,
+					const struct n2k_decoder *decoder,
 					void *callback_opaque);
 
 #define create_tcp_listener create_socket_listener

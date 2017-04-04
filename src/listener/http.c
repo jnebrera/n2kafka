@@ -56,25 +56,15 @@ struct string {
 	size_t allocated, used;
 };
 
+/// Per listener stuff
+struct http_listener {
+#ifndef NDEBUG
+	// Note: This MUST be the first member!
+	struct listener listener; ///< listener
 #define HTTP_PRIVATE_MAGIC 0xC0B345FE
-
-/// Connection private data
-struct http_private {
-#ifdef HTTP_PRIVATE_MAGIC
-	/// Casting magic
-	uint64_t magic;
+	uint64_t magic; ///< magic field
 #endif
-	/// Associated daemon
-	struct MHD_Daemon *d;
-
-	/// Callback associated with received data
-	decoder_callback callback;
-
-	/// Opaque to send to callback
-	void *callback_opaque;
-
-	/// Callback flags
-	int callback_flags;
+	struct MHD_Daemon *d; ///< Associated daemon
 };
 
 static size_t smax(size_t n1, size_t n2) {
@@ -153,26 +143,27 @@ static void request_completed(void *cls,
 	}
 
 	struct conn_info *con_info = *con_cls;
-	struct http_private *h = cls;
+	struct http_listener *http_listener = cls;
 #ifdef HTTP_PRIVATE_MAGIC
-	assert(HTTP_PRIVATE_MAGIC == h->magic);
+	assert(HTTP_PRIVATE_MAGIC == http_listener->magic);
 #endif
+	const struct n2k_decoder *decoder = http_listener->listener.decoder;
 
-	if (!h->callback_flags & DECODER_F_SUPPORT_STREAMING) {
+	if (!(decoder->flags() & DECODER_F_SUPPORT_STREAMING)) {
 		/* No streaming processing -> need to process buffer */
-		h->callback(con_info->str.buf,
-			    con_info->str.used,
-			    &con_info->decoder_params,
-			    h->callback_opaque,
-			    NULL);
+		decoder->callback(con_info->str.buf,
+				  con_info->str.used,
+				  &con_info->decoder_params,
+				  http_listener->listener.decoder_opaque,
+				  NULL);
 		con_info->str.buf = NULL; /* librdkafka will free it */
 	} else {
 		/* Streaming processing -> need to free session pointer */
-		h->callback(NULL,
-			    0,
-			    &con_info->decoder_params,
-			    h->callback_opaque,
-			    &con_info->decoder_sessp);
+		decoder->callback(NULL,
+				  0,
+				  &con_info->decoder_params,
+				  http_listener->listener.decoder_opaque,
+				  &con_info->decoder_sessp);
 	}
 
 	if (con_info->zlib.enable) {
@@ -389,7 +380,7 @@ client_addr(char *buf, size_t buf_size, struct MHD_Connection *con_info) {
 	return sockaddr2str(buf, buf_size, cinfo->client_addr);
 }
 
-static size_t compressed_callback(struct http_private *cls,
+static size_t compressed_callback(struct http_listener *h_listener,
 				  struct conn_info *con_info,
 				  const char *upload_data,
 				  size_t upload_data_size) {
@@ -480,11 +471,13 @@ static size_t compressed_callback(struct http_private *cls,
 		rc += zprocessed; // @TODO this should be returned by callback
 				  // call
 		if (zprocessed > 0) {
-			cls->callback((char *)buffer,
-				      zprocessed,
-				      &con_info->decoder_params,
-				      cls->callback_opaque,
-				      &con_info->decoder_sessp);
+			const struct n2k_decoder *decoder =
+					h_listener->listener.decoder;
+			decoder->callback((char *)buffer,
+					  zprocessed,
+					  &con_info->decoder_params,
+					  h_listener->listener.decoder_opaque,
+					  &con_info->decoder_sessp);
 		}
 	} while (con_info->zlib.strm.avail_out == 0);
 
@@ -495,7 +488,7 @@ static size_t compressed_callback(struct http_private *cls,
 	return upload_data_size - con_info->zlib.strm.avail_in;
 }
 
-static int post_handle(void *_cls,
+static int post_handle(void *vhttp_listener,
 		       struct MHD_Connection *connection,
 		       const char *url,
 		       const char *method,
@@ -503,9 +496,9 @@ static int post_handle(void *_cls,
 		       const char *upload_data,
 		       size_t *upload_data_size,
 		       void **ptr) {
-	struct http_private *cls = _cls;
+	struct http_listener *http_listener = vhttp_listener;
 #ifdef HTTP_PRIVATE_MAGIC
-	assert(HTTP_PRIVATE_MAGIC == cls->magic);
+	assert(HTTP_PRIVATE_MAGIC == http_listener->magic);
 #endif
 
 	if (0 != strcmp(method, MHD_HTTP_METHOD_POST)) {
@@ -534,9 +527,11 @@ static int post_handle(void *_cls,
 		return (NULL == *ptr) ? MHD_NO : MHD_YES;
 	} else if (*upload_data_size > 0) {
 		/* middle calls, process string sent */
+		const struct n2k_decoder *decoder =
+				http_listener->listener.decoder;
 		struct conn_info *con_info = *ptr;
 		size_t rc;
-		if (!cls->callback_flags & DECODER_F_SUPPORT_STREAMING) {
+		if (!(decoder->flags() & DECODER_F_SUPPORT_STREAMING)) {
 			/* Does not support stream, we need to allocate a big
 			 * buffer */
 			rc = append_http_data_to_connection_data(
@@ -547,18 +542,19 @@ static int post_handle(void *_cls,
 			/* Does support streaming, we will decompress & process
 			 * until */
 			/* end of received chunk */
-			rc = compressed_callback(cls,
+			rc = compressed_callback(http_listener,
 						 con_info,
 						 upload_data,
 						 *upload_data_size);
 		} else {
 			/* Does support streaming processing, sending the chunk
 			 */
-			cls->callback(upload_data,
-				      *upload_data_size,
-				      &con_info->decoder_params,
-				      cls->callback_opaque,
-				      &con_info->decoder_sessp);
+			decoder->callback(
+					upload_data,
+					*upload_data_size,
+					&con_info->decoder_params,
+					http_listener->listener.decoder_opaque,
+					&con_info->decoder_sessp);
 			/// @TODO fix it
 			if (0 /* ERROR */) {
 			}
@@ -585,12 +581,9 @@ struct http_loop_args {
 	} server_parameters;
 };
 
-static struct http_private *start_http_loop(const struct http_loop_args *args,
-					    decoder_callback callback,
-					    int callback_flags,
-					    void *cb_opaque) {
-	struct http_private *h = NULL;
-
+static struct http_listener *start_http_loop(const struct http_loop_args *args,
+					     const struct n2k_decoder *decoder,
+					     void *decoder_opaque) {
 	unsigned int flags = 0;
 	if (args->mode == NULL ||
 	    0 == strcmp(MODE_THREAD_PER_CONNECTION, args->mode)) {
@@ -611,24 +604,23 @@ static struct http_private *start_http_loop(const struct http_loop_args *args,
 
 	flags |= MHD_USE_DEBUG;
 
-	h = calloc(1, sizeof(*h));
-	if (!h) {
+	struct http_listener *http_listener = calloc(1, sizeof(*http_listener));
+	if (!http_listener) {
 		rdlog(LOG_ERR,
 		      "Can't allocate LIBMICROHTTPD private"
 		      " (out of memory?)");
 		return NULL;
 	}
 #ifdef HTTP_PRIVATE_MAGIC
-	h->magic = HTTP_PRIVATE_MAGIC;
+	http_listener->magic = HTTP_PRIVATE_MAGIC;
 #endif
-	h->callback = callback;
-	h->callback_flags = callback_flags;
-	h->callback_opaque = cb_opaque;
+	http_listener->listener.decoder = decoder;
+	http_listener->listener.decoder_opaque = decoder_opaque;
 
-	struct MHD_OptionItem opts[] = {
+	const struct MHD_OptionItem opts[] = {
 			{MHD_OPTION_NOTIFY_COMPLETED,
 			 (intptr_t)&request_completed,
-			 h},
+			 http_listener},
 
 			/* Digest-Authentication related. Setting to 0 saves
 			   some memory */
@@ -659,66 +651,65 @@ static struct http_private *start_http_loop(const struct http_loop_args *args,
 
 			{MHD_OPTION_END, 0, NULL}};
 
-	h->d = MHD_start_daemon(flags,
-				args->port,
-				NULL,	/* Auth callback */
-				NULL,	/* Auth callback parameter */
-				post_handle, /* Request handler */
-				h,	   /* Request handler parameter */
-				MHD_OPTION_ARRAY,
-				opts,
-				MHD_OPTION_END);
+	http_listener->d = MHD_start_daemon(flags,
+					    args->port,
+					    NULL, /* Auth callback */
+					    NULL, /* Auth callback parameter */
+					    post_handle,   /* Request handler */
+					    http_listener, /* Request handler
+							      parameter */
+					    MHD_OPTION_ARRAY,
+					    opts,
+					    MHD_OPTION_END);
 
-	if (NULL == h->d) {
+	if (NULL == http_listener->d) {
 		rdlog(LOG_ERR,
 		      "Can't allocate LIBMICROHTTPD handler"
 		      " (out of memory?)");
-		free(h);
-		return NULL;
+		free(http_listener);
+		http_listener = NULL;
 	}
 
-	return h;
+	return http_listener;
 }
 
-static void reload_listener_http(json_t *new_config,
-				 decoder_listener_opaque_reload opaque_reload,
-				 void *cb_opaque,
+static void reload_listener_http(struct listener *listener,
+				 json_t *new_config,
+
 				 void *_private __attribute__((unused))) {
-	if (opaque_reload) {
+	if (listener->decoder->opaque_reload) {
 		rdlog(LOG_INFO, "Reloading opaque");
-		opaque_reload(new_config, cb_opaque);
+		listener->decoder->opaque_reload(new_config,
+						 listener->decoder_opaque);
 	} else {
 		rdlog(LOG_INFO, "Not reload opaque provided");
 	}
 }
 
-static void break_http_loop(void *_h) {
-	struct http_private *h = _h;
-	MHD_stop_daemon(h->d);
-	free(h);
+static void break_http_loop(struct listener *listener) {
+	struct http_listener *http_listener = (struct http_listener *)listener;
+	MHD_stop_daemon(http_listener->d);
+	free(http_listener);
 }
 
 struct listener *create_http_listener(struct json_t *config,
-				      decoder_callback cb,
-				      int cb_flags,
+				      const struct n2k_decoder *decoder,
 				      void *cb_opaque) {
 
 	json_error_t error;
 
-	struct http_loop_args handler_args;
-	memset(&handler_args, 0, sizeof(handler_args));
-
-	/* Default arguments */
-
-	handler_args.num_threads = 1;
-	handler_args.mode = MODE_SELECT;
-	handler_args.server_parameters.connection_memory_limit = 128 * 1024;
-	handler_args.server_parameters.connection_limit = 1024;
-	handler_args.server_parameters.connection_timeout = 30;
-	handler_args.server_parameters.per_ip_connection_limit = 0;
+	struct http_loop_args handler_args = {
+			/* Default arguments */
+			.num_threads = 1,
+			.mode = MODE_SELECT,
+			.server_parameters = {
+					.connection_memory_limit = 128 * 1024,
+					.connection_limit = 1024,
+					.connection_timeout = 30,
+					.per_ip_connection_limit = 0,
+			}};
 
 	/* Unpacking */
-
 	const int unpack_rc = json_unpack_ex(
 			config,
 			&error,
@@ -753,16 +744,10 @@ struct listener *create_http_listener(struct json_t *config,
 		return NULL;
 	}
 
-	struct http_private *priv =
-			start_http_loop(&handler_args, cb, cb_flags, cb_opaque);
-	if (NULL == priv) {
-		return NULL;
-	}
-
-	struct listener *listener = calloc(1, sizeof(*listener));
-	if (!listener) {
+	struct http_listener *http_listener =
+			start_http_loop(&handler_args, decoder, cb_opaque);
+	if (NULL == http_listener) {
 		rdlog(LOG_ERR, "Can't create http listener (out of memory?)");
-		free(priv);
 		return NULL;
 	}
 
@@ -770,15 +755,13 @@ struct listener *create_http_listener(struct json_t *config,
 	      "Creating new HTTP listener on port %d",
 	      handler_args.port);
 
-	listener->create = create_http_listener;
-	listener->cb.cb_opaque = cb_opaque;
-	listener->cb.callback = cb;
-	listener->join = break_http_loop;
-	listener->private = priv;
-	listener->reload = reload_listener_http;
-	listener->port = handler_args.port;
+	http_listener->listener.create = create_http_listener;
+	http_listener->listener.decoder = decoder;
+	http_listener->listener.join = break_http_loop;
+	http_listener->listener.reload = reload_listener_http;
+	http_listener->listener.port = handler_args.port;
 
-	return listener;
+	return (struct listener *)http_listener;
 }
 
 #endif

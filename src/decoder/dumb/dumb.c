@@ -1,9 +1,7 @@
 /*
-**
 ** Copyright (C) 2014-2016, Eneo Tecnologia S.L.
 ** Copyright (C) 2017, Eugenio Perez <eupm90@gmail.com>
 ** Author: Eugenio Perez <eupm90@gmail.com>
-** All rights reserved.
 **
 ** This program is free software; you can redistribute it and/or modify
 ** it under the terms of the GNU Affero General Public License as
@@ -19,36 +17,41 @@
 ** along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#pragma once
+#include "dumb.h"
 
-#include "util/pair.h"
+#include "util/kafka.h"
 
-#include <pthread.h>
-#include <stdint.h>
-#include <string.h>
+static void dumb_decode(char *buffer,
+			size_t buf_size,
+			const keyval_list_t *keyval __attribute__((unused)),
+			void *listener_callback_opaque,
+			void **sessionp __attribute__((unused))) {
 
-/* All functions are thread-safe here, excepting free_valid_meraki_database */
+	rd_kafka_topic_t *rkt =
+			new_rkt_global_config(default_topic_name(), NULL);
 
-struct json_t;
-struct meraki_database {
-	/* Private */
-	pthread_rwlock_t rwlock;
-	struct json_t *root;
-};
+	// const casting
+	char *mutable_buffer;
+	memcpy(&mutable_buffer, &buffer, sizeof(mutable_buffer));
 
-static void
-init_meraki_database(struct meraki_database *db) __attribute__((unused));
-static void init_meraki_database(struct meraki_database *db) {
-	pthread_rwlock_init(&db->rwlock, 0);
-	db->root = NULL;
+	send_to_kafka(rkt,
+		      mutable_buffer,
+		      buf_size,
+		      RD_KAFKA_MSG_F_COPY,
+		      listener_callback_opaque);
+	rd_kafka_topic_destroy(rkt);
 }
 
-int parse_meraki_secrets(void *db, const struct json_t *meraki_object);
+static const char *dumb_decoder_name() {
+	return "";
+}
 
-void meraki_database_done(struct meraki_database *db);
+static int dumb_flags() {
+	return 0;
+}
 
-struct meraki_config {
-	struct meraki_database database;
+const struct n2k_decoder dumb_decoder = {
+		.decoder_name = dumb_decoder_name,
+		.callback = dumb_decode,
+		.flags = dumb_flags,
 };
-
-extern const struct n2k_decoder meraki_decoder;

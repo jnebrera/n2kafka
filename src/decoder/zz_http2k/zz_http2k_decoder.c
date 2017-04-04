@@ -42,8 +42,6 @@
 #include <stdint.h>
 #include <string.h>
 
-static const char RB_HTTP2K_CONFIG_KEY[] = "zz_http2k_config";
-
 enum warning_times_pos {
 	LAST_WARNING_TIME__QUEUE_FULL,
 	LAST_WARNING_TIME__MSG_SIZE_TOO_LARGE,
@@ -88,9 +86,8 @@ kafka_error_to_warning_time_pos(rd_kafka_resp_err_t err) {
 	};
 }
 
-int zz_opaque_creator(json_t *config __attribute__((unused)), void **_opaque) {
-	size_t i;
-
+static int
+zz_opaque_creator(json_t *config __attribute__((unused)), void **_opaque) {
 	assert(_opaque);
 
 	struct zz_opaque *opaque = (*_opaque) = calloc(1, sizeof(*opaque));
@@ -109,7 +106,7 @@ int zz_opaque_creator(json_t *config __attribute__((unused)), void **_opaque) {
 	return 0;
 }
 
-int zz_opaque_reload(json_t *config, void *opaque) {
+static int zz_opaque_reload(json_t *config, void *opaque) {
 	/* Do nothing, since this decoder does not save anything per-listener
 	   information */
 	(void)config;
@@ -123,7 +120,7 @@ int zz_decoder_reload(void *vzz_config, const json_t *config) {
 	return 0;
 }
 
-void zz_opaque_done(void *_opaque) {
+static void zz_opaque_done(void *_opaque) {
 	assert(_opaque);
 
 	struct zz_opaque *opaque = _opaque;
@@ -137,7 +134,6 @@ int parse_zz_config(void *vconfig, const struct json_t *config) {
 	struct zz_config *zz_config = vconfig;
 
 	assert(vconfig);
-	assert(config);
 
 	if (only_stdout_output()) {
 		rdlog(LOG_ERR,
@@ -264,11 +260,11 @@ static void process_zz_buffer(const char *buffer,
 	}
 }
 
-void zz_decode(char *buffer,
-	       size_t buf_size,
-	       const keyval_list_t *list,
-	       void *_listener_callback_opaque,
-	       void **vsessionp) {
+static void zz_decode(char *buffer,
+		      size_t buf_size,
+		      const keyval_list_t *list,
+		      void *_listener_callback_opaque,
+		      void **vsessionp) {
 	struct zz_opaque *zz_opaque = _listener_callback_opaque;
 	struct zz_session **sessionp = (struct zz_session **)vsessionp;
 	/// Helper pointer to simulate streaming behavior
@@ -310,3 +306,28 @@ void zz_decoder_done(void *vzz_config) {
 
 	free_valid_zz_database(&zz_config->database);
 }
+
+static const char *zz_name() {
+	return "zz_http2k";
+}
+
+static const char *zz_config_token() {
+	return "zz_http2k_config";
+}
+
+static int zz_flags() {
+	return DECODER_F_SUPPORT_STREAMING;
+}
+
+const struct n2k_decoder zz_decoder = {
+		.decoder_name = zz_name,
+		.config_parameter = zz_config_token,
+
+		.callback = zz_decode,
+
+		.opaque_creator = zz_opaque_creator,
+		.opaque_reload = zz_opaque_reload,
+		.opaque_destructor = zz_opaque_done,
+
+		.flags = zz_flags,
+};

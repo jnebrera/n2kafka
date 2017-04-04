@@ -39,11 +39,6 @@ void send_to_kafka(rd_kafka_topic_t *rkt,
 		   const size_t bufsize,
 		   int flags,
 		   void *opaque);
-void dumb_decoder(char *buffer,
-		  size_t buf_size,
-		  const keyval_list_t *keyval,
-		  void *listener_callback_opaque,
-		  void **sessionp);
 
 /// @TODO join with zz_http2k_decoder mac partitioner
 int32_t rb_client_mac_partitioner(const rd_kafka_topic_t *_rkt,

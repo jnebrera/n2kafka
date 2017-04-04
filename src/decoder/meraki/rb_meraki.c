@@ -220,7 +220,7 @@ parse_per_listener_opaque_config(struct meraki_opaque *opaque, json_t *config) {
 	return (NULL == opaque->rkt) ? -1 : 0;
 }
 
-int meraki_opaque_creator(struct json_t *config, void **_opaque) {
+static int meraki_opaque_creator(struct json_t *config, void **_opaque) {
 	assert(config);
 	assert(_opaque);
 
@@ -261,7 +261,7 @@ decoder_info_err:
 }
 
 /// @TODO Join with meraki_opaque_creator
-int meraki_opaque_reload(json_t *config, void *vopaque) {
+static int meraki_opaque_reload(json_t *config, void *vopaque) {
 	struct meraki_opaque *opaque = vopaque;
 	assert(opaque);
 	assert(config);
@@ -317,7 +317,7 @@ enrichment_err:
 	return rc;
 }
 
-void meraki_opaque_destructor(void *_opaque) {
+static void meraki_opaque_destructor(void *_opaque) {
 	struct meraki_opaque *opaque = _opaque;
 
 #ifdef MERAKI_OPAQUE_MAGIC
@@ -708,11 +708,11 @@ err:
 	return notifications;
 }
 
-void meraki_decode(char *buffer,
-		   size_t buf_size,
-		   const keyval_list_t *attrs,
-		   void *_listener_callback_opaque,
-		   void **sessionp __attribute__((unused))) {
+static void meraki_decode(char *buffer,
+			  size_t buf_size,
+			  const keyval_list_t *attrs,
+			  void *_listener_callback_opaque,
+			  void **sessionp __attribute__((unused))) {
 	assert(buffer);
 	assert(_listener_callback_opaque);
 
@@ -733,3 +733,28 @@ void meraki_decode(char *buffer,
 	}
 	free(buffer);
 }
+
+static const char *meraki_decoder_name() {
+	return "meraki";
+}
+
+static const char *meraki_config_parameter() {
+	return "meraki-secrets";
+}
+
+static int meraki_flags() {
+	return 0;
+}
+
+const struct n2k_decoder meraki_decoder = {
+		.decoder_name = meraki_decoder_name,
+		.config_parameter = meraki_config_parameter,
+
+		.callback = meraki_decode,
+
+		.opaque_creator = meraki_opaque_creator,
+		.opaque_reload = meraki_opaque_reload,
+		.opaque_destructor = meraki_opaque_destructor,
+
+		.flags = meraki_flags,
+};

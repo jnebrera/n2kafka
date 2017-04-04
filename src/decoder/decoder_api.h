@@ -1,9 +1,7 @@
 /*
-**
 ** Copyright (C) 2014-2016, Eneo Tecnologia S.L.
 ** Copyright (C) 2017, Eugenio Perez <eupm90@gmail.com>
 ** Author: Eugenio Perez <eupm90@gmail.com>
-** All rights reserved.
 **
 ** This program is free software; you can redistribute it and/or modify
 ** it under the terms of the GNU Affero General Public License as
@@ -21,34 +19,30 @@
 
 #pragma once
 
-#include "util/pair.h"
+#include <util/pair.h>
 
-#include <pthread.h>
-#include <stdint.h>
-#include <string.h>
+#include <jansson.h>
 
-/* All functions are thread-safe here, excepting free_valid_meraki_database */
+typedef void (*decoder_callback)(char *buffer,
+				 size_t buf_size,
+				 const keyval_list_t *props,
+				 void *listener_callback_opaque,
+				 void **sessionp);
 
-struct json_t;
-struct meraki_database {
-	/* Private */
-	pthread_rwlock_t rwlock;
-	struct json_t *root;
+/// Decoder API
+struct n2k_decoder {
+	const char *(*decoder_name)();     ///< Registered decoder name.
+	const char *(*config_parameter)(); ///< Name of config parameter
+
+	/// Callback that the listener needs to call for each data received
+	decoder_callback callback;
+
+	/// Per-listener decoder information creator
+	int (*opaque_creator)(struct json_t *config, void **opaque);
+	/// Per listener decoder information reload
+	int (*opaque_reload)(struct json_t *config, void *opaque);
+	/// Per listener decoder information destructor
+	void (*opaque_destructor)(void *opaque);
+
+	int (*flags)(); ///< Decoders flags
 };
-
-static void
-init_meraki_database(struct meraki_database *db) __attribute__((unused));
-static void init_meraki_database(struct meraki_database *db) {
-	pthread_rwlock_init(&db->rwlock, 0);
-	db->root = NULL;
-}
-
-int parse_meraki_secrets(void *db, const struct json_t *meraki_object);
-
-void meraki_database_done(struct meraki_database *db);
-
-struct meraki_config {
-	struct meraki_database database;
-};
-
-extern const struct n2k_decoder meraki_decoder;

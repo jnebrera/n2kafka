@@ -1,9 +1,7 @@
 /*
-**
 ** Copyright (C) 2014-2016, Eneo Tecnologia S.L.
 ** Copyright (C) 2017, Eugenio Perez <eupm90@gmail.com>
 ** Author: Eugenio Perez <eupm90@gmail.com>
-** All rights reserved.
 **
 ** This program is free software; you can redistribute it and/or modify
 ** it under the terms of the GNU Affero General Public License as
@@ -21,34 +19,6 @@
 
 #pragma once
 
-#include "util/pair.h"
+#include "decoder/decoder_api.h"
 
-#include <pthread.h>
-#include <stdint.h>
-#include <string.h>
-
-/* All functions are thread-safe here, excepting free_valid_meraki_database */
-
-struct json_t;
-struct meraki_database {
-	/* Private */
-	pthread_rwlock_t rwlock;
-	struct json_t *root;
-};
-
-static void
-init_meraki_database(struct meraki_database *db) __attribute__((unused));
-static void init_meraki_database(struct meraki_database *db) {
-	pthread_rwlock_init(&db->rwlock, 0);
-	db->root = NULL;
-}
-
-int parse_meraki_secrets(void *db, const struct json_t *meraki_object);
-
-void meraki_database_done(struct meraki_database *db);
-
-struct meraki_config {
-	struct meraki_database database;
-};
-
-extern const struct n2k_decoder meraki_decoder;
+extern const struct n2k_decoder dumb_decoder;

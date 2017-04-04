@@ -24,6 +24,10 @@
 #endif
 #include "listener/socket.h"
 
+#include "decoder/dumb/dumb.h"
+#include "decoder/mse/rb_mse.h"
+
+#include <librd/rd.h>
 #include <librd/rdfile.h>
 #include <librd/rdsysqueue.h>
 
@@ -52,9 +56,6 @@
 #define CONFIG_DEBUG_KEY "debug"
 #define CONFIG_RESPONSE_KEY "response"
 #define CONFIG_BLACKLIST_KEY "blacklist"
-#define CONFIG_MSE_SENSORS_KEY "mse-sensors"
-#define CONFIG_MERAKI_SECRETS_KEY "meraki-secrets"
-#define CONFIG_ZZHTTP2K_CONFIG "zz_http2k_config"
 #define CONFIG_RDKAFKA_KEY "rdkafka."
 #define CONFIG_TCP_KEEPALIVE "tcp_keepalive"
 
@@ -62,58 +63,13 @@
 #define CONFIG_PROTO_UDP "udp"
 #define CONFIG_PROTO_HTTP "http"
 
-#define CONFIG_DECODE_AS_NULL ""
-#define CONFIG_DECODE_AS_MSE "MSE"
-#define CONFIG_DECODE_AS_MERAKI "meraki"
-#define CONFIG_DECODE_AS_ZZHTTP2K "zz_http2k"
-
 struct n2kafka_config global_config;
 
-static const struct registered_decoder {
-	/// Registered decoder name.
-	const char *decode_as;
-	/// Name of config parameters
-	const char *config_parameters;
-	/// Callback that the listener needs to call for each data received
-	decoder_callback cb;
-	/// Per-listener decoder information creator
-	decoder_listener_opaque_creator opaque_creator;
-	/// Per listener decoder information reload
-	decoder_listener_opaque_reload opaque_reload;
-	/// Per listener decoder information destructor
-	decoder_listener_opaque_destructor opaque_destructor;
+static const struct n2k_decoder *registered_decoders[] = {&dumb_decoder,
+							  &mse_decoder,
 
-	/// Decoders flags
-	int flags;
-} registered_decoders[] = {{CONFIG_DECODE_AS_NULL,
-			    NULL,
-			    dumb_decoder,
-			    NULL,
-			    NULL,
-			    NULL,
-			    0},
-			   // @TODO destructors
-			   {CONFIG_DECODE_AS_MSE,
-			    CONFIG_MSE_SENSORS_KEY,
-			    mse_decode,
-			    mse_opaque_creator,
-			    mse_opaque_reload,
-			    mse_opaque_done,
-			    0},
-			   {CONFIG_DECODE_AS_MERAKI,
-			    CONFIG_MERAKI_SECRETS_KEY,
-			    meraki_decode,
-			    meraki_opaque_creator,
-			    meraki_opaque_reload,
-			    meraki_opaque_destructor,
-			    0},
-			   {CONFIG_DECODE_AS_ZZHTTP2K,
-			    CONFIG_ZZHTTP2K_CONFIG,
-			    zz_decode,
-			    zz_opaque_creator,
-			    zz_opaque_reload,
-			    zz_opaque_done,
-			    DECODER_F_SUPPORT_STREAMING}};
+							  &meraki_decoder,
+							  &zz_decoder};
 
 static const struct registered_listener {
 	const char *proto;
@@ -263,19 +219,17 @@ static const listener_creator *protocol_creator(const char *proto) {
 	return NULL;
 }
 
-static const struct registered_decoder *
+static const struct n2k_decoder *
 locate_registered_decoder(const char *decode_as) {
 	assert(decode_as);
 
 	size_t i;
-	const size_t decoders_length = sizeof(registered_decoders) /
-				       sizeof(registered_decoders[0]);
+	for (i = 0; i < RD_ARRAYSIZE(registered_decoders); ++i) {
+		assert(NULL != registered_decoders[i]->decoder_name());
 
-	for (i = 0; i < decoders_length; ++i) {
-		assert(NULL != registered_decoders[i].decode_as);
-
-		if (0 == strcmp(registered_decoders[i].decode_as, decode_as)) {
-			return &registered_decoders[i];
+		if (0 ==
+		    strcmp(registered_decoders[i]->decoder_name(), decode_as)) {
+			return registered_decoders[i];
 		}
 	}
 
@@ -315,7 +269,7 @@ static void parse_listener(json_t *config) {
 	}
 
 	assert(decode_as);
-	const struct registered_decoder *decoder =
+	const struct n2k_decoder *decoder =
 			locate_registered_decoder(decode_as);
 	if (NULL == decoder) {
 		rdlog(LOG_ERR, "Can't locate decoder type %s", decode_as);
@@ -335,8 +289,8 @@ static void parse_listener(json_t *config) {
 		}
 	}
 
-	struct listener *listener = (*_listener_creator)(
-			config, decoder->cb, decoder->flags, decoder_opaque);
+	struct listener *listener =
+			(*_listener_creator)(config, decoder, decoder_opaque);
 
 	if (NULL == listener) {
 		rdlog(LOG_ERR,
@@ -346,9 +300,7 @@ static void parse_listener(json_t *config) {
 		exit(-1);
 	}
 
-	listener->cb.cb_opaque_destructor = decoder->opaque_destructor;
-	listener->cb.cb_opaque_reload = decoder->opaque_reload;
-	listener->cb.flags = decoder->flags;
+	listener->decoder = decoder;
 
 	LIST_INSERT_HEAD(&global_config.listeners, listener, entry);
 }
@@ -385,11 +337,7 @@ static void parse_config_keyval(const char *key, const json_t *value) {
 	} else if (!strcasecmp(key, CONFIG_BLACKLIST_KEY)) {
 		parse_blacklist(key, value);
 		/// @TODO replace next entries by a for in decoders
-	} else if (!strcasecmp(key, CONFIG_MSE_SENSORS_KEY)) {
-		// Already parsed
-	} else if (!strcasecmp(key, CONFIG_MERAKI_SECRETS_KEY)) {
-		// Already parsed
-	} else if (!strcasecmp(key, CONFIG_ZZHTTP2K_CONFIG)) {
+	} else if (NULL != locate_registered_decoder(key)) {
 		// Already parsed
 	} else {
 		fatal("Unknown config key %s", key);
@@ -435,11 +383,11 @@ static void parse_config0(json_t *root) {
 					     &jerr,
 					     0,
 					     "{s?o,s?o,s?o}",
-					     CONFIG_MSE_SENSORS_KEY,
+					     mse_decoder.config_parameter(),
 					     &mse,
-					     CONFIG_MERAKI_SECRETS_KEY,
+					     meraki_decoder.config_parameter(),
 					     &meraki,
-					     CONFIG_ZZHTTP2K_CONFIG,
+					     zz_decoder.config_parameter(),
 					     &zz_http2k);
 
 	if (unpack_rc != 0) {
@@ -505,15 +453,16 @@ void parse_config(const char *config_file_path) {
 
 static void shutdown_listener(struct listener *i) {
 	if (NULL == i->join) {
-		rblog(LOG_CRIT, "One listener does not have join() function.");
-	} else {
-		rblog(LOG_INFO, "Joining listener on port %d.", i->port);
-		i->join(i->private);
-		if (i->cb.cb_opaque_destructor)
-			i->cb.cb_opaque_destructor(i->cb.cb_opaque);
+		return;
 	}
 
-	free(i);
+	rblog(LOG_INFO, "Joining listener on port %d.", i->port);
+	const struct n2k_decoder *decoder = i->decoder;
+	void *decoder_opaque = i->decoder_opaque;
+	i->join(i->private);
+	if (decoder->opaque_destructor) {
+		decoder->opaque_destructor(decoder_opaque);
+	}
 }
 
 static void shutdown_listeners(struct n2kafka_config *config) {
@@ -551,10 +500,7 @@ reload_listeners_check_already_present(json_t *new_listeners,
 			rdlog(LOG_INFO,
 			      "Reloading listener on port %d",
 			      i_port);
-			i->reload(found_value,
-				  i->cb.cb_opaque_reload,
-				  i->cb.cb_opaque,
-				  i->private);
+			i->reload(i, found_value, i->private);
 		} else {
 			LIST_REMOVE(i, entry);
 			shutdown_listener(i);
@@ -677,7 +623,7 @@ static void reload_mse_config(struct n2kafka_config *config) {
 
 	rblog(LOG_INFO, "Reloading MSE sensors");
 	reload_decoder(config,
-		       CONFIG_MSE_SENSORS_KEY,
+		       mse_decoder.config_parameter(),
 		       &config->mse.database,
 		       parse_mse_array);
 }
@@ -685,7 +631,7 @@ static void reload_mse_config(struct n2kafka_config *config) {
 static void reload_meraki_config(struct n2kafka_config *config) {
 	rblog(LOG_INFO, "Reloading meraki sensors");
 	reload_decoder(config,
-		       CONFIG_MERAKI_SECRETS_KEY,
+		       meraki_decoder.config_parameter(),
 		       &config->meraki.database,
 		       parse_meraki_secrets);
 }
@@ -693,7 +639,7 @@ static void reload_meraki_config(struct n2kafka_config *config) {
 static void reload_zzhttp2k_config(struct n2kafka_config *config) {
 	rblog(LOG_INFO, "Reloading zzhttp2k uuids");
 	reload_decoder(config,
-		       CONFIG_ZZHTTP2K_CONFIG,
+		       zz_decoder.config_parameter(),
 		       &config->rb,
 		       zz_decoder_reload);
 }

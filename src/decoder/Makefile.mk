@@ -1,4 +1,5 @@
 SUBDIRS := \
+	dumb \
 	zz_http2k \
 	mse \
 	meraki

@@ -29,6 +29,8 @@
 /* All functions are thread-safe here, excepting free_valid_mse_database */
 
 struct json_t;
+
+// @TODO move to rb_mse.c
 struct mse_database {
 	/* Private */
 	pthread_mutex_t warning_ht_lock;
@@ -44,11 +46,4 @@ struct mse_config {
 	struct mse_database database;
 };
 
-int mse_opaque_creator(struct json_t *config, void **opaque);
-int mse_opaque_reload(struct json_t *config, void *opaque);
-void mse_opaque_done(void *opaque);
-void mse_decode(char *buffer,
-		size_t buf_size,
-		const keyval_list_t *keyval,
-		void *listener_callback_opaque,
-		void **sessionp);
+extern const struct n2k_decoder mse_decoder;

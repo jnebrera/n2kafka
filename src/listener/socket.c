@@ -85,6 +85,7 @@ static enum thread_mode thread_mode_str(const char *mode_str) {
 static const struct timeval READ_SELECT_TIMEVAL = {.tv_sec = 20, .tv_usec = 0};
 static const struct timeval WRITE_SELECT_TIMEVAL = {.tv_sec = 5, .tv_usec = 0};
 
+/// @TODO this can't be global, it produces a race condition!
 static int do_shutdown = 0;
 
 static int createListenSocket(const char *proto, uint16_t listen_port) {
@@ -354,7 +355,8 @@ static void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 
 #define SOCKET_LISTENER_PRIVATE_MAGIC 0xB0C31331AEA1CL
 
-struct socket_listener_private {
+struct socket_listener {
+	struct listener listener;
 #ifdef SOCKET_LISTENER_PRIVATE_MAGIC
 	uint64_t magic;
 #endif
@@ -364,12 +366,9 @@ struct socket_listener_private {
 
 	struct {
 		char *proto;
-		uint16_t listen_port;
 		size_t threads;
 		bool tcp_keepalive;
 		enum thread_mode thread_mode;
-		decoder_callback callback;
-		void *callback_opaque;
 	} config;
 
 	pthread_t threads[MAX_NUM_THREADS];
@@ -385,8 +384,8 @@ static void accept_cb(struct ev_loop *loop __attribute__((unused)),
 		      int revents) {
 	struct sockaddr_in client_saddr;
 	socklen_t client_len = sizeof(client_saddr);
-	struct socket_listener_private *accept_private =
-			(struct socket_listener_private *)watcher->data;
+	struct socket_listener *socket_listener =
+			(struct socket_listener *)watcher->data;
 	int client_sd;
 	char client_buf[BUFSIZ];
 
@@ -426,11 +425,11 @@ static void accept_cb(struct ev_loop *loop __attribute__((unused)),
 				(struct sockaddr_in *)&client_saddr);
 	}
 
-	if (accept_private->config.tcp_keepalive)
+	if (socket_listener->config.tcp_keepalive)
 		set_keepalive_opt(client_sd);
 	set_nonblock_flag(client_sd);
 
-	if (accept_private->config.thread_mode == MODE_THREAD_PER_CONNECTION) {
+	if (socket_listener->config.thread_mode == MODE_THREAD_PER_CONNECTION) {
 		rdlog(LOG_ERR,
 		      "Mode " STR_MODE_THREAD_PER_CONNECTION
 		      "still not implemented");
@@ -454,15 +453,18 @@ static void accept_cb(struct ev_loop *loop __attribute__((unused)),
 #if CONNECTION_PRIVATE_MAGIC
 			conn_priv->magic = CONNECTION_PRIVATE_MAGIC;
 #endif
-			conn_priv->callback = accept_private->config.callback;
+			/// @TODO too much duplication!
+			conn_priv->callback = socket_listener->listener.decoder
+							      ->callback;
 			conn_priv->callback_opaque =
-					accept_private->config.callback_opaque;
+					socket_listener->listener
+							.decoder_opaque;
 
 			const size_t cur_idx =
-					accept_private->accept_current_worker_idx++;
-			if (accept_private->accept_current_worker_idx >=
-			    accept_private->config.threads)
-				accept_private->accept_current_worker_idx = 0;
+					socket_listener->accept_current_worker_idx++;
+			if (socket_listener->accept_current_worker_idx >=
+			    socket_listener->config.threads)
+				socket_listener->accept_current_worker_idx = 0;
 
 			conn_priv->client = strncat((char *)&conn_priv[1],
 						    client_addr,
@@ -473,16 +475,16 @@ static void accept_cb(struct ev_loop *loop __attribute__((unused)),
 			     cur_idx);
 
 			ev_io_init(w_client, read_cb, client_sd, EV_READ);
-			rd_fifoq_add(&accept_private->watchers_queue[cur_idx],
+			rd_fifoq_add(&socket_listener->watchers_queue[cur_idx],
 				     w_client);
-			ev_async_send(accept_private->event_loops[cur_idx],
-				      &accept_private->event_asyncs[cur_idx]);
+			ev_async_send(socket_listener->event_loops[cur_idx],
+				      &socket_listener->event_asyncs[cur_idx]);
 		}
 	}
 }
 
 struct worker_args {
-	struct socket_listener_private *accept_private;
+	struct socket_listener *socket_listener;
 	size_t idx;
 };
 
@@ -506,7 +508,7 @@ static void async_cb(struct ev_loop *loop,
 		size_t i = args->idx;
 		rd_fifoq_elm_t *qelm = NULL;
 		while ((qelm = rd_fifoq_pop(
-					&args->accept_private->watchers_queue
+					&args->socket_listener->watchers_queue
 							 [i]))) {
 			struct ev_io *w_client = qelm->rfqe_ptr;
 			if (NULL != w_client) {
@@ -514,7 +516,7 @@ static void async_cb(struct ev_loop *loop,
 			}
 
 			rd_fifoq_elm_release(
-					&args->accept_private
+					&args->socket_listener
 							 ->watchers_queue[i],
 					qelm);
 		}
@@ -524,31 +526,32 @@ static void async_cb(struct ev_loop *loop,
 static void *worker(void *_worker_arg) {
 	struct worker_args *worker_args = _worker_arg;
 
-	ev_run(worker_args->accept_private->event_loops[worker_args->idx], 0);
+	ev_run(worker_args->socket_listener->event_loops[worker_args->idx], 0);
 
 	free(worker_args);
 
 	return NULL;
 }
 
-static void main_tcp_loop(int listenfd, struct socket_listener_private *priv) {
-	priv->event_loop = ev_loop_new(0);
+static void
+main_tcp_loop(int listenfd, struct socket_listener *socket_listener) {
+	socket_listener->event_loop = ev_loop_new(0);
 	struct ev_io w_accept = {
-			.data = priv,
+			.data = socket_listener,
 	};
 
-	if (NULL == priv->event_loop) {
+	if (NULL == socket_listener->event_loop) {
 		rdlog(LOG_ERR, "Can't initialize event loop (out of memory?)");
 		return;
 	}
 
 	ev_io_init((&w_accept), accept_cb, listenfd, EV_READ);
-	ev_async_init((&priv->w_async), async_cb);
-	ev_io_start(priv->event_loop, &w_accept);
-	ev_async_start(priv->event_loop, &priv->w_async);
+	ev_async_init((&socket_listener->w_async), async_cb);
+	ev_io_start(socket_listener->event_loop, &w_accept);
+	ev_async_start(socket_listener->event_loop, &socket_listener->w_async);
 
 	size_t i;
-	for (i = 0; i < priv->config.threads; ++i) {
+	for (i = 0; i < socket_listener->config.threads; ++i) {
 		struct worker_args *args = calloc(1, sizeof(args[0]));
 		if (!args) {
 			rdlog(LOG_ERR,
@@ -557,46 +560,52 @@ static void main_tcp_loop(int listenfd, struct socket_listener_private *priv) {
 		}
 
 		args->idx = i;
-		args->accept_private = priv;
+		args->socket_listener = socket_listener;
 
-		priv->event_loops[i] = ev_loop_new(0);
-		if (priv->event_loops[i] == NULL) {
+		socket_listener->event_loops[i] = ev_loop_new(0);
+		if (socket_listener->event_loops[i] == NULL) {
 			rdlog(LOG_ERR, "Can't create even't loop %zu", i);
 			free(args);
 			continue;
 		}
 
-		ev_set_userdata(priv->event_loops[i], args);
+		ev_set_userdata(socket_listener->event_loops[i], args);
 
-		rd_fifoq_init(&priv->watchers_queue[i]);
-		ev_async_init(&priv->event_asyncs[i], async_cb);
-		priv->event_asyncs[i].data = priv;
-		ev_async_start(priv->event_loops[i], &priv->event_asyncs[i]);
+		rd_fifoq_init(&socket_listener->watchers_queue[i]);
+		ev_async_init(&socket_listener->event_asyncs[i], async_cb);
+		socket_listener->event_asyncs[i].data = socket_listener;
+		ev_async_start(socket_listener->event_loops[i],
+			       &socket_listener->event_asyncs[i]);
 
-		pthread_create(&priv->threads[i], NULL, worker, args);
+		pthread_create(&socket_listener->threads[i],
+			       NULL,
+			       worker,
+			       args);
 	}
 
-	ev_run(priv->event_loop, 0);
+	ev_run(socket_listener->event_loop, 0);
 
-	for (i = 0; i < priv->config.threads; ++i) {
-		if (NULL == priv->event_loops[i]) {
+	for (i = 0; i < socket_listener->config.threads; ++i) {
+		if (NULL == socket_listener->event_loops[i]) {
 			rdlog(LOG_ERR,
 			      "Something happened: event loop %zu not found.",
 			      i);
 			continue;
 		}
 
-		ev_async_send(priv->event_loops[i], &priv->event_asyncs[i]);
-		pthread_join(priv->threads[i], NULL);
+		ev_async_send(socket_listener->event_loops[i],
+			      &socket_listener->event_asyncs[i]);
+		pthread_join(socket_listener->threads[i], NULL);
 
-		ev_async_stop(priv->event_loops[i], &priv->event_asyncs[i]);
-		ev_loop_destroy(priv->event_loops[i]);
+		ev_async_stop(socket_listener->event_loops[i],
+			      &socket_listener->event_asyncs[i]);
+		ev_loop_destroy(socket_listener->event_loops[i]);
 	}
 
-	ev_async_stop(priv->event_loop, &priv->w_async);
-	ev_io_stop(priv->event_loop, &w_accept);
+	ev_async_stop(socket_listener->event_loop, &socket_listener->w_async);
+	ev_io_stop(socket_listener->event_loop, &w_accept);
 
-	ev_loop_destroy(priv->event_loop);
+	ev_loop_destroy(socket_listener->event_loop);
 }
 
 /// @TODO join with TCP
@@ -686,16 +695,16 @@ static void main_udp_loop(int listenfd,
 	free(threads);
 }
 
-static void *main_socket_loop(void *_params) {
-	struct socket_listener_private *params = _params;
+static void *main_socket_loop(void *vsocket_listener) {
+	struct socket_listener *socket_listener = vsocket_listener;
 
-	if (NULL == _params) {
+	if (NULL == vsocket_listener) {
 		rdlog(LOG_ERR, "NULL passed to %s", __FUNCTION__);
 		return NULL;
 	}
 
-	int listenfd = createListenSocket(params->config.proto,
-					  params->config.listen_port);
+	int listenfd = createListenSocket(socket_listener->config.proto,
+					  socket_listener->listener.port);
 	if (listenfd == -1)
 		return NULL;
 
@@ -703,13 +712,13 @@ static void *main_socket_loop(void *_params) {
 	@TODO have to look at ev_set_syserr_cb
 	*/
 
-	if (0 == strcmp(N2KAFKA_UDP, params->config.proto)) {
+	if (0 == strcmp(N2KAFKA_UDP, socket_listener->config.proto)) {
 		main_udp_loop(listenfd,
-			      params->config.threads,
-			      params->config.callback,
-			      params->config.callback_opaque);
+			      socket_listener->config.threads,
+			      socket_listener->listener.decoder->callback,
+			      socket_listener->listener.decoder_opaque);
 	} else {
-		main_tcp_loop(listenfd, params);
+		main_tcp_loop(listenfd, socket_listener);
 	}
 
 	rdlog(LOG_INFO, "Closing listening socket.");
@@ -718,121 +727,115 @@ static void *main_socket_loop(void *_params) {
 	return NULL;
 }
 
-static void join_listener_socket(void *_private) {
-	struct socket_listener_private *private = _private;
+static void join_listener_socket(struct listener *listener) {
+	struct socket_listener *socket_listener =
+			(struct socket_listener *)listener;
 
 	do_shutdown = 1;
-	ev_async_send(private->event_loop, &private->w_async);
-	pthread_join(private->main_loop, NULL);
-	free(private);
+	ev_async_send(socket_listener->event_loop, &socket_listener->w_async);
+	pthread_join(socket_listener->main_loop, NULL);
+	free(socket_listener);
 }
 
-static void reload_listener_socket(json_t *new_config __attribute__((unused)),
-				   decoder_listener_opaque_reload opaque_reload,
-				   void *cb_opaque,
+static void reload_listener_socket(struct listener *listener,
+				   json_t *new_config,
 				   void *_private __attribute__((unused))) {
-	if (opaque_reload) {
+	const struct n2k_decoder *decoder = listener->decoder;
+	if (decoder->opaque_reload) {
 		rdlog(LOG_INFO, "Reloading opaque");
-		opaque_reload(new_config, cb_opaque);
+		decoder->opaque_reload(new_config, listener->decoder_opaque);
 	} else {
 		rdlog(LOG_INFO, "Not reload opaque provided");
 	}
 }
 
-struct listener *
-create_socket_listener(struct json_t *config,
-		       decoder_callback callback,
-		       int callback_flags __attribute__((unused)),
-		       void *callback_opaque) {
+struct listener *create_socket_listener(struct json_t *config,
+					const struct n2k_decoder *decoder,
+					void *decoder_opaque) {
 	json_error_t error;
 	char *proto;
 
-	struct socket_listener_private *priv = calloc(1, sizeof(*priv));
-	if (NULL == priv) {
+	struct socket_listener *socket_listener =
+			calloc(1, sizeof(*socket_listener));
+	if (NULL == socket_listener) {
 		rdlog(LOG_ERR, "Can't allocate private data (out of memory?)");
 		return NULL;
 	}
 
 	/* Default */
-	priv->config.threads = 1;
-	priv->config.tcp_keepalive = 0;
-	priv->config.thread_mode = MODE_EPOLL;
+	socket_listener->config.threads = 1;
+	socket_listener->config.tcp_keepalive = 0;
+	socket_listener->config.thread_mode = MODE_EPOLL;
 	const char *mode = NULL;
 
-	const int unpack_rc = json_unpack_ex(config,
-					     &error,
-					     0,
-					     "{s:s,s:i,s?i,s?b,s?s}",
-					     "proto",
-					     &proto,
-					     "port",
-					     &priv->config.listen_port,
-					     "num_threads",
-					     &priv->config.threads,
-					     "tcp_keepalive",
-					     &priv->config.tcp_keepalive,
-					     "mode",
-					     &mode);
+	const int unpack_rc =
+			json_unpack_ex(config,
+				       &error,
+				       0,
+				       "{s:s,s:i,s?i,s?b,s?s}",
+				       "proto",
+				       &proto,
+				       "port",
+				       &socket_listener->listener.port,
+				       "num_threads",
+				       &socket_listener->config.threads,
+				       "tcp_keepalive",
+				       &socket_listener->config.tcp_keepalive,
+				       "mode",
+				       &mode);
 
 	if (unpack_rc != 0 /* Failure */) {
 		rdlog(LOG_ERR, "Can't decode listener: %s", error.text);
-		free(priv);
+		free(socket_listener);
 		return NULL;
 	}
 
-	if (priv->config.threads == 0) {
+	if (socket_listener->config.threads == 0) {
 		rdlog(LOG_ERR, "UDP threads has to be > 0. Setting to 1");
-		priv->config.threads = 1;
+		socket_listener->config.threads = 1;
 	}
 
-	if (priv->config.threads > MAX_NUM_THREADS) {
+	if (socket_listener->config.threads > MAX_NUM_THREADS) {
 		rdlog(LOG_ERR,
 		      "UDP threads has to be < %d. Setting to %d",
 		      MAX_NUM_THREADS,
 		      MAX_NUM_THREADS);
-		priv->config.threads = MAX_NUM_THREADS;
+		socket_listener->config.threads = MAX_NUM_THREADS;
 	}
 
 	if (mode != NULL) {
-		priv->config.thread_mode = thread_mode_str(mode);
+		socket_listener->config.thread_mode = thread_mode_str(mode);
 	}
 
-	priv->config.proto = strdup(proto);
-	if (NULL == priv->config.proto) {
+	socket_listener->config.proto = strdup(proto);
+	if (NULL == socket_listener->config.proto) {
 		rdlog(LOG_ERR, "Error: Can't strdup protocol (out of memory?)");
-		free(priv);
-		return NULL;
-	}
-
-	struct listener *l = calloc(1, sizeof(*l));
-	if (NULL == l) {
-		rdlog(LOG_ERR, "Can't allocate listener (out of memory?)");
-		free(priv);
+		free(socket_listener);
 		return NULL;
 	}
 
 	rdlog(LOG_INFO,
 	      "Creating new %s listener on port %d",
 	      proto,
-	      priv->config.listen_port);
+	      socket_listener->listener.port);
 
-	l->join = join_listener_socket;
-	l->private = priv;
-	l->cb.callback = priv->config.callback = callback;
-	l->cb.cb_opaque = priv->config.callback_opaque = callback_opaque;
-	l->reload = reload_listener_socket;
-	l->port = priv->config.listen_port;
+	socket_listener->listener.join = join_listener_socket;
+	socket_listener->listener.private = socket_listener;
+	socket_listener->listener.decoder = decoder;
+	socket_listener->listener.decoder_opaque = decoder_opaque;
+	socket_listener->listener.reload = reload_listener_socket;
 
-	const int pcreate_rc = pthread_create(
-			&priv->main_loop, NULL, main_socket_loop, priv);
+	const int pcreate_rc = pthread_create(&socket_listener->main_loop,
+					      NULL,
+					      main_socket_loop,
+					      socket_listener);
 	if (pcreate_rc != 0) {
 		rdlog(LOG_ERR,
 		      "Couldn't create pthread: %s",
 		      gnu_strerror_r(errno));
-		free(priv);
-		free(l);
+		free(socket_listener);
 		return NULL;
 	}
 
-	return l;
+	return (struct listener *)socket_listener;
 }

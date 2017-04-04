@@ -21,6 +21,7 @@
 
 #include "config.h"
 
+#include "decoder/decoder_api.h"
 #include "decoder/meraki/rb_meraki.h"
 #include "decoder/mse/rb_mse.h"
 #include "decoder/zz_http2k/zz_http2k_decoder.h"
@@ -36,39 +37,23 @@
 
 struct json_t;
 struct listener;
-typedef void (*decoder_callback)(char *buffer,
-				 size_t buf_size,
-				 const keyval_list_t *props,
-				 void *listener_callback_opaque,
-				 void **sessionp);
 typedef struct listener *(*listener_creator)(struct json_t *config,
-					     decoder_callback cb,
-					     int cb_flags,
+					     const struct n2k_decoder *decoder,
 					     void *cb_opaque);
-typedef void (*listener_join)(void *listener_private);
-typedef int (*decoder_listener_opaque_creator)(struct json_t *config,
-					       void **opaque);
-typedef int (*decoder_listener_opaque_reload)(struct json_t *config,
-					      void *opaque);
-typedef void (*decoder_listener_opaque_destructor)(void *opaque);
+typedef void (*listener_join)(struct listener *listener);
 // @TODO we need this callback to split data acquiring || data processing
 // typedef void (*data_process)(void *data_process_private,const char
 // *buffer,size_t bsize);
-typedef void (*listener_reload)(struct json_t *new_config,
-				decoder_listener_opaque_reload opaque_reload,
-				void *cb_opaque,
+typedef void (*listener_reload)(struct listener *listener,
+				struct json_t *new_config,
 				void *listener_private);
 struct listener {
 	uint16_t port; // as listener ID
 	void *private;
 
-	struct {
-		void *cb_opaque;
-		decoder_callback callback;
-		decoder_listener_opaque_destructor cb_opaque_destructor;
-		decoder_listener_opaque_reload cb_opaque_reload;
-		int flags;
-	} cb;
+	/// @TODO sepparate listener_factory / listener instance
+	const struct n2k_decoder *decoder;
+	void *decoder_opaque;
 	listener_creator create;
 	listener_join join;
 	listener_reload reload;

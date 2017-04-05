@@ -62,6 +62,17 @@ static const char MSE_TOPIC[] = "topic";
 static const json_int_t MAX_TIME_OFFSET_DEFAULT = 3600;
 static const json_int_t MAX_TIME_OFFSET_WARNING_WAIT_DEFAULT = 0;
 
+static struct mse_database {
+	/* Private */
+	pthread_mutex_t warning_ht_lock;
+	json_t *warning_ht;
+	pthread_rwlock_t rwlock;
+	json_t *root;
+} mse_database = {
+		.warning_ht_lock = PTHREAD_MUTEX_INITIALIZER,
+		.rwlock = PTHREAD_RWLOCK_INITIALIZER,
+};
+
 /*
     VALIDATING MSE
 */
@@ -89,10 +100,9 @@ struct mse_array {
 	size_t size;
 };
 
-void init_mse_database(struct mse_database *db) {
-	memset(db, 0, sizeof(*db));
-	db->warning_ht = json_object();
-	pthread_rwlock_init(&db->rwlock, 0);
+static int init_mse_database() {
+	mse_database.warning_ht = json_object();
+	return NULL == mse_database.warning_ht;
 }
 
 struct mse_decoder_info {
@@ -100,12 +110,11 @@ struct mse_decoder_info {
 	json_t *per_listener_enrichment;
 	long max_time_offset;
 	long max_time_offset_warning_wait;
-	struct mse_config *mse_config;
 };
 
-#define MSE_OPAQUE_MAGIC 0xE0AEA1CE0AEA1CL
 struct mse_opaque {
-#ifdef MSE_OPAQUE_MAGIC
+#ifndef NDEBUG
+#define MSE_OPAQUE_MAGIC 0xE0AEA1CE0AEA1CL
 	uint64_t magic;
 #endif
 	struct mse_decoder_info decoder_info;
@@ -195,7 +204,7 @@ static void mse_decoder_info_destroy(struct mse_decoder_info *decoder_info) {
 	}
 }
 
-static int mse_opaque_creator(json_t *config, void **_opaque) {
+static int mse_opaque_creator(const json_t *config, void **_opaque) {
 	assert(_opaque);
 
 	struct mse_opaque *opaque = (*_opaque) = calloc(1, sizeof(*opaque));
@@ -219,9 +228,6 @@ static int mse_opaque_creator(json_t *config, void **_opaque) {
 		goto err_rwlock;
 	}
 
-	/// @TODO move global_config to static allocated buffer
-	opaque->decoder_info.mse_config = &global_config.mse;
-
 	return 0;
 
 err_rwlock:
@@ -235,33 +241,27 @@ _err:
 static void mse_warn_timestamp(struct mse_data *data,
 			       struct mse_decoder_info *decoder_info,
 			       time_t now) {
-	json_t *value = NULL;
-	json_t *new_value = NULL;
-	json_int_t last_time_warned = 0;
-	struct mse_database *db = &decoder_info->mse_config->database;
 
-	pthread_mutex_lock(&db->warning_ht_lock);
-	if ((value = json_object_get(db->warning_ht, data->subscriptionName)) !=
-	    NULL) {
-		last_time_warned = json_integer_value(value);
+	pthread_mutex_lock(&mse_database.warning_ht_lock);
+	json_t *value = json_object_get(mse_database.warning_ht,
+					data->subscriptionName);
+	if (value != NULL) {
+		const json_int_t last_time_warned = json_integer_value(value);
 		if (now - last_time_warned >=
 		    decoder_info->max_time_offset_warning_wait) {
 			rdlog(LOG_WARNING, "Timestamp out of date");
 			data->timestamp_warnings++;
-			new_value = json_integer(now);
-			json_object_set(db->warning_ht,
-					data->subscriptionName,
-					new_value);
+			json_integer_set(value, now);
 		}
 	} else {
 		rdlog(LOG_WARNING, "Timestamp out of date");
 		data->timestamp_warnings++;
-		new_value = json_integer(now);
-		json_object_set_new(db->warning_ht,
+		json_t *new_value = json_integer(now);
+		json_object_set_new(mse_database.warning_ht,
 				    data->subscriptionName,
 				    new_value);
 	}
-	pthread_mutex_unlock(&db->warning_ht_lock);
+	pthread_mutex_unlock(&mse_database.warning_ht_lock);
 }
 
 /// @TODO join with mse_opaque_creator
@@ -392,11 +392,7 @@ static int parse_sensor(json_t *sensor, json_t *streams_db) {
 	return 0;
 }
 
-int parse_mse_array(void *_db, const struct json_t *mse_array) {
-	assert(_db);
-
-	struct mse_database *db = _db;
-
+static int parse_mse_array(const struct json_t *mse_array) {
 	json_t *value = NULL, *new_db = NULL;
 	size_t _index;
 
@@ -415,10 +411,10 @@ int parse_mse_array(void *_db, const struct json_t *mse_array) {
 		parse_sensor(value, new_db);
 	}
 
-	pthread_rwlock_wrlock(&db->rwlock);
-	json_t *old_db = db->root;
-	db->root = new_db;
-	pthread_rwlock_unlock(&db->rwlock);
+	pthread_rwlock_wrlock(&mse_database.rwlock);
+	json_t *old_db = mse_database.root;
+	mse_database.root = new_db;
+	pthread_rwlock_unlock(&mse_database.rwlock);
 
 	if (old_db) {
 		json_decref(old_db);
@@ -427,25 +423,18 @@ int parse_mse_array(void *_db, const struct json_t *mse_array) {
 	return 0;
 }
 
-static const json_t *
-mse_database_entry(const char *subscriptionName, struct mse_database *db) {
+static const json_t *mse_database_entry(const char *subscriptionName) {
 	assert(subscriptionName);
-	assert(db);
-	json_t *ret = json_object_get(db->root, subscriptionName);
-	return ret;
+	return json_object_get(mse_database.root, subscriptionName);
 }
 
-void free_valid_mse_database(struct mse_database *db) {
-	if (db) {
-		pthread_rwlock_destroy(&db->rwlock);
+static void free_mse_database() {
+	if (mse_database.root) {
+		json_decref(mse_database.root);
+	}
 
-		if (db->root) {
-			json_decref(db->root);
-		}
-
-		if (db->warning_ht) {
-			json_decref(db->warning_ht);
-		}
+	if (mse_database.warning_ht) {
+		json_decref(mse_database.warning_ht);
 	}
 }
 
@@ -669,7 +658,6 @@ process_mse_buffer(const char *buffer,
 		   const char *client,
 		   struct mse_decoder_info *decoder_info,
 		   time_t now) {
-	struct mse_database *db = &decoder_info->mse_config->database;
 	struct mse_array *notifications = NULL;
 	size_t i;
 	assert(bsize);
@@ -696,29 +684,30 @@ process_mse_buffer(const char *buffer,
 		goto err;
 	}
 
-	pthread_rwlock_rdlock(&db->rwlock);
+	pthread_rwlock_rdlock(&mse_database.rwlock);
 	pthread_rwlock_rdlock(&decoder_info->per_listener_enrichment_rwlock);
 
 	for (i = 0; i < notifications->size; ++i) {
 		struct mse_data *to = &notifications->data[i];
 		const json_t *enrichment = NULL;
 		json_error_t _err;
+		const int empty_database =
+				0 == json_object_size(mse_database.root);
 
-		if (db && !to->subscriptionName) {
+		if (!empty_database && !to->subscriptionName) {
 			rdlog(LOG_ERR,
 			      "Received MSE message with no "
 			      "subscription name. Discarding.");
 			continue;
 		}
 
-		if (db && to->subscriptionName) {
-			enrichment = mse_database_entry(to->subscriptionName,
-							db);
+		if (!empty_database && to->subscriptionName) {
+			enrichment = mse_database_entry(to->subscriptionName);
 
 			if (NULL == enrichment) {
 				/* Try the default one */
 				enrichment = mse_database_entry(
-						MSE_DEFAULT_STREAM, db);
+						MSE_DEFAULT_STREAM);
 			}
 
 			if (NULL == enrichment) {
@@ -736,12 +725,12 @@ process_mse_buffer(const char *buffer,
 			}
 		}
 
-		if (db && decoder_info->per_listener_enrichment) {
+		if (!empty_database && decoder_info->per_listener_enrichment) {
 			enrich_mse_json(to->json,
 					decoder_info->per_listener_enrichment);
 		}
 
-		if (db && enrichment) {
+		if (!empty_database && enrichment) {
 			enrich_mse_json(to->json, enrichment);
 		}
 
@@ -784,7 +773,7 @@ process_mse_buffer(const char *buffer,
 	}
 
 	pthread_rwlock_unlock(&decoder_info->per_listener_enrichment_rwlock);
-	pthread_rwlock_unlock(&db->rwlock);
+	pthread_rwlock_unlock(&mse_database.rwlock);
 
 err:
 	if (json)
@@ -845,8 +834,12 @@ static int mse_flags() {
 }
 
 const struct n2k_decoder mse_decoder = {
-		.decoder_name = mse_decoder_name,
+		.name = mse_decoder_name,
 		.config_parameter = mse_config_parameter,
+
+		.init = init_mse_database,
+		.reload = parse_mse_array,
+		.done = free_mse_database,
 
 		.callback = mse_decode,
 

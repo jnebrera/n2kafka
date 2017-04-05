@@ -90,11 +90,6 @@ struct n2kafka_config {
 	/// List of global timers
 	rb_timers_list_t timers;
 
-	/// @TODO this should belong to decoders, not here.
-	struct mse_config mse;
-	struct meraki_config meraki;
-	struct zz_config rb;
-
 	char *response;
 	int response_len;
 

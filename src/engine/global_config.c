@@ -101,7 +101,20 @@ void init_global_config() {
 		abort();
 	}
 
-	init_mse_database(&global_config.mse.database);
+	size_t i;
+	for (i = 0; i < RD_ARRAYSIZE(registered_decoders); ++i) {
+		const n2k_decoder *decoder = registered_decoders[i];
+		if (!decoder->init) {
+			continue;
+		}
+
+		const int rc = decoder->init();
+		if (0 != rc) {
+			rdlog(LOG_ERR,
+			      "Couldn't init %s decoder",
+			      decoder->name());
+		}
+	}
 }
 
 static const char *assert_json_string(const char *key, const json_t *value) {
@@ -225,10 +238,9 @@ locate_registered_decoder(const char *decode_as) {
 
 	size_t i;
 	for (i = 0; i < RD_ARRAYSIZE(registered_decoders); ++i) {
-		assert(NULL != registered_decoders[i]->decoder_name());
+		assert(NULL != registered_decoders[i]->name());
 
-		if (0 ==
-		    strcmp(registered_decoders[i]->decoder_name(), decode_as)) {
+		if (0 == strcmp(registered_decoders[i]->name(), decode_as)) {
 			return registered_decoders[i];
 		}
 	}
@@ -367,7 +379,6 @@ static void parse_config0(json_t *root) {
 	json_t *mse = NULL, *meraki = NULL, *zz_http2k = NULL;
 	const char *key;
 	json_t *value;
-	char err[BUFSIZ];
 
 	/// Need to parse kafka stuff before
 	json_object_foreach(root, key, value) {
@@ -396,26 +407,23 @@ static void parse_config0(json_t *root) {
 	}
 
 	if (mse) {
-		const int parse_rc = parse_mse_array(
-				&global_config.mse.database, mse);
+		const int parse_rc = mse_decoder.reload(mse);
 		if (0 != parse_rc) {
-			rdlog(LOG_ERR, "Can't parse MSE array: %s", err);
+			rdlog(LOG_ERR, "Can't init MSE config");
 			exit(-1);
 		}
 	}
 	if (meraki) {
-		const int parse_rc = parse_meraki_secrets(
-				&global_config.meraki.database, meraki);
+		const int parse_rc = meraki_decoder.reload(meraki);
 		if (0 != parse_rc) {
-			rdlog(LOG_ERR, "Can't parse meraki secrets: %s", err);
+			rdlog(LOG_ERR, "Can't init meraki");
 			exit(-1);
 		}
 	}
 	if (zz_http2k) {
-		const int parse_rc =
-				parse_zz_config(&global_config.rb, zz_http2k);
+		const int parse_rc = zz_decoder.reload(zz_http2k);
 		if (0 != parse_rc) {
-			rdlog(LOG_ERR, "Can't parse zz_http2k config: %s", err);
+			rdlog(LOG_ERR, "Can't parse zz_http2k config");
 			exit(-1);
 		}
 	}
@@ -568,23 +576,26 @@ reload_listeners(json_t *new_config, struct n2kafka_config *config) {
 
 typedef int (*reload_cb)(void *database, const struct json_t *config);
 
-static json_t *reload_decoder(struct n2kafka_config *config,
-			      const char *decoder_config_key,
-			      void *database,
-			      reload_cb reload_callback) {
+static void
+reload_decoder(struct n2kafka_config *config, const n2k_decoder *decoder) {
 	json_error_t json_err;
 	json_t *decoder_config = NULL;
 	if (config->config_path == NULL) {
 		rblog(LOG_ERR, "Have no config file to reload");
 	}
 
+	if (NULL == decoder->reload || NULL == decoder->config_parameter) {
+		return;
+	}
+
+	/// @TODO not re-read config!!
 	json_t *root = json_load_file(config->config_path, 0, &json_err);
 	if (root == NULL) {
 		rblog(LOG_ERR,
 		      "Can't reload, Error parsing config file, line %d: %s",
 		      json_err.line,
 		      json_err.text);
-		return NULL;
+		return;
 	}
 
 	if (!json_is_object(root)) {
@@ -596,7 +607,7 @@ static json_t *reload_decoder(struct n2kafka_config *config,
 					     &json_err,
 					     0,
 					     "{s?o}",
-					     decoder_config_key,
+					     decoder->config_parameter(),
 					     &decoder_config);
 	if (unpack_rc != 0) {
 		rdlog(LOG_ERR,
@@ -609,46 +620,20 @@ static json_t *reload_decoder(struct n2kafka_config *config,
 	}
 
 	if (NULL != decoder_config) {
-		reload_callback(database, decoder_config);
+		decoder->reload(decoder_config);
 	}
 
 error_free_root:
 	json_decref(root);
-
-	return decoder_config;
-}
-
-static void reload_mse_config(struct n2kafka_config *config) {
-	/// @TODO merge with config parse
-
-	rblog(LOG_INFO, "Reloading MSE sensors");
-	reload_decoder(config,
-		       mse_decoder.config_parameter(),
-		       &config->mse.database,
-		       parse_mse_array);
-}
-
-static void reload_meraki_config(struct n2kafka_config *config) {
-	rblog(LOG_INFO, "Reloading meraki sensors");
-	reload_decoder(config,
-		       meraki_decoder.config_parameter(),
-		       &config->meraki.database,
-		       parse_meraki_secrets);
-}
-
-static void reload_zzhttp2k_config(struct n2kafka_config *config) {
-	rblog(LOG_INFO, "Reloading zzhttp2k uuids");
-	reload_decoder(config,
-		       zz_decoder.config_parameter(),
-		       &config->rb,
-		       zz_decoder_reload);
+	return;
 }
 
 /// @TODO reload every decoder using new config
 static void reload_decoders(struct n2kafka_config *config) {
-	reload_mse_config(config);
-	reload_meraki_config(config);
-	reload_zzhttp2k_config(config);
+	size_t i;
+	for (i = 0; i < RD_ARRAYSIZE(registered_decoders); ++i) {
+		reload_decoder(config, registered_decoders[i]);
+	}
 }
 
 void reload_config(struct n2kafka_config *config) {
@@ -708,10 +693,14 @@ void execute_global_timers() {
 }
 
 void free_global_config() {
+	size_t i;
 	shutdown_listeners(&global_config);
 
-	free_valid_mse_database(&global_config.mse.database);
-	zz_decoder_done(&global_config.rb);
+	for (i = 0; i < RD_ARRAYSIZE(registered_decoders); ++i) {
+		if (registered_decoders[i]->done) {
+			registered_decoders[i]->done();
+		}
+	}
 
 	if (!only_stdout_output()) {
 		flush_kafka();

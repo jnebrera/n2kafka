@@ -202,13 +202,13 @@ static void test_zz_decoder_simple() {
 	strcpy(topic, zz_topic_template);
 	random_topic_name(topic);
 
-	const size_t out_topic_len =
-			print_expected_topic(NULL, 0, consumer_uuid, topic);
+	const size_t out_topic_len = (size_t)print_expected_topic(
+			NULL, 0, consumer_uuid, topic);
 	char out_topic[out_topic_len];
 	print_expected_topic(out_topic, out_topic_len, consumer_uuid, topic);
 
-	const size_t uri_len =
-			print_expected_url(NULL, 0, consumer_uuid, topic);
+	const size_t uri_len = (size_t)print_expected_url(
+			NULL, 0, consumer_uuid, topic);
 	char uri[uri_len];
 	print_expected_url(uri, uri_len, consumer_uuid, topic);
 
@@ -239,7 +239,7 @@ static void test_zz_decoder_simple() {
 	};
 
 	test_zz_decoder0(listener_cfg,
-			 decoder_cfg,
+			 NULL,
 			 &(struct zz_http2k_params){
 					 .uri = uri,
 					 .consumer_uuid = consumer_uuid,
@@ -262,13 +262,13 @@ static void test_zz_decoder_simple_def() {
 	strcpy(topic, zz_topic_template);
 	random_topic_name(topic);
 
-	const size_t out_topic_len =
-			print_expected_topic(NULL, 0, consumer_uuid, topic);
+	const size_t out_topic_len = (size_t)print_expected_topic(
+			NULL, 0, consumer_uuid, topic);
 	char out_topic[out_topic_len];
 	print_expected_topic(out_topic, out_topic_len, consumer_uuid, topic);
 
-	const size_t uri_len =
-			print_expected_url(NULL, 0, consumer_uuid, topic);
+	const size_t uri_len = (size_t)print_expected_url(
+			NULL, 0, consumer_uuid, topic);
 	char uri[uri_len];
 	print_expected_url(uri, uri_len, consumer_uuid, topic);
 
@@ -323,13 +323,13 @@ static void test_zz_decoder_double() {
 	strcpy(topic, zz_topic_template);
 	random_topic_name(topic);
 
-	const size_t out_topic_len =
-			print_expected_topic(NULL, 0, consumer_uuid, topic);
+	const size_t out_topic_len = (size_t)print_expected_topic(
+			NULL, 0, consumer_uuid, topic);
 	char out_topic[out_topic_len];
 	print_expected_topic(out_topic, out_topic_len, consumer_uuid, topic);
 
-	const size_t uri_len =
-			print_expected_url(NULL, 0, consumer_uuid, topic);
+	const size_t uri_len = (size_t)print_expected_url(
+			NULL, 0, consumer_uuid, topic);
 	char uri[uri_len];
 	print_expected_url(uri, uri_len, consumer_uuid, topic);
 
@@ -384,13 +384,13 @@ static void test_zz_decoder_half() {
 	strcpy(topic, zz_topic_template);
 	random_topic_name(topic);
 
-	const size_t out_topic_len =
-			print_expected_topic(NULL, 0, consumer_uuid, topic);
+	const size_t out_topic_len = (size_t)print_expected_topic(
+			NULL, 0, consumer_uuid, topic);
 	char out_topic[out_topic_len];
 	print_expected_topic(out_topic, out_topic_len, consumer_uuid, topic);
 
-	const size_t uri_len =
-			print_expected_url(NULL, 0, consumer_uuid, topic);
+	const size_t uri_len = (size_t)print_expected_url(
+			NULL, 0, consumer_uuid, topic);
 	char uri[uri_len];
 	print_expected_url(uri, uri_len, consumer_uuid, topic);
 
@@ -444,13 +444,13 @@ static void test_zz_decoder_half_string() {
 	strcpy(topic, zz_topic_template);
 	random_topic_name(topic);
 
-	const size_t out_topic_len =
-			print_expected_topic(NULL, 0, consumer_uuid, topic);
+	const size_t out_topic_len = (size_t)print_expected_topic(
+			NULL, 0, consumer_uuid, topic);
 	char out_topic[out_topic_len];
 	print_expected_topic(out_topic, out_topic_len, consumer_uuid, topic);
 
-	const size_t uri_len =
-			print_expected_url(NULL, 0, consumer_uuid, topic);
+	const size_t uri_len = (size_t)print_expected_url(
+			NULL, 0, consumer_uuid, topic);
 	char uri[uri_len];
 	print_expected_url(uri, uri_len, consumer_uuid, topic);
 
@@ -510,13 +510,13 @@ static void test_zz_decoder_half_key() {
 	strcpy(topic, zz_topic_template);
 	random_topic_name(topic);
 
-	const size_t out_topic_len =
-			print_expected_topic(NULL, 0, consumer_uuid, topic);
+	const size_t out_topic_len = (size_t)print_expected_topic(
+			NULL, 0, consumer_uuid, topic);
 	char out_topic[out_topic_len];
 	print_expected_topic(out_topic, out_topic_len, consumer_uuid, topic);
 
-	const size_t uri_len =
-			print_expected_url(NULL, 0, consumer_uuid, topic);
+	const size_t uri_len = (size_t)print_expected_url(
+			NULL, 0, consumer_uuid, topic);
 	char uri[uri_len];
 	print_expected_url(uri, uri_len, consumer_uuid, topic);
 
@@ -576,13 +576,13 @@ static void test_zz_decoder_objects() {
 	strcpy(topic, zz_topic_template);
 	random_topic_name(topic);
 
-	const size_t out_topic_len =
-			print_expected_topic(NULL, 0, consumer_uuid, topic);
+	const size_t out_topic_len = (size_t)print_expected_topic(
+			NULL, 0, consumer_uuid, topic);
 	char out_topic[out_topic_len];
 	print_expected_topic(out_topic, out_topic_len, consumer_uuid, topic);
 
-	const size_t uri_len =
-			print_expected_url(NULL, 0, consumer_uuid, topic);
+	const size_t uri_len = (size_t)print_expected_url(
+			NULL, 0, consumer_uuid, topic);
 	char uri[uri_len];
 	print_expected_url(uri, uri_len, consumer_uuid, topic);
 
@@ -630,7 +630,6 @@ static void test_zz_decoder_objects() {
 }
 
 int main() {
-	decoder_cfg = assert_json_loads("{}");
 	// clang-format off
 	listener_cfg = assert_json_loads("{"
 			  "\"proto\": \"http\","
@@ -652,7 +651,6 @@ int main() {
 	};
 
 	const int cmocka_run_rc = cmocka_run_group_tests(tests, NULL, NULL);
-	json_decref(decoder_cfg);
 	json_decref(listener_cfg);
 	return cmocka_run_rc;
 }

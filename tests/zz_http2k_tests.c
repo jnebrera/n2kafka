@@ -38,7 +38,7 @@ static const char ZZ_LOCK_FILE[] = "n2kt_listener.lck";
 void test_zz_decoder_setup(struct zz_test_state *state,
 			   const json_t *decoder_conf) {
 	assert_non_null(state);
-	assert_non_null(decoder_conf);
+	(void)decoder_conf;
 	char errstr[512];
 
 	init_global_config();
@@ -53,14 +53,6 @@ void test_zz_decoder_setup(struct zz_test_state *state,
 		fail_msg("Failed to set broker: %s", errstr);
 	}
 	init_rdkafka();
-
-	parse_zz_config(&global_config.rb, decoder_conf);
-
-	{
-		const int zz_cfg_rc = parse_zz_config(&state->zz_config,
-						      decoder_conf);
-		assert_int_equal(zz_cfg_rc, 0);
-	}
 }
 
 void test_zz_decoder_teardown(void *vstate) {
@@ -71,7 +63,6 @@ void test_zz_decoder_teardown(void *vstate) {
 
 	state->listener->join(state->listener);
 	decoder->opaque_destructor(decoder_opaque);
-	zz_decoder_done(&state->zz_config);
 
 	free_global_config();
 }

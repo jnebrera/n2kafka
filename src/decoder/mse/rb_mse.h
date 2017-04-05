@@ -21,29 +21,6 @@
 
 #pragma once
 
-#include "util/pair.h"
-#include <pthread.h>
-#include <stdint.h>
-#include <string.h>
-
-/* All functions are thread-safe here, excepting free_valid_mse_database */
-
-struct json_t;
-
-// @TODO move to rb_mse.c
-struct mse_database {
-	/* Private */
-	pthread_mutex_t warning_ht_lock;
-	struct json_t *warning_ht;
-	pthread_rwlock_t rwlock;
-	struct json_t *root;
-};
-void init_mse_database(struct mse_database *db);
-int parse_mse_array(void *_db, const struct json_t *mse_array);
-void free_valid_mse_database(struct mse_database *db);
-
-struct mse_config {
-	struct mse_database database;
-};
+#include "decoder/decoder_api.h"
 
 extern const struct n2k_decoder mse_decoder;

@@ -29,6 +29,12 @@
 
 #define RB_UNUSED __attribute__((unused))
 
+static int meraki_global_done(void **state) {
+	(void)state;
+	meraki_decoder.done();
+	return 0;
+}
+
 static void
 MerakiDecoder_test_base(const char *config_str,
 			const char *secrets,
@@ -41,12 +47,8 @@ static void MerakiDecoder_test_base(const char *config_str,
 	size_t i;
 	const char *topic_name = NULL;
 	json_error_t jerr;
-	struct meraki_config meraki_config;
 	struct meraki_decoder_info decoder_info;
 	json_t *config = NULL;
-
-	memset(&meraki_config, 0, sizeof(meraki_config));
-	init_meraki_database(&meraki_config.database);
 
 	meraki_decoder_info_create(&decoder_info);
 
@@ -57,16 +59,11 @@ static void MerakiDecoder_test_base(const char *config_str,
 		assert_true(decoder_info.per_listener_enrichment);
 	}
 
-	// Workaround
-	decoder_info.meraki_config = &meraki_config;
-
 	json_t *meraki_secrets_array =
 			json_loadb(secrets, strlen(secrets), 0, &jerr);
 	assert_true(meraki_secrets_array);
 
-	const int parse_rc = parse_meraki_secrets(&meraki_config.database,
-						  meraki_secrets_array);
-
+	const int parse_rc = meraki_decoder.reload(meraki_secrets_array);
 	assert_true(parse_rc == 0);
 	json_decref(meraki_secrets_array);
 
@@ -91,5 +88,4 @@ static void MerakiDecoder_test_base(const char *config_str,
 	if (config) {
 		json_decref(config);
 	}
-	meraki_database_done(&meraki_config.database);
 }

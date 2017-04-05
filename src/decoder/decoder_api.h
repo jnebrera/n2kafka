@@ -29,20 +29,27 @@ typedef void (*decoder_callback)(char *buffer,
 				 void *listener_callback_opaque,
 				 void **sessionp);
 
-/// Decoder API
-struct n2k_decoder {
-	const char *(*decoder_name)();     ///< Registered decoder name.
+/** Decoder API
+  All functions are thread-safe except init & done, and call callback() with
+  the same opaque from two different threads
+  */
+typedef struct n2k_decoder {
+	const char *(*name)();		   ///< Registered decoder name.
 	const char *(*config_parameter)(); ///< Name of config parameter
 
 	/// Callback that the listener needs to call for each data received
 	decoder_callback callback;
 
+	int (*init)();			     ///< Init decoder global config
+	int (*reload)(const json_t *config); ///< Reload decoder.
+	void (*done)();			     ///< Finish decoder global config
+
 	/// Per-listener decoder information creator
-	int (*opaque_creator)(struct json_t *config, void **opaque);
+	int (*opaque_creator)(json_t *config, void **opaque);
 	/// Per listener decoder information reload
-	int (*opaque_reload)(struct json_t *config, void *opaque);
+	int (*opaque_reload)(json_t *config, void *opaque);
 	/// Per listener decoder information destructor
 	void (*opaque_destructor)(void *opaque);
 
 	int (*flags)(); ///< Decoders flags
-};
+} n2k_decoder;

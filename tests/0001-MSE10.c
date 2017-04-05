@@ -436,5 +436,6 @@ int main() {
 			cmocka_unit_test(testMSE8Decoder_valid_timestamp),
 			cmocka_unit_test(testMSE8Decoder_invalid_timestamp)};
 
-	return cmocka_run_group_tests(tests, NULL, NULL);
+	return cmocka_run_group_tests(
+			tests, test_mse_global_init, test_mse_global_done);
 }

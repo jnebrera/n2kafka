@@ -27,6 +27,7 @@
 
 #include <cmocka.h>
 #include <jansson.h>
+#include <librdkafka/rdkafka.h>
 #include <microhttpd.h>
 
 #include <netinet/in.h>
@@ -124,7 +125,6 @@ struct mock_MHD_connection {
 
 /// @TODO make private!
 struct zz_test_state {
-	struct zz_config zz_config;
 	struct mock_MHD_connection mhd_connection;
 	struct listener *listener;
 };

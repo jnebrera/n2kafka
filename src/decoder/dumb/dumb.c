@@ -51,7 +51,7 @@ static int dumb_flags() {
 }
 
 const struct n2k_decoder dumb_decoder = {
-		.decoder_name = dumb_decoder_name,
+		.name = dumb_decoder_name,
 		.callback = dumb_decode,
 		.flags = dumb_flags,
 };

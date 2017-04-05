@@ -32,6 +32,21 @@
 
 /// @TODO keep in sync with testMSE10Decoder
 
+static int test_mse_global_init(void **state) {
+	(void)state;
+	init_global_config();
+	global_config.brokers = strdup("kafka:9092");
+	global_config.topic = strdup("n2kt_mse_test");
+	init_rdkafka();
+	return 0;
+}
+
+static int test_mse_global_done(void **state) {
+	(void)state;
+	free_global_config();
+	return 0;
+}
+
 static void testMSE10Decoder(const char *mse_array_str,
 			     const char *_listener_config,
 			     const char *mse_input,
@@ -45,47 +60,50 @@ static void testMSE10Decoder(const char *mse_array_str,
 			     void (*check_result)(struct mse_array *)) {
 	json_error_t jerr;
 	size_t i;
-	const char *topic_name;
-	struct mse_config mse_config;
-	struct mse_decoder_info decoder_info;
+	void *mse_opaque;
 
-	memset(&mse_config, 0, sizeof(mse_config));
-	mse_decoder_info_create(&decoder_info);
+	{
+		json_t *mse_array = json_loads(mse_array_str, 0, &jerr);
+		assert_true(mse_array);
+		const int parse_rc = mse_decoder.reload(mse_array);
+		assert_true(parse_rc == 0);
+		json_decref(mse_array);
+	}
 
-	json_t *listener_config = json_loads(_listener_config, 0, &jerr);
-	const int opaque_creator_rc = parse_decoder_info(
-			&decoder_info, listener_config, &topic_name);
+	{
+		json_t *listener_config =
+				json_loads(_listener_config, 0, &jerr);
+		const int opaque_creator_rc = mse_decoder.opaque_creator(
+				listener_config, &mse_opaque);
 
-	assert_true(0 == opaque_creator_rc);
-	json_decref(listener_config);
+		assert_true(0 == opaque_creator_rc);
+		json_decref(listener_config);
+	}
 
-	/* Currently, uses global_config */
-	decoder_info.mse_config = &mse_config;
+	{
+		/// @TODO avoid cheating!
+		struct mse_opaque *pmse_opaque = mse_opaque;
+		char *aux = strdup(mse_input);
+		struct mse_array *notifications_array =
+				process_mse_buffer(aux,
+						   strlen(mse_input),
+						   "127.0.0.1",
+						   &pmse_opaque->decoder_info,
+						   now);
 
-	json_t *mse_array = json_loads(mse_array_str, 0, &jerr);
-	assert_true(mse_array);
-	const int parse_rc = parse_mse_array(&decoder_info.mse_config->database,
-					     mse_array);
-	assert_true(parse_rc == 0);
+		check_result(notifications_array);
 
-	char *aux = strdup(mse_input);
-	struct mse_array *notifications_array =
-			process_mse_buffer(aux,
-					   strlen(mse_input),
-					   "127.0.0.1",
-					   &decoder_info,
-					   now);
+		free(aux);
+		for (i = 0;
+		     notifications_array && i < notifications_array->size;
+		     ++i) {
+			free(notifications_array->data[i].string);
+		}
 
-	check_result(notifications_array);
+		free(notifications_array);
+	}
 
-	free(aux);
-	for (i = 0; notifications_array && i < notifications_array->size; ++i)
-		free(notifications_array->data[i].string);
-
-	free(notifications_array);
-	mse_decoder_info_destroy(&decoder_info);
-	free_valid_mse_database(&mse_config.database);
-	json_decref(mse_array);
+	mse_decoder.opaque_destructor(mse_opaque);
 }
 
 #define testMSE8Decoder testMSE10Decoder // same function

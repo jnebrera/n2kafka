@@ -21,10 +21,7 @@
 
 #include "zz_http2k_parser.h"
 
-/// @TODO this include is only for config. Separate config in another file,
-/// since we have crossed includes
-#include "util/topic_database.h"
-#include "zz_http2k_decoder.h"
+#include "zz_database.h"
 
 #include <jansson.h>
 #include <librd/rdlog.h>
@@ -197,9 +194,8 @@ extract_url_topic(const char *url, const char **topic, size_t *topic_size) {
 	return 0;
 }
 
-/// @TODO do not use zz_config, but zz_config->database!
 struct zz_session *
-new_zz_session(struct zz_config *zz_config, const keyval_list_t *msg_vars) {
+new_zz_session(struct zz_database *zz_db, const keyval_list_t *msg_vars) {
 	const char *client_ip = valueof(msg_vars, "D-Client-IP");
 	const char *url = valueof(msg_vars, "D-HTTP-URI");
 	struct {
@@ -237,7 +233,7 @@ new_zz_session(struct zz_config *zz_config, const keyval_list_t *msg_vars) {
 	}
 
 	sess->topic_handler = zz_http2k_database_get_topic(
-			&zz_config->database, uuid_topic, time(NULL));
+			zz_db, uuid_topic, time(NULL));
 	if (unlikely(NULL == sess->topic_handler)) {
 		rdlog(LOG_ERR,
 		      "Invalid topic %s received from client %s",

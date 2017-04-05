@@ -21,44 +21,6 @@
 
 #pragma once
 
-#include "zz_database.h"
-
-#include "util/pair.h"
-
-#include <jansson.h>
-
-#include <pthread.h>
-#include <stdint.h>
-#include <string.h>
-
-/* All functions are thread-safe here, excepting free_valid_mse_database */
-struct json_t;
-struct zz_config {
-#ifndef NDEBUG
-/// MAGIC to check zz_config between void * conversions
-#define ZZ_CONFIG_MAGIC 0xbc01a1cbc01a1cL
-	/// This value always have to be ZZ_CONFIG_MAGIC
-	uint64_t magic;
-#endif
-	struct zz_database database;
-};
-
-#ifdef ZZ_CONFIG_MAGIC
-/// Checks that zz_config magic field has the right value
-#define assert_zz_config(cfg)                                                  \
-	do {                                                                   \
-		assert(ZZ_CONFIG_MAGIC == (cfg)->magic);                       \
-	} while (0)
-#else
-#define assert_zz_config(cfg)
-#endif
-
-int parse_zz_config(void *_db, const struct json_t *zz_config);
-/** Release all resources used */
-void zz_decoder_done(void *zz_config);
-/** Does nothing, since this decoder does not save anything related to
-    listener
-    */
-int zz_decoder_reload(void *_db, const struct json_t *zz_config);
+#include "decoder/decoder_api.h"
 
 extern const struct n2k_decoder zz_decoder;

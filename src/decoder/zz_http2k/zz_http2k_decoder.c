@@ -20,6 +20,7 @@
 */
 
 #include "zz_http2k_decoder.h"
+#include "zz_database.h"
 #include "zz_http2k_parser.h"
 
 #include "engine/global_config.h"
@@ -50,13 +51,13 @@ enum warning_times_pos {
 	LAST_WARNING_TIME__END
 };
 
+static struct zz_database zz_database = {NULL};
+
 struct zz_opaque {
 #ifndef NDEBUG
 #define ZZ_OPAQUE_MAGIC 0x0B0A3A1C0B0A3A1CL
 	uint64_t magic;
 #endif
-
-	struct zz_config *zz_config;
 
 	time_t produce_error_last_time[LAST_WARNING_TIME__END];
 };
@@ -86,8 +87,8 @@ kafka_error_to_warning_time_pos(rd_kafka_resp_err_t err) {
 	};
 }
 
-static int
-zz_opaque_creator(json_t *config __attribute__((unused)), void **_opaque) {
+static int zz_opaque_creator(json_t *config, void **_opaque) {
+	(void)config;
 	assert(_opaque);
 
 	struct zz_opaque *opaque = (*_opaque) = calloc(1, sizeof(*opaque));
@@ -100,9 +101,6 @@ zz_opaque_creator(json_t *config __attribute__((unused)), void **_opaque) {
 	opaque->magic = ZZ_OPAQUE_MAGIC;
 #endif
 
-	/// @TODO move global_config to static allocated buffer
-	opaque->zz_config = &global_config.rb;
-
 	return 0;
 }
 
@@ -111,12 +109,6 @@ static int zz_opaque_reload(json_t *config, void *opaque) {
 	   information */
 	(void)config;
 	(void)opaque;
-	return 0;
-}
-
-int zz_decoder_reload(void *vzz_config, const json_t *config) {
-	(void)vzz_config;
-	(void)config;
 	return 0;
 }
 
@@ -129,12 +121,8 @@ static void zz_opaque_done(void *_opaque) {
 	free(opaque);
 }
 
-int parse_zz_config(void *vconfig, const struct json_t *config) {
+static int zz_decoder_init(const struct json_t *config) {
 	(void)config;
-	struct zz_config *zz_config = vconfig;
-
-	assert(vconfig);
-
 	if (only_stdout_output()) {
 		rdlog(LOG_ERR,
 		      "Can't use zz_http2k decoder if not kafka "
@@ -142,10 +130,7 @@ int parse_zz_config(void *vconfig, const struct json_t *config) {
 		return -1;
 	}
 
-#ifdef ZZ_CONFIG_MAGIC
-	zz_config->magic = ZZ_CONFIG_MAGIC;
-#endif // ZZ_CONFIG_MAGIC
-	const int init_db_rc = init_zz_database(&zz_config->database);
+	const int init_db_rc = init_zz_database(&zz_database);
 	if (init_db_rc != 0) {
 		rdlog(LOG_ERR, "Couldn't init zz_database");
 		return -1;
@@ -229,6 +214,7 @@ static void process_zz_buffer(const char *buffer,
 	// struct zz_database *db = &opaque->zz_config->database;
 	// /* @TODO const */ json_t *uuid_enrichment_entry = NULL;
 	// char *ret = NULL;
+	(void)opaque;
 	struct zz_session *session = NULL;
 	const unsigned char *in_iterator = (const unsigned char *)buffer;
 
@@ -236,7 +222,7 @@ static void process_zz_buffer(const char *buffer,
 
 	if (NULL == *sessionp) {
 		/* First call */
-		*sessionp = new_zz_session(opaque->zz_config, msg_vars);
+		*sessionp = new_zz_session(&zz_database, msg_vars);
 		if (NULL == *sessionp) {
 			return;
 		}
@@ -300,11 +286,8 @@ static void zz_decode(char *buffer,
 	}
 }
 
-void zz_decoder_done(void *vzz_config) {
-	struct zz_config *zz_config = vzz_config;
-	assert_zz_config(zz_config);
-
-	free_valid_zz_database(&zz_config->database);
+static void zz_decoder_done() {
+	free_valid_zz_database(&zz_database);
 }
 
 static const char *zz_name() {
@@ -320,8 +303,11 @@ static int zz_flags() {
 }
 
 const struct n2k_decoder zz_decoder = {
-		.decoder_name = zz_name,
+		.name = zz_name,
 		.config_parameter = zz_config_token,
+
+		.init = zz_decoder_init,
+		.done = zz_decoder_done,
 
 		.callback = zz_decode,
 

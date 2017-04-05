@@ -432,5 +432,6 @@ int main() {
 			cmocka_unit_test(testMSE8DefaultEnrichment_miss),
 	};
 
-	return cmocka_run_group_tests(tests, NULL, NULL);
+	return cmocka_run_group_tests(
+			tests, test_mse_global_init, test_mse_global_done);
 }

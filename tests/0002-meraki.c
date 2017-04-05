@@ -355,5 +355,5 @@ int main() {
 			cmocka_unit_test(MerakiDecoder_default_secret_hit),
 			cmocka_unit_test(MerakiDecoder_default_secret_miss)};
 
-	return cmocka_run_group_tests(tests, NULL, NULL);
+	return cmocka_run_group_tests(tests, NULL, meraki_global_done);
 }

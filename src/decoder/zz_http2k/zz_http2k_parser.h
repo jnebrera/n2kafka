@@ -21,6 +21,8 @@
 
 #pragma once
 
+#include "zz_database.h"
+
 #include <jansson.h>
 #include <util/kafka_message_list.h>
 #include <util/pair.h>
@@ -47,9 +49,8 @@ struct zz_session {
 	rd_kafka_message_queue_t msg_queue;
 };
 
-struct zz_config;
 struct zz_session *
-new_zz_session(struct zz_config *zz_config, const keyval_list_t *msg_vars);
+new_zz_session(struct zz_database *zz_config, const keyval_list_t *msg_vars);
 
 int gen_jansson_object(yajl_gen gen, json_t *enrichment_data);
 

@@ -76,21 +76,21 @@ static const char MERAKI_ENRICHMENT_KEY[] = "enrichment";
 
 static const long LOCATION_WARNING_THRESHOLD_S = 600;
 
+static struct meraki_database {
+	/* Private */
+	pthread_rwlock_t rwlock;
+	struct json_t *root;
+} meraki_db = {.rwlock = PTHREAD_RWLOCK_INITIALIZER, .root = NULL};
+
 /*
     VALIDATING MERAKI SECRET
 */
 
-int parse_meraki_secrets(void *_db, const struct json_t *meraki_secrets) {
-	assert(_db);
-
-	struct meraki_database *db = _db;
-
+static int meraki_db_reload(const struct json_t *meraki_secrets) {
 	const char *secret;
 	json_t *secret_enrichment;
 
-	json_t *new_db = NULL;
-
-	new_db = json_deep_copy(meraki_secrets);
+	json_t *new_db = json_deep_copy(meraki_secrets);
 	if (!new_db) {
 		rdlog(LOG_ERR, "Can't create json object (out of memory?)");
 		return -1;
@@ -104,10 +104,10 @@ int parse_meraki_secrets(void *_db, const struct json_t *meraki_secrets) {
 				    meraki_type);
 	}
 
-	pthread_rwlock_wrlock(&db->rwlock);
-	json_t *old_db = db->root;
-	db->root = new_db;
-	pthread_rwlock_unlock(&db->rwlock);
+	pthread_rwlock_wrlock(&meraki_db.rwlock);
+	json_t *old_db = meraki_db.root;
+	meraki_db.root = new_db;
+	pthread_rwlock_unlock(&meraki_db.rwlock);
 
 	if (old_db)
 		json_decref(old_db);
@@ -115,9 +115,8 @@ int parse_meraki_secrets(void *_db, const struct json_t *meraki_secrets) {
 	return 0;
 }
 
-void meraki_database_done(struct meraki_database *db) {
-	json_decref(db->root);
-	pthread_rwlock_destroy(&db->rwlock);
+static void meraki_db_done() {
+	json_decref(meraki_db.root);
 }
 
 /*
@@ -126,7 +125,6 @@ void meraki_database_done(struct meraki_database *db) {
 
 struct meraki_decoder_info {
 	pthread_rwlock_t per_listener_enrichment_rwlock;
-	struct meraki_config *meraki_config;
 	json_t *per_listener_enrichment;
 };
 
@@ -152,9 +150,6 @@ static int
 meraki_decoder_info_create(struct meraki_decoder_info *decoder_info) {
 	memset(decoder_info, 0, sizeof(*decoder_info));
 
-	/// @TODO move global_config to static allocated buffer
-	decoder_info->meraki_config = &global_config.meraki;
-
 	const int rwlock_init_rc = pthread_rwlock_init(
 			&decoder_info->per_listener_enrichment_rwlock, NULL);
 	if (rwlock_init_rc != 0) {
@@ -174,8 +169,14 @@ meraki_decoder_info_destructor(struct meraki_decoder_info *decoder_info) {
 
 static int parse_meraki_decoder_info(struct meraki_decoder_info *decoder_info,
 				     const char **topic_name,
-				     json_t *config) {
+				     const json_t *const_config) {
+	json_t *config = json_deep_copy(const_config);
 	json_error_t jerr;
+
+	if (NULL == config) {
+		rdlog(LOG_ERR, "Couldn't copy config (OOM?)");
+		return -1;
+	}
 
 	const int json_unpack_rc =
 			json_unpack_ex(config,
@@ -191,14 +192,15 @@ static int parse_meraki_decoder_info(struct meraki_decoder_info *decoder_info,
 		rdlog(LOG_ERR, "Can't unpack meraki config: %s", jerr.text);
 		pthread_rwlock_destroy(
 				&decoder_info->per_listener_enrichment_rwlock);
-		return json_unpack_rc;
 	}
 
-	return 0;
+	json_decref(config);
+
+	return json_unpack_rc;
 }
 
-static int
-parse_per_listener_opaque_config(struct meraki_opaque *opaque, json_t *config) {
+static int parse_per_listener_opaque_config(struct meraki_opaque *opaque,
+					    const json_t *config) {
 	assert(opaque);
 	assert(config);
 	const char *topic_name = NULL;
@@ -261,13 +263,18 @@ decoder_info_err:
 }
 
 /// @TODO Join with meraki_opaque_creator
-static int meraki_opaque_reload(json_t *config, void *vopaque) {
+static int meraki_opaque_reload(const json_t *const_config, void *vopaque) {
 	struct meraki_opaque *opaque = vopaque;
 	assert(opaque);
-	assert(config);
+	assert(const_config);
 	opaque = meraki_opaque_cast(vopaque);
 	int rc = 0;
 	const char *topic_name = NULL;
+	json_t *config = json_deep_copy(const_config);
+	if (NULL == config) {
+		rdlog(LOG_ERR, "Couldn't copy config");
+		return -1;
+	}
 
 	json_t *enrichment_aux = opaque->decoder_info.per_listener_enrichment;
 	rd_kafka_topic_t *rkt_aux = NULL;
@@ -313,6 +320,7 @@ static int meraki_opaque_reload(json_t *config, void *vopaque) {
 rkt_err:
 enrichment_err:
 	json_decref(enrichment_aux);
+	json_decref(config);
 
 	return rc;
 }
@@ -577,7 +585,6 @@ extract_meraki_data(json_t *json, struct meraki_decoder_info *decoder_info) {
 	assert(json);
 	assert(decoder_info);
 
-	struct meraki_database *db = &decoder_info->meraki_config->database;
 	size_t i;
 	json_error_t jerr;
 	struct meraki_transversal_data meraki_transversal = {NULL, NULL};
@@ -623,12 +630,13 @@ extract_meraki_data(json_t *json, struct meraki_decoder_info *decoder_info) {
 		return NULL;
 	}
 
-	pthread_rwlock_rdlock(&db->rwlock);
-	json_t *enrichment_tmp = json_object_get(db->root, meraki_secret);
+	pthread_rwlock_rdlock(&meraki_db.rwlock);
+	json_t *enrichment_tmp = json_object_get(meraki_db.root, meraki_secret);
 	if (NULL == enrichment_tmp) {
 		/* If secret not found, try default secret */
 		enrichment_tmp = json_object_get(
-				db->root, CONFIG_MERAKI_DEFAULT_SECRET_KEY);
+				meraki_db.root,
+				CONFIG_MERAKI_DEFAULT_SECRET_KEY);
 	}
 
 	if (enrichment_tmp) {
@@ -647,7 +655,7 @@ extract_meraki_data(json_t *json, struct meraki_decoder_info *decoder_info) {
 			meraki_transversal.enrichment =
 					json_deep_copy(enrichment_tmp);
 	}
-	pthread_rwlock_unlock(&db->rwlock);
+	pthread_rwlock_unlock(&meraki_db.rwlock);
 
 	if (NULL == meraki_transversal.enrichment) {
 		rdlog(LOG_ERR,
@@ -747,8 +755,11 @@ static int meraki_flags() {
 }
 
 const struct n2k_decoder meraki_decoder = {
-		.decoder_name = meraki_decoder_name,
+		.name = meraki_decoder_name,
 		.config_parameter = meraki_config_parameter,
+
+		.reload = meraki_db_reload,
+		.done = meraki_db_done,
 
 		.callback = meraki_decode,
 

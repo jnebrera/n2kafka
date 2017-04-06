@@ -19,6 +19,8 @@
 
 #pragma once
 
+#include "decoder/decoder_api.h"
+
 #include <util/pair.h>
 
 #include <jansson.h>
@@ -39,6 +41,19 @@ typedef struct listener {
 	uint16_t port;			   ///< as listener ID
 	LIST_ENTRY(listener) entry;	///< Listener list entry
 } listener;
+
+/// @todo return 0 to say OK!
+static void __attribute__((unused)) listener_decode(const struct listener *this,
+						    char *buffer,
+						    size_t buf_size,
+						    const keyval_list_t *props,
+						    void **sessionp) {
+	this->decoder->callback(buffer,
+				buf_size,
+				props,
+				this->decoder_opaque,
+				sessionp);
+}
 
 int listener_reload(struct listener *listener, struct json_t *new_config);
 

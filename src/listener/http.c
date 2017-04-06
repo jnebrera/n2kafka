@@ -151,19 +151,19 @@ static void request_completed(void *cls,
 
 	if (!(decoder->flags() & DECODER_F_SUPPORT_STREAMING)) {
 		/* No streaming processing -> need to process buffer */
-		decoder->callback(con_info->str.buf,
-				  con_info->str.used,
-				  &con_info->decoder_params,
-				  http_listener->listener.decoder_opaque,
-				  NULL);
+		listener_decode(&http_listener->listener,
+				con_info->str.buf,
+				con_info->str.used,
+				&con_info->decoder_params,
+				NULL);
 		con_info->str.buf = NULL; /* librdkafka will free it */
 	} else {
 		/* Streaming processing -> need to free session pointer */
-		decoder->callback(NULL,
-				  0,
-				  &con_info->decoder_params,
-				  http_listener->listener.decoder_opaque,
-				  &con_info->decoder_sessp);
+		listener_decode(&http_listener->listener,
+				NULL,
+				0,
+				&con_info->decoder_params,
+				&con_info->decoder_sessp);
 	}
 
 	if (con_info->zlib.enable) {
@@ -471,13 +471,11 @@ static size_t compressed_callback(struct http_listener *h_listener,
 		rc += zprocessed; // @TODO this should be returned by callback
 				  // call
 		if (zprocessed > 0) {
-			const struct n2k_decoder *decoder =
-					h_listener->listener.decoder;
-			decoder->callback((char *)buffer,
-					  zprocessed,
-					  &con_info->decoder_params,
-					  h_listener->listener.decoder_opaque,
-					  &con_info->decoder_sessp);
+			listener_decode(&h_listener->listener,
+					(char *)buffer,
+					zprocessed,
+					&con_info->decoder_params,
+					&con_info->decoder_sessp);
 		}
 	} while (con_info->zlib.strm.avail_out == 0);
 
@@ -549,11 +547,10 @@ static int post_handle(void *vhttp_listener,
 		} else {
 			/* Does support streaming processing, sending the chunk
 			 */
-			decoder->callback(
+			listener_decode(&http_listener->listener,
 					upload_data,
 					*upload_data_size,
 					&con_info->decoder_params,
-					http_listener->listener.decoder_opaque,
 					&con_info->decoder_sessp);
 			/// @TODO fix it
 			if (0 /* ERROR */) {
@@ -567,6 +564,18 @@ static int post_handle(void *vhttp_listener,
 		/* Send OK. Resources will be freed in request_completed */
 		return send_http_ok(connection);
 	}
+}
+
+static void break_http_loop(struct listener *vhttp_listener) {
+	struct http_listener *http_listener =
+			(struct http_listener *)vhttp_listener;
+
+#ifdef HTTP_PRIVATE_MAGIC
+	assert(HTTP_PRIVATE_MAGIC == http_listener->magic);
+#endif
+	MHD_stop_daemon(http_listener->d);
+	listener_join(&http_listener->listener);
+	free(http_listener);
 }
 
 struct http_loop_args {
@@ -677,6 +686,7 @@ static struct http_listener *start_http_loop(const struct http_loop_args *args,
 		goto start_daemon_err;
 	}
 
+	http_listener->listener.join = break_http_loop;
 	return http_listener;
 
 start_daemon_err:
@@ -685,18 +695,6 @@ start_daemon_err:
 listener_init_err:
 	free(http_listener);
 	return NULL;
-}
-
-static void break_http_loop(struct listener *vhttp_listener) {
-	struct http_listener *http_listener =
-			(struct http_listener *)vhttp_listener;
-
-#ifdef HTTP_PRIVATE_MAGIC
-	assert(HTTP_PRIVATE_MAGIC == http_listener->magic);
-#endif
-	MHD_stop_daemon(http_listener->d);
-	listener_join(&http_listener->listener);
-	free(http_listener);
 }
 
 /*

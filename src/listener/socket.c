@@ -64,8 +64,7 @@ enum thread_mode {
 struct udp_thread_info {
 	pthread_mutex_t listenfd_mutex;
 	int listenfd;
-	decoder_callback callback;
-	void *callback_opaque;
+	const struct listener *listener;
 };
 
 static enum thread_mode thread_mode_str(const char *mode_str) {
@@ -219,8 +218,7 @@ static int receive_from_socket(int fd,
 static void process_data_received_from_socket(char *buffer,
 					      const size_t recv_result,
 					      const char *client,
-					      decoder_callback callback,
-					      void *callback_opaque) {
+					      const struct listener *l) {
 	if (unlikely(global_config.debug))
 		rdlog(LOG_DEBUG,
 		      "received %zu data from %s: %.*s",
@@ -239,7 +237,7 @@ static void process_data_received_from_socket(char *buffer,
 	if (unlikely(only_stdout_output())) {
 		free(buffer);
 	} else {
-		callback(buffer, recv_result, &attrs, callback_opaque, NULL);
+		listener_decode(l, buffer, recv_result, &attrs, NULL);
 	}
 }
 
@@ -267,8 +265,7 @@ struct connection_private {
 	uint64_t magic;
 #endif
 	int first_response_sent;
-	void *callback_opaque;
-	decoder_callback callback;
+	const struct listener *listener;
 	const char *client;
 };
 
@@ -303,8 +300,7 @@ static void read_cb(struct ev_loop *loop, struct ev_io *watcher, int revents) {
 		process_data_received_from_socket(buffer,
 						  (size_t)recv_result,
 						  connection->client,
-						  connection->callback,
-						  connection->callback_opaque);
+						  connection->listener);
 	} else if (recv_result < 0) {
 		if (errno == EAGAIN) {
 			rdbg("Socket not ready. re-trying");
@@ -453,12 +449,7 @@ static void accept_cb(struct ev_loop *loop __attribute__((unused)),
 #if CONNECTION_PRIVATE_MAGIC
 			conn_priv->magic = CONNECTION_PRIVATE_MAGIC;
 #endif
-			/// @TODO too much duplication!
-			conn_priv->callback = socket_listener->listener.decoder
-							      ->callback;
-			conn_priv->callback_opaque =
-					socket_listener->listener
-							.decoder_opaque;
+			conn_priv->listener = &socket_listener->listener;
 
 			const size_t cur_idx =
 					socket_listener->accept_current_worker_idx++;
@@ -656,24 +647,20 @@ static void *main_consumer_loop_udp(void *_thread_info) {
 					buffer,
 					(size_t)recv_result,
 					client_addr,
-					thread_info->callback,
-					thread_info->callback_opaque);
+					thread_info->listener);
 		}
 	}
 
 	return NULL;
 }
 
-static void main_udp_loop(int listenfd,
-			  size_t udp_threads,
-			  decoder_callback callback,
-			  void *callback_opaque) {
+static void
+main_udp_loop(int listenfd, size_t udp_threads, const struct listener *l) {
 	/* Lots of threads listening  and processing*/
 	unsigned int i;
 	struct udp_thread_info udp_thread_info;
 	udp_thread_info.listenfd = listenfd;
-	udp_thread_info.callback = callback;
-	udp_thread_info.callback_opaque = callback_opaque;
+	udp_thread_info.listener = l;
 
 	assert(udp_threads > 0);
 	pthread_t *threads = malloc(sizeof(threads[0]) * udp_threads);
@@ -715,8 +702,7 @@ static void *main_socket_loop(void *vsocket_listener) {
 	if (0 == strcmp(N2KAFKA_UDP, socket_listener->config.proto)) {
 		main_udp_loop(listenfd,
 			      socket_listener->config.threads,
-			      socket_listener->listener.decoder->callback,
-			      socket_listener->listener.decoder_opaque);
+			      &socket_listener->listener);
 	} else {
 		main_tcp_loop(listenfd, socket_listener);
 	}
@@ -809,7 +795,10 @@ create_socket_listener(const struct json_t *const_config,
 		return NULL;
 	}
 
-	rdlog(LOG_INFO, "Creating new %s listener on port %d", proto, port);
+	rdlog(LOG_INFO,
+	      "Creating new %s listener on port %d",
+	      proto,
+	      (int)port);
 
 	const int listener_init_rc = listener_init(
 			&socket_listener->listener, port, decoder, config);

@@ -126,7 +126,7 @@ struct mock_MHD_connection {
 /// @TODO make private!
 struct zz_test_state {
 	struct mock_MHD_connection mhd_connection;
-	struct listener *listener;
+	struct http_listener *listener;
 };
 
 /// @TODO make private!

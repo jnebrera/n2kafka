@@ -58,11 +58,10 @@ void test_zz_decoder_setup(struct zz_test_state *state,
 void test_zz_decoder_teardown(void *vstate) {
 	struct zz_test_state *state = vstate;
 
-	const struct n2k_decoder *decoder = state->listener->decoder;
-	void *decoder_opaque = state->listener->decoder_opaque;
+	const struct n2k_decoder *decoder = state->listener->listener.decoder;
+	void *decoder_opaque = state->listener->listener.decoder_opaque;
 
-	state->listener->join(state->listener);
-	decoder->opaque_destructor(decoder_opaque);
+	state->listener->listener.join(&state->listener->listener);
 
 	free_global_config();
 }
@@ -146,7 +145,6 @@ void test_zz_decoder0(const json_t *listener_conf,
 		      void *check_callback_opaque) {
 
 	size_t i;
-	void *zz_opaque;
 	// Need to copy because listener creation accept mutable json
 	json_t *listener_conf_copy = json_deep_copy(listener_conf);
 
@@ -166,14 +164,6 @@ void test_zz_decoder0(const json_t *listener_conf,
 
 #undef CONNECTION_POST_VALUE
 
-	{
-		const int opaque_creator_rc =
-				zz_decoder.opaque_creator(
-						NULL,
-						&zz_opaque);
-		assert_int_equal(0, opaque_creator_rc);
-	}
-
 	struct zz_test_state zz_state = {
 		.mhd_connection = {
 			.magic = MOCK_MHD_CONNECTION_MAGIC,
@@ -190,8 +180,8 @@ void test_zz_decoder0(const json_t *listener_conf,
 
 			}
 		},
-		.listener = create_http_listener(listener_conf_copy, &zz_decoder,
-			zz_opaque)
+		.listener = create_http_listener(listener_conf_copy,
+			                         &zz_decoder)
 	};
 	// clang-format on
 	json_decref(listener_conf_copy);
@@ -202,42 +192,28 @@ void test_zz_decoder0(const json_t *listener_conf,
 
 	test_zz_decoder_setup(&zz_state, decoder_conf);
 
-	struct http_listener http_private = {
-// clang-format off
-#ifdef HTTP_PRIVATE_MAGIC
-		.magic = HTTP_PRIVATE_MAGIC,
-#endif
+	void *http_connection = NULL;
 
-		.d = NULL,
-		.listener = {
-			.decoder = &zz_decoder,
-			.decoder_opaque = zz_opaque,
-		}
-			// clang-format on
-	};
-
-	void *http_listener_private = NULL;
-
-	post_handle(&http_private,
+	post_handle(zz_state.listener,
 		    (struct MHD_Connection *)&zz_state.mhd_connection,
 		    params->uri,
 		    "POST",
 		    "1.1",
 		    NULL,
 		    (size_t[]){0},
-		    &http_listener_private);
+		    &http_connection);
 
 	for (i = 0; i < msgs_len; ++i) {
 		rd_kafka_message_t *kafka_msgs[expected_kafka_msgs[i]];
 
-		post_handle(&http_private,
+		post_handle(zz_state.listener,
 			    (struct MHD_Connection *)&zz_state.mhd_connection,
 			    params->uri,
 			    "POST",
 			    "1.1",
 			    msgs[i].msg,
 			    (size_t[]){msgs[i].msg ? msgs[i].size : 0},
-			    &http_listener_private);
+			    &http_connection);
 
 		if (NULL == check_callback[i]) {
 			// Nothing else to do
@@ -256,9 +232,9 @@ void test_zz_decoder0(const json_t *listener_conf,
 		}
 	}
 
-	request_completed(&http_private,
+	request_completed(zz_state.listener,
 			  (struct MHD_Connection *)&zz_state.mhd_connection,
-			  &http_listener_private,
+			  &http_connection,
 			  MHD_REQUEST_TERMINATED_COMPLETED_OK);
 
 	rd_kafka_consumer_close(rk);

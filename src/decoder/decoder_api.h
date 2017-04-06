@@ -23,12 +23,6 @@
 
 #include <jansson.h>
 
-typedef void (*decoder_callback)(char *buffer,
-				 size_t buf_size,
-				 const keyval_list_t *props,
-				 void *listener_callback_opaque,
-				 void **sessionp);
-
 /** Decoder API
   All functions are thread-safe except init & done, and call callback() with
   the same opaque from two different threads
@@ -38,7 +32,11 @@ typedef struct n2k_decoder {
 	const char *(*config_parameter)(); ///< Name of config parameter
 
 	/// Callback that the listener needs to call for each data received
-	decoder_callback callback;
+	void (*callback)(char *buffer,
+			 size_t buf_size,
+			 const keyval_list_t *props,
+			 void *listener_callback_opaque,
+			 void **sessionp);
 
 	int (*init)();			     ///< Init decoder global config
 	int (*reload)(const json_t *config); ///< Reload decoder.

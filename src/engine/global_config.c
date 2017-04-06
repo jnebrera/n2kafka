@@ -71,15 +71,12 @@ static const struct n2k_decoder *registered_decoders[] = {&dumb_decoder,
 							  &meraki_decoder,
 							  &zz_decoder};
 
-static const struct registered_listener {
-	const char *proto;
-	listener_creator creator;
-} registered_listeners[] = {
+static const n2k_listener_factory *registered_listeners[] = {
 #ifdef HAVE_LIBMICROHTTPD
-		{CONFIG_PROTO_HTTP, create_http_listener},
+		&http_listener_factory,
 #endif
-		{CONFIG_PROTO_TCP, create_tcp_listener},
-		{CONFIG_PROTO_UDP, create_udp_listener},
+		&tcp_listener_factory,
+		&udp_listener_factory,
 };
 
 void init_global_config() {
@@ -212,20 +209,11 @@ static void parse_blacklist(const char *key, const json_t *value) {
 	}
 }
 
-static const listener_creator *protocol_creator(const char *proto) {
+static const n2k_listener_factory *listener_for(const char *proto) {
 	size_t i;
-	const size_t listeners_length = sizeof(registered_listeners) /
-					sizeof(registered_listeners[0]);
-
-	for (i = 0; i < listeners_length; ++i) {
-		if (NULL == registered_listeners[i].proto) {
-			rdlog(LOG_CRIT,
-			      "Error: NULL proto in registered_listeners");
-			continue;
-		}
-
-		if (0 == strcmp(registered_listeners[i].proto, proto)) {
-			return &registered_listeners[i].creator;
+	for (i = 0; i < RD_ARRAYSIZE(registered_listeners); ++i) {
+		if (0 == strcmp(registered_listeners[i]->name(), proto)) {
+			return registered_listeners[i];
 		}
 	}
 
@@ -251,7 +239,6 @@ locate_registered_decoder(const char *decode_as) {
 static void parse_listener(json_t *config) {
 	char *proto = NULL, *decode_as = "";
 	json_error_t json_err;
-	char err[BUFSIZ];
 
 	const int unpack_rc = json_unpack_ex(config,
 					     &json_err,
@@ -272,8 +259,8 @@ static void parse_listener(json_t *config) {
 		return;
 	}
 
-	const listener_creator *_listener_creator = protocol_creator(proto);
-	if (NULL == _listener_creator) {
+	const n2k_listener_factory *listener_factory = listener_for(proto);
+	if (NULL == listener_factory) {
 		rdlog(LOG_ERR,
 		      "Can't find listener creator for protocol %s",
 		      proto);
@@ -288,33 +275,15 @@ static void parse_listener(json_t *config) {
 		exit(-1);
 	}
 
-	void *decoder_opaque = NULL;
-	if (decoder->opaque_creator) {
-		const int opaque_creator_rc = decoder->opaque_creator(
-				config, &decoder_opaque);
-		if (opaque_creator_rc != 0) {
-			rdlog(LOG_ERR,
-			      "Can't create opaque for listener %s: %s",
-			      proto,
-			      err);
-			exit(-1);
-		}
-	}
+	struct listener *proto_listener =
+			listener_factory->create(config, decoder);
 
-	struct listener *listener =
-			(*_listener_creator)(config, decoder, decoder_opaque);
-
-	if (NULL == listener) {
-		rdlog(LOG_ERR,
-		      "Can't create listener for proto %s: %s.",
-		      proto,
-		      err);
+	if (NULL == proto_listener) {
+		rdlog(LOG_ERR, "Can't create listener for proto %s.", proto);
 		exit(-1);
 	}
 
-	listener->decoder = decoder;
-
-	LIST_INSERT_HEAD(&global_config.listeners, listener, entry);
+	LIST_INSERT_HEAD(&global_config.listeners, proto_listener, entry);
 }
 
 static void parse_listeners_array(const char *key, const json_t *array) {
@@ -460,16 +429,9 @@ void parse_config(const char *config_file_path) {
 }
 
 static void shutdown_listener(struct listener *i) {
+	rblog(LOG_INFO, "Joining listener on port %d.", i->port);
 	if (NULL == i->join) {
 		return;
-	}
-
-	rblog(LOG_INFO, "Joining listener on port %d.", i->port);
-	const struct n2k_decoder *decoder = i->decoder;
-	void *decoder_opaque = i->decoder_opaque;
-	i->join(i->private);
-	if (decoder->opaque_destructor) {
-		decoder->opaque_destructor(decoder_opaque);
 	}
 }
 
@@ -508,7 +470,7 @@ reload_listeners_check_already_present(json_t *new_listeners,
 			rdlog(LOG_INFO,
 			      "Reloading listener on port %d",
 			      i_port);
-			i->reload(i, found_value, i->private);
+			i->reload(i, found_value);
 		} else {
 			LIST_REMOVE(i, entry);
 			shutdown_listener(i);

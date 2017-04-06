@@ -87,7 +87,7 @@ kafka_error_to_warning_time_pos(rd_kafka_resp_err_t err) {
 	};
 }
 
-static int zz_opaque_creator(json_t *config, void **_opaque) {
+static int zz_opaque_creator(const json_t *config, void **_opaque) {
 	(void)config;
 	assert(_opaque);
 
@@ -101,14 +101,6 @@ static int zz_opaque_creator(json_t *config, void **_opaque) {
 	opaque->magic = ZZ_OPAQUE_MAGIC;
 #endif
 
-	return 0;
-}
-
-static int zz_opaque_reload(json_t *config, void *opaque) {
-	/* Do nothing, since this decoder does not save anything per-listener
-	   information */
-	(void)config;
-	(void)opaque;
 	return 0;
 }
 
@@ -312,7 +304,6 @@ const struct n2k_decoder zz_decoder = {
 		.callback = zz_decode,
 
 		.opaque_creator = zz_opaque_creator,
-		.opaque_reload = zz_opaque_reload,
 		.opaque_destructor = zz_opaque_done,
 
 		.flags = zz_flags,

@@ -35,31 +35,6 @@
 #include <stdint.h>
 #include <sys/queue.h>
 
-struct json_t;
-struct listener;
-typedef struct listener *(*listener_creator)(struct json_t *config,
-					     const struct n2k_decoder *decoder,
-					     void *cb_opaque);
-typedef void (*listener_join)(struct listener *listener);
-// @TODO we need this callback to split data acquiring || data processing
-// typedef void (*data_process)(void *data_process_private,const char
-// *buffer,size_t bsize);
-typedef void (*listener_reload)(struct listener *listener,
-				struct json_t *new_config,
-				void *listener_private);
-struct listener {
-	uint16_t port; // as listener ID
-	void *private;
-
-	/// @TODO sepparate listener_factory / listener instance
-	const struct n2k_decoder *decoder;
-	void *decoder_opaque;
-	listener_creator create;
-	listener_join join;
-	listener_reload reload;
-	LIST_ENTRY(listener) entry;
-};
-
 enum {
 	/**
 	    Tells if the listener support straming API, instead of wait to all

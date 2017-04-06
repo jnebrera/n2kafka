@@ -58,9 +58,9 @@ struct string {
 
 /// Per listener stuff
 struct http_listener {
-#ifndef NDEBUG
 	// Note: This MUST be the first member!
 	struct listener listener; ///< listener
+#ifndef NDEBUG
 #define HTTP_PRIVATE_MAGIC 0xC0B345FE
 	uint64_t magic; ///< magic field
 #endif
@@ -583,7 +583,7 @@ struct http_loop_args {
 
 static struct http_listener *start_http_loop(const struct http_loop_args *args,
 					     const struct n2k_decoder *decoder,
-					     void *decoder_opaque) {
+					     const json_t *decoder_conf) {
 	unsigned int flags = 0;
 	if (args->mode == NULL ||
 	    0 == strcmp(MODE_THREAD_PER_CONNECTION, args->mode)) {
@@ -611,11 +611,19 @@ static struct http_listener *start_http_loop(const struct http_loop_args *args,
 		      " (out of memory?)");
 		return NULL;
 	}
+
+	const int listener_init_rc = listener_init(&http_listener->listener,
+						   args->port,
+						   decoder,
+						   decoder_conf);
+
+	if (0 != listener_init_rc) {
+		goto listener_init_err;
+	}
+
 #ifdef HTTP_PRIVATE_MAGIC
 	http_listener->magic = HTTP_PRIVATE_MAGIC;
 #endif
-	http_listener->listener.decoder = decoder;
-	http_listener->listener.decoder_opaque = decoder_opaque;
 
 	const struct MHD_OptionItem opts[] = {
 			{MHD_OPTION_NOTIFY_COMPLETED,
@@ -666,36 +674,43 @@ static struct http_listener *start_http_loop(const struct http_loop_args *args,
 		rdlog(LOG_ERR,
 		      "Can't allocate LIBMICROHTTPD handler"
 		      " (out of memory?)");
-		free(http_listener);
-		http_listener = NULL;
+		goto start_daemon_err;
 	}
 
 	return http_listener;
+
+start_daemon_err:
+	http_listener->listener.join(&http_listener->listener);
+
+listener_init_err:
+	free(http_listener);
+	return NULL;
 }
 
-static void reload_listener_http(struct listener *listener,
-				 json_t *new_config,
+static void break_http_loop(struct listener *vhttp_listener) {
+	struct http_listener *http_listener =
+			(struct http_listener *)vhttp_listener;
 
-				 void *_private __attribute__((unused))) {
-	if (listener->decoder->opaque_reload) {
-		rdlog(LOG_INFO, "Reloading opaque");
-		listener->decoder->opaque_reload(new_config,
-						 listener->decoder_opaque);
-	} else {
-		rdlog(LOG_INFO, "Not reload opaque provided");
-	}
-}
-
-static void break_http_loop(struct listener *listener) {
-	struct http_listener *http_listener = (struct http_listener *)listener;
+#ifdef HTTP_PRIVATE_MAGIC
+	assert(HTTP_PRIVATE_MAGIC == http_listener->magic);
+#endif
 	MHD_stop_daemon(http_listener->d);
+	listener_join(&http_listener->listener);
 	free(http_listener);
 }
 
-struct listener *create_http_listener(struct json_t *config,
-				      const struct n2k_decoder *decoder,
-				      void *cb_opaque) {
+/*
+  FACTORY
+*/
 
+static struct listener *
+create_http_listener(const struct json_t *t_config,
+		     const struct n2k_decoder *decoder) {
+	json_t *config = json_deep_copy(t_config);
+	if (NULL == config) {
+		rdlog(LOG_ERR, "Couldn't dup config (OOM?)");
+		return NULL;
+	}
 	json_error_t error;
 
 	struct http_loop_args handler_args = {
@@ -709,7 +724,6 @@ struct listener *create_http_listener(struct json_t *config,
 					.per_ip_connection_limit = 0,
 			}};
 
-	/* Unpacking */
 	const int unpack_rc = json_unpack_ex(
 			config,
 			&error,
@@ -741,27 +755,31 @@ struct listener *create_http_listener(struct json_t *config,
 
 	if (unpack_rc != 0 /* Failure */) {
 		rdlog(LOG_ERR, "Can't parse HTTP options: %s", error.text);
-		return NULL;
+		goto err;
 	}
 
 	struct http_listener *http_listener =
-			start_http_loop(&handler_args, decoder, cb_opaque);
+			start_http_loop(&handler_args, decoder, config);
 	if (NULL == http_listener) {
 		rdlog(LOG_ERR, "Can't create http listener (out of memory?)");
-		return NULL;
+		goto err;
 	}
 
 	rdlog(LOG_INFO,
 	      "Creating new HTTP listener on port %d",
 	      handler_args.port);
 
-	http_listener->listener.create = create_http_listener;
-	http_listener->listener.decoder = decoder;
-	http_listener->listener.join = break_http_loop;
-	http_listener->listener.reload = reload_listener_http;
-	http_listener->listener.port = handler_args.port;
-
-	return (struct listener *)http_listener;
+err:
+	json_decref(config);
+	return http_listener ? &http_listener->listener : NULL;
 }
+
+static const char *http_name() {
+	return "http";
+}
+
+const n2k_listener_factory http_listener_factory = {
+		.name = http_name, .create = create_http_listener,
+};
 
 #endif

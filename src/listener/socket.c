@@ -727,42 +727,37 @@ static void *main_socket_loop(void *vsocket_listener) {
 	return NULL;
 }
 
-static void join_listener_socket(struct listener *listener) {
+static void join_listener_socket(struct listener *slistener) {
 	struct socket_listener *socket_listener =
-			(struct socket_listener *)listener;
+			(struct socket_listener *)slistener;
 
 	do_shutdown = 1;
 	ev_async_send(socket_listener->event_loop, &socket_listener->w_async);
 	pthread_join(socket_listener->main_loop, NULL);
+	listener_join(&socket_listener->listener);
 	free(socket_listener);
 }
 
-static void reload_listener_socket(struct listener *listener,
-				   json_t *new_config,
-				   void *_private __attribute__((unused))) {
-	const struct n2k_decoder *decoder = listener->decoder;
-	if (decoder->opaque_reload) {
-		rdlog(LOG_INFO, "Reloading opaque");
-		decoder->opaque_reload(new_config, listener->decoder_opaque);
-	} else {
-		rdlog(LOG_INFO, "Not reload opaque provided");
+static struct listener *
+create_socket_listener(const struct json_t *const_config,
+		       const struct n2k_decoder *decoder) {
+	json_t *config = json_deep_copy(const_config);
+	if (NULL == config) {
+		rdlog(LOG_ERR, "Couldn't clone JSON (OOM?)");
+		return NULL;
 	}
-}
-
-struct listener *create_socket_listener(struct json_t *config,
-					const struct n2k_decoder *decoder,
-					void *decoder_opaque) {
 	json_error_t error;
 	char *proto;
+	json_int_t port;
 
 	struct socket_listener *socket_listener =
 			calloc(1, sizeof(*socket_listener));
 	if (NULL == socket_listener) {
 		rdlog(LOG_ERR, "Can't allocate private data (out of memory?)");
-		return NULL;
+		goto calloc_err;
 	}
 
-	/* Default */
+	/* Defaults */
 	socket_listener->config.threads = 1;
 	socket_listener->config.tcp_keepalive = 0;
 	socket_listener->config.thread_mode = MODE_EPOLL;
@@ -776,7 +771,7 @@ struct listener *create_socket_listener(struct json_t *config,
 				       "proto",
 				       &proto,
 				       "port",
-				       &socket_listener->listener.port,
+				       &port,
 				       "num_threads",
 				       &socket_listener->config.threads,
 				       "tcp_keepalive",
@@ -814,16 +809,14 @@ struct listener *create_socket_listener(struct json_t *config,
 		return NULL;
 	}
 
-	rdlog(LOG_INFO,
-	      "Creating new %s listener on port %d",
-	      proto,
-	      socket_listener->listener.port);
+	rdlog(LOG_INFO, "Creating new %s listener on port %d", proto, port);
 
-	socket_listener->listener.join = join_listener_socket;
-	socket_listener->listener.private = socket_listener;
-	socket_listener->listener.decoder = decoder;
-	socket_listener->listener.decoder_opaque = decoder_opaque;
-	socket_listener->listener.reload = reload_listener_socket;
+	const int listener_init_rc = listener_init(
+			&socket_listener->listener, port, decoder, config);
+
+	if (listener_init_rc) {
+		goto listener_init_err;
+	}
 
 	const int pcreate_rc = pthread_create(&socket_listener->main_loop,
 					      NULL,
@@ -833,9 +826,36 @@ struct listener *create_socket_listener(struct json_t *config,
 		rdlog(LOG_ERR,
 		      "Couldn't create pthread: %s",
 		      gnu_strerror_r(errno));
-		free(socket_listener);
-		return NULL;
+		goto pthread_create_err;
 	}
 
-	return (struct listener *)socket_listener;
+	socket_listener->listener.join = join_listener_socket;
+	return &socket_listener->listener;
+
+pthread_create_err:
+	socket_listener->listener.join(&socket_listener->listener);
+
+listener_init_err:
+	free(socket_listener);
+
+calloc_err:
+	json_decref(config);
+	return NULL;
 }
+
+static const char *tcp_listener_name() {
+	return "tcp";
+}
+
+static const char *udp_listener_name() {
+	return "ucp";
+}
+
+// clang-format off
+const n2k_listener_factory tcp_listener_factory = {
+	.name = tcp_listener_name,
+	.create = create_socket_listener,
+}, udp_listener_factory = {
+	.name = udp_listener_name,
+	.create = create_socket_listener,
+};

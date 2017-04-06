@@ -19,13 +19,7 @@
 
 #pragma once
 
-#include "engine/global_config.h"
-struct http_handler;
-struct json_t;
+#include "listener_api.h"
 
-struct listener *create_socket_listener(struct json_t *config,
-					const struct n2k_decoder *decoder,
-					void *callback_opaque);
-
-#define create_tcp_listener create_socket_listener
-#define create_udp_listener create_socket_listener
+extern const struct n2k_listener_factory tcp_listener_factory,
+		udp_listener_factory;

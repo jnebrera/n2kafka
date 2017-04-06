@@ -20,11 +20,7 @@
 #pragma once
 
 #ifdef HAVE_LIBMICROHTTPD
-#include "decoder/decoder_api.h"
-#include "engine/global_config.h"
-struct http_handler;
-struct json_t;
-struct listener *create_http_listener(struct json_t *config,
-				      const struct n2k_decoder *decoder,
-				      void *cb_opaque);
+#include "listener_api.h"
+
+extern const n2k_listener_factory http_listener_factory;
 #endif

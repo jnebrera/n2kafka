@@ -45,9 +45,9 @@ typedef struct n2k_decoder {
 	void (*done)();			     ///< Finish decoder global config
 
 	/// Per-listener decoder information creator
-	int (*opaque_creator)(json_t *config, void **opaque);
+	int (*opaque_creator)(const json_t *config, void **opaque);
 	/// Per listener decoder information reload
-	int (*opaque_reload)(json_t *config, void *opaque);
+	int (*opaque_reload)(const json_t *config, void *opaque);
 	/// Per listener decoder information destructor
 	void (*opaque_destructor)(void *opaque);
 

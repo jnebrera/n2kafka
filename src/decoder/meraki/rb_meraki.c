@@ -222,7 +222,7 @@ static int parse_per_listener_opaque_config(struct meraki_opaque *opaque,
 	return (NULL == opaque->rkt) ? -1 : 0;
 }
 
-static int meraki_opaque_creator(struct json_t *config, void **_opaque) {
+static int meraki_opaque_creator(const struct json_t *config, void **_opaque) {
 	assert(config);
 	assert(_opaque);
 

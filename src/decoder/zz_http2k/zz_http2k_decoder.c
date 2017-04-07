@@ -43,33 +43,7 @@
 #include <stdint.h>
 #include <string.h>
 
-enum warning_times_pos {
-	LAST_WARNING_TIME__QUEUE_FULL,
-	LAST_WARNING_TIME__MSG_SIZE_TOO_LARGE,
-	LAST_WARNING_TIME__UNKNOWN_PARTITION,
-	LAST_WARNING_TIME__UNKNOWN_TOPIC,
-	LAST_WARNING_TIME__END
-};
-
 static struct zz_database zz_database = {NULL};
-
-struct zz_opaque {
-#ifndef NDEBUG
-#define ZZ_OPAQUE_MAGIC 0x0B0A3A1C0B0A3A1CL
-	uint64_t magic;
-#endif
-
-	time_t produce_error_last_time[LAST_WARNING_TIME__END];
-};
-
-#ifdef ZZ_OPAQUE_MAGIC
-static void assert_zz_opaque(struct zz_opaque *zz_opaque) {
-	assert(zz_opaque);
-	assert(ZZ_OPAQUE_MAGIC == zz_opaque->magic);
-}
-#else
-#define assert_zz_opaque(zz_opaque) (void)zz_opaque
-#endif
 
 static enum warning_times_pos
 kafka_error_to_warning_time_pos(rd_kafka_resp_err_t err) {
@@ -85,32 +59,6 @@ kafka_error_to_warning_time_pos(rd_kafka_resp_err_t err) {
 	default:
 		return LAST_WARNING_TIME__END;
 	};
-}
-
-static int zz_opaque_creator(const json_t *config, void **_opaque) {
-	(void)config;
-	assert(_opaque);
-
-	struct zz_opaque *opaque = (*_opaque) = calloc(1, sizeof(*opaque));
-	if (NULL == opaque) {
-		rdlog(LOG_ERR, "Can't alloc RB_HTTP2K opaque (out of memory?)");
-		return -1;
-	}
-
-#ifdef ZZ_OPAQUE_MAGIC
-	opaque->magic = ZZ_OPAQUE_MAGIC;
-#endif
-
-	return 0;
-}
-
-static void zz_opaque_done(void *_opaque) {
-	assert(_opaque);
-
-	struct zz_opaque *opaque = _opaque;
-	assert_zz_opaque(opaque);
-
-	free(opaque);
 }
 
 static int zz_decoder_init(const struct json_t *config) {
@@ -135,7 +83,7 @@ static int zz_decoder_init(const struct json_t *config) {
 	@param topic Topic handler
 	@param msgs Messages to send
 	@param len Length of msgs */
-static void produce_or_free(struct zz_opaque *opaque,
+static void produce_or_free(struct zz_session *opaque,
 			    struct topic_s *topic,
 			    rd_kafka_message_t *msgs,
 			    int len) {
@@ -199,14 +147,8 @@ static void produce_or_free(struct zz_opaque *opaque,
 static void process_zz_buffer(const char *buffer,
 			      size_t bsize,
 			      const keyval_list_t *msg_vars,
-			      struct zz_opaque *opaque,
 			      struct zz_session **sessionp) {
 
-	// json_error_t err;
-	// struct zz_database *db = &opaque->zz_config->database;
-	// /* @TODO const */ json_t *uuid_enrichment_entry = NULL;
-	// char *ret = NULL;
-	(void)opaque;
 	struct zz_session *session = NULL;
 	const unsigned char *in_iterator = (const unsigned char *)buffer;
 
@@ -241,21 +183,19 @@ static void process_zz_buffer(const char *buffer,
 static void zz_decode(char *buffer,
 		      size_t buf_size,
 		      const keyval_list_t *list,
-		      void *_listener_callback_opaque,
+		      void *listener_opaque,
 		      void **vsessionp) {
-	struct zz_opaque *zz_opaque = _listener_callback_opaque;
+	(void)listener_opaque;
 	struct zz_session **sessionp = (struct zz_session **)vsessionp;
 	/// Helper pointer to simulate streaming behavior
 	struct zz_session *my_session = NULL;
-
-	assert_zz_opaque(zz_opaque);
 
 	if (NULL == vsessionp) {
 		// Simulate an active
 		sessionp = &my_session;
 	}
 
-	process_zz_buffer(buffer, buf_size, list, zz_opaque, sessionp);
+	process_zz_buffer(buffer, buf_size, list, sessionp);
 
 	if (buffer) {
 		/* It was not the last call, designed to free session */
@@ -265,7 +205,7 @@ static void zz_decode(char *buffer,
 		rd_kafka_msg_q_dump(&(*sessionp)->msg_queue, msgs);
 
 		if ((*sessionp)->topic_handler) {
-			produce_or_free(zz_opaque,
+			produce_or_free((*sessionp),
 					(*sessionp)->topic_handler,
 					msgs,
 					n_messages);
@@ -274,7 +214,7 @@ static void zz_decode(char *buffer,
 
 	if (NULL == vsessionp) {
 		// Simulate last call that will free my_session
-		process_zz_buffer(NULL, 0, list, zz_opaque, sessionp);
+		process_zz_buffer(NULL, 0, list, sessionp);
 	}
 }
 
@@ -302,9 +242,6 @@ const struct n2k_decoder zz_decoder = {
 		.done = zz_decoder_done,
 
 		.callback = zz_decode,
-
-		.opaque_creator = zz_opaque_creator,
-		.opaque_destructor = zz_opaque_done,
 
 		.flags = zz_flags,
 };

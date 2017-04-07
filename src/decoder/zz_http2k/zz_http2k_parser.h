@@ -29,6 +29,14 @@
 #include <yajl/yajl_gen.h>
 #include <yajl/yajl_parse.h>
 
+enum warning_times_pos {
+	LAST_WARNING_TIME__QUEUE_FULL,
+	LAST_WARNING_TIME__MSG_SIZE_TOO_LARGE,
+	LAST_WARNING_TIME__UNKNOWN_PARTITION,
+	LAST_WARNING_TIME__UNKNOWN_TOPIC,
+	LAST_WARNING_TIME__END
+};
+
 /// @TODO many of the fields here could be a state machine
 /// @TODO separate parsing <-> not parsing fields
 /// @TODO could this be private?
@@ -47,6 +55,9 @@ struct zz_session {
 
 	/// Message list in this call to decode()
 	rd_kafka_message_queue_t msg_queue;
+
+	/// Error last warning
+	time_t produce_error_last_time[LAST_WARNING_TIME__END];
 };
 
 struct zz_session *

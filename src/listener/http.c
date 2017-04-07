@@ -79,9 +79,9 @@ static int init_string(struct string *s, size_t size) {
 	s->buf = malloc(size);
 	if (s->buf) {
 		s->allocated = size;
-		return 1;
+		return 0;
 	}
-	return 0;
+	return -1;
 }
 
 static size_t string_free_space(const struct string *str) {
@@ -114,8 +114,8 @@ struct conn_info {
 		z_stream strm;
 	} zlib;
 
-	/// Session pointer.
-	void *decoder_sessp;
+	/// pre-allocated session pointer.
+	void *decoder_sess;
 
 	/// Number of decoder options
 	size_t decoder_opts_size;
@@ -149,7 +149,7 @@ static void request_completed(void *cls,
 #endif
 	const struct n2k_decoder *decoder = http_listener->listener.decoder;
 
-	if (!(decoder->flags() & DECODER_F_SUPPORT_STREAMING)) {
+	if (!decoder->new_session) {
 		/* No streaming processing -> need to process buffer */
 		listener_decode(&http_listener->listener,
 				con_info->str.buf,
@@ -157,13 +157,9 @@ static void request_completed(void *cls,
 				&con_info->decoder_params,
 				NULL);
 		con_info->str.buf = NULL; /* librdkafka will free it */
-	} else {
+	} else if (decoder->delete_session) {
 		/* Streaming processing -> need to free session pointer */
-		listener_decode(&http_listener->listener,
-				NULL,
-				0,
-				&con_info->decoder_params,
-				&con_info->decoder_sessp);
+		decoder->delete_session(con_info->decoder_sess);
 	}
 
 	if (con_info->zlib.enable) {
@@ -221,6 +217,8 @@ static struct conn_info *
 create_connection_info(size_t string_size,
 		       const char *uri,
 		       const char *client,
+		       const size_t decoder_session_size,
+		       int init_buffer,
 		       struct MHD_Connection *connection) {
 
 	/* First call, creating all needed structs */
@@ -235,7 +233,8 @@ create_connection_info(size_t string_size,
 
 	const size_t con_info_size =
 			sizeof(*con_info) +
-			num_decoder_opts * sizeof(con_info->decoder_opts[0]);
+			num_decoder_opts * sizeof(con_info->decoder_opts[0]) +
+			decoder_session_size;
 	rd_calloc_struct(&con_info,
 			 con_info_size,
 			 client ? -1 : 0,
@@ -247,6 +246,11 @@ create_connection_info(size_t string_size,
 		rdlog(LOG_ERR,
 		      "Can't allocate conection context (out of memory?)");
 		return NULL; /* Doesn't have resources */
+	}
+
+	if (decoder_session_size) {
+		con_info->decoder_sess =
+				&con_info->decoder_opts[num_decoder_opts];
 	}
 
 	con_info->decoder_opts[0].key = "D-Client-IP";
@@ -266,13 +270,15 @@ create_connection_info(size_t string_size,
 				   &con_info->decoder_opts[i]);
 	}
 
-	/// @todo delay this! it could be not needed!
-	if (!init_string(&con_info->str, string_size)) {
-		rdlog(LOG_ERR,
-		      "Can't allocate connection string buffer (out "
-		      "of memory?)");
-		free_con_info(con_info);
-		return NULL; /* Doesn't have resources */
+	if (init_buffer) {
+		const int init_string_rc =
+				init_string(&con_info->str, string_size);
+		if (init_string_rc != 0) {
+			rdlog(LOG_ERR,
+			      "Can't allocate connection buffer (OOM?)");
+			free_con_info(con_info);
+			return NULL; /* Doesn't have resources */
+		}
 	}
 
 	if (con_info->zlib.enable) {
@@ -421,28 +427,32 @@ static size_t compressed_callback(struct http_listener *h_listener,
 				switch (ret) {
 				case Z_STREAM_ERROR:
 					rdlog(LOG_ERR,
-					      "Input from ip %s is not a valid "
+					      "Input from ip %s is not "
+					      "a valid "
 					      "zlib stream",
 					      client_ip);
 					break;
 
 				case Z_NEED_DICT:
 					rdlog(LOG_ERR,
-					      "Need unkown dict in input "
+					      "Need unkown dict in "
+					      "input "
 					      "stream from ip %s",
 					      client_ip);
 					break;
 
 				case Z_DATA_ERROR:
 					rdlog(LOG_ERR,
-					      "Error in compressed input from "
+					      "Error in compressed "
+					      "input from "
 					      "ip %s",
 					      client_ip);
 					break;
 
 				case Z_MEM_ERROR:
 					rdlog(LOG_ERR,
-					      "Memory error, couldn't allocate "
+					      "Memory error, couldn't "
+					      "allocate "
 					      "memory for ip %s",
 					      client_ip);
 					break;
@@ -454,7 +464,8 @@ static size_t compressed_callback(struct http_listener *h_listener,
 
 				default:
 					rdlog(LOG_ERR,
-					      "Unknown error: inflate returned "
+					      "Unknown error: inflate "
+					      "returned "
 					      "%d for %s ip",
 					      ret,
 					      client_ip);
@@ -468,14 +479,14 @@ static size_t compressed_callback(struct http_listener *h_listener,
 
 		const size_t zprocessed =
 				ZLIB_CHUNK - con_info->zlib.strm.avail_out;
-		rc += zprocessed; // @TODO this should be returned by callback
-				  // call
+		rc += zprocessed; // @TODO this should be returned by
+				  // callback call
 		if (zprocessed > 0) {
 			listener_decode(&h_listener->listener,
 					(char *)buffer,
 					zprocessed,
 					&con_info->decoder_params,
-					&con_info->decoder_sessp);
+					&con_info->decoder_sess);
 		}
 	} while (con_info->zlib.strm.avail_out == 0);
 
@@ -515,12 +526,37 @@ static int post_handle(void *vhttp_listener,
 		char client_buf[BUFSIZ];
 		const char *client = client_addr(
 				client_buf, sizeof(client_buf), connection);
-		if (NULL == client) {
+		if (unlikely(NULL == client)) {
 			return MHD_NO;
 		}
 
-		*ptr = create_connection_info(
-				STRING_INITIAL_SIZE, url, client, connection);
+		const n2k_decoder *decoder = http_listener->listener.decoder;
+		const size_t decoder_session_size =
+				decoder->session_size ? decoder->session_size()
+						      : 0;
+
+		*ptr = create_connection_info(STRING_INITIAL_SIZE,
+					      url,
+					      client,
+					      decoder_session_size,
+					      decoder->new_session != NULL,
+					      connection);
+		if (unlikely(NULL == *ptr)) {
+			return MHD_NO;
+		}
+
+		if (decoder->new_session) {
+			struct conn_info *con_info = *ptr;
+			const int session_rc = decoder->new_session(
+					con_info->decoder_sess,
+					http_listener->listener.decoder_opaque,
+					&con_info->decoder_params);
+			if (0 != session_rc) {
+				// Not valid decoder session!
+				free_con_info(con_info);
+				*ptr = NULL;
+			}
+		}
 
 		return (NULL == *ptr) ? MHD_NO : MHD_YES;
 	} else if (*upload_data_size > 0) {
@@ -529,15 +565,16 @@ static int post_handle(void *vhttp_listener,
 				http_listener->listener.decoder;
 		struct conn_info *con_info = *ptr;
 		size_t rc;
-		if (!(decoder->flags() & DECODER_F_SUPPORT_STREAMING)) {
-			/* Does not support stream, we need to allocate a big
-			 * buffer */
+		if (!decoder->new_session) {
+			/* Does not support stream, we need to allocate
+			 * a big buffer */
 			rc = append_http_data_to_connection_data(
 					con_info,
 					upload_data,
 					*upload_data_size);
 		} else if (con_info->zlib.enable) {
-			/* Does support streaming, we will decompress & process
+			/* Does support streaming, we will decompress &
+			 * process
 			 * until */
 			/* end of received chunk */
 			rc = compressed_callback(http_listener,
@@ -545,13 +582,14 @@ static int post_handle(void *vhttp_listener,
 						 upload_data,
 						 *upload_data_size);
 		} else {
-			/* Does support streaming processing, sending the chunk
+			/* Does support streaming processing, sending
+			 * the chunk
 			 */
 			listener_decode(&http_listener->listener,
 					upload_data,
 					*upload_data_size,
 					&con_info->decoder_params,
-					&con_info->decoder_sessp);
+					con_info->decoder_sess);
 			/// @TODO fix it
 			if (0 /* ERROR */) {
 			}
@@ -561,7 +599,8 @@ static int post_handle(void *vhttp_listener,
 		return (*upload_data_size != 0) ? MHD_NO : MHD_YES;
 
 	} else {
-		/* Send OK. Resources will be freed in request_completed */
+		/* Send OK. Resources will be freed in request_completed
+		 */
 		return send_http_ok(connection);
 	}
 }
@@ -639,7 +678,8 @@ static struct http_listener *start_http_loop(const struct http_loop_args *args,
 			 (intptr_t)&request_completed,
 			 http_listener},
 
-			/* Digest-Authentication related. Setting to 0 saves
+			/* Digest-Authentication related. Setting to 0
+			   saves
 			   some memory */
 			{MHD_OPTION_NONCE_NC_SIZE, 0, NULL},
 

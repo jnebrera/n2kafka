@@ -123,9 +123,10 @@ struct mse_opaque {
 };
 
 static int parse_decoder_info(struct mse_decoder_info *decoder_info,
-			      json_t *config,
+			      const json_t *const_config,
 			      const char **topic_name) {
 
+	json_t *config = json_deep_copy(const_config);
 	json_error_t jerr;
 
 	json_int_t max_time_offset = MAX_TIME_OFFSET_DEFAULT;
@@ -153,18 +154,19 @@ static int parse_decoder_info(struct mse_decoder_info *decoder_info,
 		rdlog(LOG_ERR,
 		      "Couldn't parse MSE listener config: %s",
 		      jerr.text);
-		return json_unpack_rc;
+	} else {
+		decoder_info->max_time_offset = max_time_offset;
+		decoder_info->max_time_offset_warning_wait =
+				max_time_offset_warning_wait;
 	}
 
-	decoder_info->max_time_offset = max_time_offset;
-	decoder_info->max_time_offset_warning_wait =
-			max_time_offset_warning_wait;
+	json_decref(config);
 
 	return json_unpack_rc;
 }
 
-static int
-parse_per_listener_opaque_config(struct mse_opaque *opaque, json_t *config) {
+static int parse_per_listener_opaque_config(struct mse_opaque *opaque,
+					    const json_t *config) {
 	assert(opaque);
 	assert(config);
 	const char *topic_name = NULL;
@@ -265,14 +267,15 @@ static void mse_warn_timestamp(struct mse_data *data,
 }
 
 /// @TODO join with mse_opaque_creator
-static int mse_opaque_reload(json_t *config, void *_opaque) {
+static int mse_opaque_reload(const json_t *const_config, void *_opaque) {
 	json_error_t jerr;
 	struct mse_opaque *opaque = _opaque;
 	assert(opaque);
-	assert(config);
+	assert(const_config);
 #ifdef MSE_OPAQUE_MAGIC
 	assert(MSE_OPAQUE_MAGIC == opaque->magic);
 #endif
+	json_t *config = json_deep_copy(const_config);
 	const char *topic_name = NULL;
 	json_t *enrichment_aux = NULL;
 	rd_kafka_topic_t *rkt_aux = NULL;
@@ -329,6 +332,8 @@ enrichment_err:
 	if (enrichment_aux) {
 		json_decref(enrichment_aux);
 	}
+
+	json_decref(config);
 
 	return 0;
 }
@@ -829,10 +834,6 @@ static const char *mse_config_parameter() {
 	return "mse-sensors";
 }
 
-static int mse_flags() {
-	return 0;
-}
-
 const struct n2k_decoder mse_decoder = {
 		.name = mse_decoder_name,
 		.config_parameter = mse_config_parameter,
@@ -847,5 +848,4 @@ const struct n2k_decoder mse_decoder = {
 		.opaque_reload = mse_opaque_reload,
 		.opaque_destructor = mse_opaque_done,
 
-		.flags = mse_flags,
 };

@@ -750,10 +750,6 @@ static const char *meraki_config_parameter() {
 	return "meraki-secrets";
 }
 
-static int meraki_flags() {
-	return 0;
-}
-
 const struct n2k_decoder meraki_decoder = {
 		.name = meraki_decoder_name,
 		.config_parameter = meraki_config_parameter,
@@ -766,6 +762,4 @@ const struct n2k_decoder meraki_decoder = {
 		.opaque_creator = meraki_opaque_creator,
 		.opaque_reload = meraki_opaque_reload,
 		.opaque_destructor = meraki_opaque_destructor,
-
-		.flags = meraki_flags,
 };

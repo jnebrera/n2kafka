@@ -42,6 +42,7 @@ typedef struct n2k_decoder {
 	int (*reload)(const json_t *config); ///< Reload decoder.
 	void (*done)();			     ///< Finish decoder global config
 
+	/// LISTENER-LOCAL CONFIGURATION
 	/// Per-listener decoder information creator
 	int (*opaque_creator)(const json_t *config, void **opaque);
 	/// Per listener decoder information reload
@@ -49,5 +50,15 @@ typedef struct n2k_decoder {
 	/// Per listener decoder information destructor
 	void (*opaque_destructor)(void *opaque);
 
-	int (*flags)(); ///< Decoders flags
+	/// SESSION-LOCAL INFORMATION
+	/// Per-session information. You have to use callback with this!
+	int (*new_session)(void *sessionp,
+			   void *listener_opaque,
+			   const keyval_list_t *props);
+
+	/// Finish this session
+	void (*delete_session)(void *sessionp);
+
+	/// Session size, in order to pre-allocate it
+	size_t (*session_size)();
 } n2k_decoder;

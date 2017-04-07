@@ -194,8 +194,12 @@ extract_url_topic(const char *url, const char **topic, size_t *topic_size) {
 	return 0;
 }
 
-struct zz_session *
-new_zz_session(struct zz_database *zz_db, const keyval_list_t *msg_vars) {
+int new_zz_session(struct zz_session *sess,
+		   struct zz_database *zz_db,
+		   const keyval_list_t *msg_vars) {
+	assert(sess);
+	assert(zz_db);
+	assert(msg_vars);
 	const char *client_ip = valueof(msg_vars, "D-Client-IP");
 	const char *url = valueof(msg_vars, "D-HTTP-URI");
 	struct {
@@ -207,12 +211,12 @@ new_zz_session(struct zz_database *zz_db, const keyval_list_t *msg_vars) {
 			extract_url_topic(url, &topic.buf, &topic.buf_len);
 	if (unlikely(0 != parse_url_rc)) {
 		rdlog(LOG_ERR, "Couldn't extract url topic from %s", url);
-		return NULL;
+		return -1;
 	}
 	client_uuid.buf = valueof(msg_vars, "X-Consumer-ID");
 
 	if (unlikely(NULL == client_uuid.buf)) {
-		return NULL;
+		return -1;
 	}
 	client_uuid.buf_len = strlen(client_uuid.buf);
 
@@ -226,12 +230,10 @@ new_zz_session(struct zz_database *zz_db, const keyval_list_t *msg_vars) {
 	uuid_topic[client_uuid.buf_len + sizeof((char)'_') + topic.buf_len] =
 			'\0';
 
-	struct zz_session *sess = calloc(1, sizeof(*sess));
-	if (unlikely(NULL == sess)) {
-		rdlog(LOG_CRIT, "Couldn't allocate sess pointer");
-		goto session_err;
-	}
-
+	memset(sess, 0, sizeof(*sess));
+#ifdef ZZ_SESSION_MAGIC
+	sess->magic = ZZ_SESSION_MAGIC;
+#endif
 	sess->topic_handler = zz_http2k_database_get_topic(
 			zz_db, uuid_topic, time(NULL));
 	if (unlikely(NULL == sess->topic_handler)) {
@@ -259,7 +261,7 @@ new_zz_session(struct zz_database *zz_db, const keyval_list_t *msg_vars) {
 	yajl_config(sess->handler, yajl_allow_multiple_values, 1);
 	yajl_config(sess->handler, yajl_allow_trailing_garbage, 1);
 
-	return sess;
+	return 0;
 
 err_yajl_handler:
 	yajl_gen_free(sess->gen);
@@ -268,10 +270,7 @@ err_yajl_gen:
 	topic_decref(sess->topic_handler);
 
 topic_err:
-	free(sess);
-
-session_err:
-	return NULL;
+	return -1;
 }
 
 void free_zz_session(struct zz_session *sess) {
@@ -279,6 +278,4 @@ void free_zz_session(struct zz_session *sess) {
 	yajl_gen_free(sess->gen);
 
 	topic_decref(sess->topic_handler);
-
-	free(sess);
 }

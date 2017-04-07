@@ -58,9 +58,6 @@ void test_zz_decoder_setup(struct zz_test_state *state,
 void test_zz_decoder_teardown(void *vstate) {
 	struct zz_test_state *state = vstate;
 
-	const struct n2k_decoder *decoder = state->listener->listener.decoder;
-	void *decoder_opaque = state->listener->listener.decoder_opaque;
-
 	state->listener->listener.join(&state->listener->listener);
 
 	free_global_config();

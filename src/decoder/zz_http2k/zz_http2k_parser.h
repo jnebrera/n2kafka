@@ -29,6 +29,8 @@
 #include <yajl/yajl_gen.h>
 #include <yajl/yajl_parse.h>
 
+#include <assert.h>
+
 enum warning_times_pos {
 	LAST_WARNING_TIME__QUEUE_FULL,
 	LAST_WARNING_TIME__MSG_SIZE_TOO_LARGE,
@@ -41,6 +43,10 @@ enum warning_times_pos {
 /// @TODO separate parsing <-> not parsing fields
 /// @TODO could this be private?
 struct zz_session {
+#ifndef NDEBUG
+#define ZZ_SESSION_MAGIC 0x535510A1C535510A
+	uint64_t magic;
+#endif
 	/// Output generator.
 	yajl_gen gen;
 
@@ -60,8 +66,18 @@ struct zz_session {
 	time_t produce_error_last_time[LAST_WARNING_TIME__END];
 };
 
-struct zz_session *
-new_zz_session(struct zz_database *zz_config, const keyval_list_t *msg_vars);
+static void __attribute__((unused))
+assert_zz_session(const struct zz_session *sess) {
+#ifdef ZZ_SESSION_MAGIC
+	assert(ZZ_SESSION_MAGIC == sess->magic);
+#else
+	(void)sess;
+#endif
+}
+
+int new_zz_session(struct zz_session *sess,
+		   struct zz_database *zz_db,
+		   const keyval_list_t *msg_vars);
 
 int gen_jansson_object(yajl_gen gen, json_t *enrichment_data);
 

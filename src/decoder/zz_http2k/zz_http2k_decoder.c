@@ -146,28 +146,10 @@ static void produce_or_free(struct zz_session *opaque,
 
 static void process_zz_buffer(const char *buffer,
 			      size_t bsize,
-			      const keyval_list_t *msg_vars,
-			      struct zz_session **sessionp) {
+			      struct zz_session *session) {
 
-	struct zz_session *session = NULL;
+	assert(session);
 	const unsigned char *in_iterator = (const unsigned char *)buffer;
-
-	assert(sessionp);
-
-	if (NULL == *sessionp) {
-		/* First call */
-		*sessionp = new_zz_session(&zz_database, msg_vars);
-		if (NULL == *sessionp) {
-			return;
-		}
-	} else if (0 == bsize) {
-		/* Last call, need to free session */
-		free_zz_session(*sessionp);
-		*sessionp = NULL;
-		return;
-	}
-
-	session = *sessionp;
 
 	yajl_status stat = yajl_parse(session->handler, in_iterator, bsize);
 
@@ -182,39 +164,30 @@ static void process_zz_buffer(const char *buffer,
 
 static void zz_decode(char *buffer,
 		      size_t buf_size,
-		      const keyval_list_t *list,
-		      void *listener_opaque,
-		      void **vsessionp) {
-	(void)listener_opaque;
-	struct zz_session **sessionp = (struct zz_session **)vsessionp;
-	/// Helper pointer to simulate streaming behavior
-	struct zz_session *my_session = NULL;
+		      const keyval_list_t *props,
+		      void *t_decoder_opaque,
+		      void *t_session) {
+	(void)props;
+	(void)t_decoder_opaque;
 
-	if (NULL == vsessionp) {
-		// Simulate an active
-		sessionp = &my_session;
-	}
+	struct zz_session *session = t_session;
+	assert_zz_session(session);
 
-	process_zz_buffer(buffer, buf_size, list, sessionp);
+	process_zz_buffer(buffer, buf_size, session);
 
 	if (buffer) {
 		/* It was not the last call, designed to free session */
 		const size_t n_messages =
-				rd_kafka_msg_q_size(&(*sessionp)->msg_queue);
+				rd_kafka_msg_q_size(&session->msg_queue);
 		rd_kafka_message_t msgs[n_messages];
-		rd_kafka_msg_q_dump(&(*sessionp)->msg_queue, msgs);
+		rd_kafka_msg_q_dump(&session->msg_queue, msgs);
 
-		if ((*sessionp)->topic_handler) {
-			produce_or_free((*sessionp),
-					(*sessionp)->topic_handler,
+		if (session->topic_handler) {
+			produce_or_free(session,
+					session->topic_handler,
 					msgs,
 					n_messages);
 		}
-	}
-
-	if (NULL == vsessionp) {
-		// Simulate last call that will free my_session
-		process_zz_buffer(NULL, 0, list, sessionp);
 	}
 }
 
@@ -230,8 +203,28 @@ static const char *zz_config_token() {
 	return "zz_http2k_config";
 }
 
-static int zz_flags() {
-	return DECODER_F_SUPPORT_STREAMING;
+static int vnew_zz_session(void *t_session,
+			   void *listener_opaque,
+			   const keyval_list_t *msg_vars) {
+	(void)listener_opaque;
+	struct zz_session *session = t_session;
+	return new_zz_session(session, &zz_database, msg_vars);
+}
+
+static void vfree_zz_session(void *t_session) {
+	struct zz_session *session = t_session;
+	assert_zz_session(session);
+	free_zz_session(session);
+}
+
+static size_t size_align_to(size_t size, size_t alignment) {
+	return size % alignment == 0 ? size
+				     : (size / alignment + 1) * alignment;
+}
+
+static size_t zz_session_size() {
+	// Alignment to 128bits
+	return size_align_to(sizeof(struct zz_session), 16);
 }
 
 const struct n2k_decoder zz_decoder = {
@@ -241,7 +234,9 @@ const struct n2k_decoder zz_decoder = {
 		.init = zz_decoder_init,
 		.done = zz_decoder_done,
 
-		.callback = zz_decode,
+		.new_session = vnew_zz_session,
+		.delete_session = vfree_zz_session,
+		.session_size = zz_session_size,
 
-		.flags = zz_flags,
+		.callback = zz_decode,
 };

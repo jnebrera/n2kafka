@@ -46,12 +46,6 @@ static const char *dumb_decoder_name() {
 	return "";
 }
 
-static int dumb_flags() {
-	return 0;
-}
-
 const struct n2k_decoder dumb_decoder = {
-		.name = dumb_decoder_name,
-		.callback = dumb_decode,
-		.flags = dumb_flags,
+		.name = dumb_decoder_name, .callback = dumb_decode,
 };

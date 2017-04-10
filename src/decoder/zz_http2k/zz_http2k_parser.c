@@ -163,30 +163,24 @@ static const yajl_callbacks callbacks = {zz_parse_null,
 					 zz_parse_start_array,
 					 zz_parse_end_array};
 
-/* Return code: Valid uri prefix (i.e., /v1/)*/
+/* Return code: Valid uri prefix (i.e., /v1/data/) & topic */
 static int
 extract_url_topic(const char *url, const char **topic, size_t *topic_size) {
 	assert(url);
 	assert(topic);
 	assert(topic_size);
+	static const char url_specials[] = ";/?:@=&";
+	static const char valid_prefix_str[] = "/v1/data/";
+	const int valid_prefix = 0 == strncmp(valid_prefix_str,
+					      url,
+					      strlen(valid_prefix_str));
 
-	if (unlikely('/' != url[0])) {
+	if (unlikely(!valid_prefix)) {
 		return -1;
 	}
 
-	url++; // skip slash
-	*topic = strchrnul(url, '/');
-	if (unlikely(NULL == *topic)) {
-		return -1;
-	}
-
-	(*topic)++;
-	const int valid_version =
-			0 == strncmp(url, "v1/", (size_t)(*topic - url));
-	if (unlikely(!valid_version)) {
-		return -1;
-	}
-	*topic_size = strcspn(*topic, ";/?:@=&");
+	*topic = url + strlen(valid_prefix_str);
+	*topic_size = strcspn(*topic, url_specials);
 	if (unlikely(*topic_size == 0)) {
 		return -1;
 	}

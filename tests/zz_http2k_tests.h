@@ -33,14 +33,14 @@
 #include <netinet/in.h>
 
 static const char zz_topic_template[] = "n2ktXXXXXX";
-static const char zz_uri_prefix[] = "/v1/";
+static const char zz_uri_prefix[] = "/v1/data/";
 
 /// Prints uri based on uuid and topic
 #define print_expected_topic(dst, dst_size, uuid, topic)                       \
 	snprintf(dst, dst_size, "%s_%s", uuid, topic)
 
 #define print_expected_url(dst, dst_size, uuid, topic)                         \
-	snprintf(dst, dst_size, "/v1/%s", topic)
+	snprintf(dst, dst_size, "%s%s", zz_uri_prefix, topic)
 
 /// Prepare decoder args
 void prepare_args(const char *uri,

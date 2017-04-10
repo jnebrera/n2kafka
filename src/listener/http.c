@@ -30,6 +30,7 @@
 
 #include "engine/rb_addr.h"
 #include "http.h"
+#include "util/string.h"
 #include "util/topic_database.h"
 
 #include "engine/global_config.h"
@@ -51,11 +52,6 @@
 /// Chunk to store decompression flow
 #define ZLIB_CHUNK (512 * 1024)
 
-struct string {
-	char *buf;
-	size_t allocated, used;
-};
-
 /// Per listener stuff
 struct http_listener {
 	// Note: This MUST be the first member!
@@ -67,41 +63,10 @@ struct http_listener {
 	struct MHD_Daemon *d; ///< Associated daemon
 };
 
-static size_t smax(size_t n1, size_t n2) {
-	return n1 > n2 ? n1 : n2;
-}
-
-static size_t smin(size_t n1, size_t n2) {
-	return n1 > n2 ? n2 : n1;
-}
-
-static int init_string(struct string *s, size_t size) {
-	s->buf = malloc(size);
-	if (s->buf) {
-		s->allocated = size;
-		return 0;
-	}
-	return -1;
-}
-
-static size_t string_free_space(const struct string *str) {
-	return str->allocated - str->used;
-}
-
-static size_t string_grow(struct string *str, size_t delta) {
-	const size_t newsize = smax(str->allocated + delta, str->allocated * 2);
-	char *new_buf = realloc(str->buf, newsize);
-	if (NULL != new_buf) {
-		str->buf = new_buf;
-		str->allocated = newsize;
-	}
-	return str->allocated;
-}
-
 /// Per connection information
 struct conn_info {
 	/// Per connection string
-	struct string str;
+	string str;
 	/// Decoders parameters
 	/// @todo no need for a linked list, it's better with a pair array
 	keyval_list_t decoder_params;
@@ -153,7 +118,7 @@ static void request_completed(void *cls,
 		/* No streaming processing -> need to process buffer */
 		listener_decode(&http_listener->listener,
 				con_info->str.buf,
-				con_info->str.used,
+				con_info->str.size,
 				&con_info->decoder_params,
 				NULL);
 		con_info->str.buf = NULL; /* librdkafka will free it */
@@ -214,11 +179,9 @@ static const char *zlib_error2str(const int z_status) {
 }
 
 static struct conn_info *
-create_connection_info(size_t string_size,
-		       const char *uri,
+create_connection_info(const char *uri,
 		       const char *client,
 		       const size_t decoder_session_size,
-		       int init_buffer,
 		       struct MHD_Connection *connection) {
 
 	/* First call, creating all needed structs */
@@ -270,16 +233,7 @@ create_connection_info(size_t string_size,
 				   &con_info->decoder_opts[i]);
 	}
 
-	if (init_buffer) {
-		const int init_string_rc =
-				init_string(&con_info->str, string_size);
-		if (init_string_rc != 0) {
-			rdlog(LOG_ERR,
-			      "Can't allocate connection buffer (OOM?)");
-			free_con_info(con_info);
-			return NULL; /* Doesn't have resources */
-		}
-	}
+	init_string(&con_info->str);
 
 	if (con_info->zlib.enable) {
 		con_info->zlib.strm.zalloc = Z_NULL;
@@ -354,22 +308,6 @@ static int send_http_bad_request(struct MHD_Connection *connection) {
 				      MHD_RESPMEM_PERSISTENT,
 				      MHD_HTTP_BAD_REQUEST,
 				      NULL);
-}
-
-static size_t append_http_data_to_connection_data(struct conn_info *con_info,
-						  const char *upload_data,
-						  size_t upload_data_size) {
-
-	if (upload_data_size > string_free_space(&con_info->str)) {
-		/* TODO error handling */
-		string_grow(&con_info->str, upload_data_size);
-	}
-
-	size_t ncopy = smin(upload_data_size,
-			    string_free_space(&con_info->str));
-	strncpy(&con_info->str.buf[con_info->str.used], upload_data, ncopy);
-	con_info->str.used += ncopy;
-	return ncopy;
 }
 
 static const char *
@@ -535,12 +473,8 @@ static int post_handle(void *vhttp_listener,
 				decoder->session_size ? decoder->session_size()
 						      : 0;
 
-		*ptr = create_connection_info(STRING_INITIAL_SIZE,
-					      url,
-					      client,
-					      decoder_session_size,
-					      decoder->new_session != NULL,
-					      connection);
+		*ptr = create_connection_info(
+				url, client, decoder_session_size, connection);
 		if (unlikely(NULL == *ptr)) {
 			return MHD_NO;
 		}
@@ -566,12 +500,12 @@ static int post_handle(void *vhttp_listener,
 		struct conn_info *con_info = *ptr;
 		size_t rc;
 		if (!decoder->new_session) {
-			/* Does not support stream, we need to allocate
-			 * a big buffer */
-			rc = append_http_data_to_connection_data(
-					con_info,
-					upload_data,
-					*upload_data_size);
+			// Does not support stream, we need to allocate
+			// a big buffer and send all the data together
+			const int append_rc = string_append(&con_info->str,
+							    upload_data,
+							    *upload_data_size);
+			rc = (0 == append_rc) ? *upload_data_size : 0;
 		} else if (con_info->zlib.enable) {
 			/* Does support streaming, we will decompress &
 			 * process

@@ -82,7 +82,7 @@ void assertion_handler_push_value(struct assertion_handler_s *assertion_handler,
  * @param assertion_handler assertion_handler_s to use
  */
 int assertion_handler_assert(struct assertion_handler_s *assertion_handler) {
-	uint found = 0;
+	int found = 0;
 	int err = 0;
 
 	pthread_mutex_lock(&assertion_handler->value_mutex);

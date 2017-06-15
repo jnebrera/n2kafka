@@ -1,0 +1,29 @@
+machine:
+  services:
+    - docker
+  hosts:
+    kafka: 127.0.0.1
+
+checkout:
+  post:
+    # Don't want thread-safety test because musl bug
+    - sed -i 's%\$(TESTS_\(DRD\|HELGRIND\)_XML)%%g' Makefile
+
+test:
+  pre:
+    # Build kafka container
+    - docker run -d --name kafka --add-host=kafka:127.0.0.1 --env ADVERTISED_HOST=kafka --env ADVERTISED_PORT=9092 spotify/kafka
+    # Create development docker
+    - DOCKER_BUILD_PARAMETERS="-t n2k-dev --rm=false" make dev-docker
+
+  override:
+    - ./tests/circle-test.sh "$CIRCLE_ARTIFACTS/O2" "--bootstrap --enable-test-framework"
+    - ./tests/circle-test.sh --coverage "$CIRCLE_ARTIFACTS/O0" "--bootstrap --disable-optimization --enable-test-framework"
+    # Need an absolute path (no $CIRCLE_ARTIFACTS tmpdir) for coverage access
+    # Need sudo because coverage directory is created by docker
+    - sudo mv $CIRCLE_ARTIFACTS/O0/coverage{,.svg} .
+
+general:
+  artifacts:
+    - coverage
+    - coverage.svg

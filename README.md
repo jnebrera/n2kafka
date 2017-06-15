@@ -1,7 +1,6 @@
 # n2kafka
 
-[![Build Status](https://travis-ci.org/redBorder/n2kafka.svg?branch=develop)](https://travis-ci.org/redBorder/n2kafka)
-[![Coverage Status](https://coveralls.io/repos/github/redBorder/n2kafka/badge.svg?branch=develop)](https://coveralls.io/github/redBorder/n2kafka?branch=develop)
+[![CircleCI](https://circleci.com/gh/wizzie-io/n2kafka/tree/master.svg?style=svg&circle-token=2cfc3260f560b7757d7d9b0e91105816de4cc5d0)](https://circleci.com/gh/wizzie-io/n2kafka/tree/master)
 
 Network to kafka translator. It (currently) support conversion from tcp/udp raw
 sockets and HTTP POST to kafka messages, doing message-processing if you need

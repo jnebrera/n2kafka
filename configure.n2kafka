@@ -22,8 +22,87 @@ mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wmissing-declarations -Wdisabled-optimizati
 # This will make the life easier
 mkl_mkvar_append CPPFLAGS CPPFLAGS "-I. -I./src"
 
-mkl_toggle_option "Feature" WITH_HTTP "--enable-http" "HTTP support using libmicrohttpd" "y"
-mkl_toggle_option "Debug" WITH_COVERAGE "--enable-coverage" "Coverage build" "n"
+mkl_toggle_option "Feature" WITH_HTTP           "--enable-http"           "HTTP support using libmicrohttpd" "y"
+mkl_toggle_option "Debug"   WITH_COVERAGE       "--enable-coverage"       "Coverage build" "n"
+mkl_toggle_option "Debug"   WITH_TEST_FRAMEWORK "--enable-test-framework" "Cmocka+valgrind+xml-coreutils" "n"
+
+LIBRD_COMMIT=bb4ec7e65c8d3d411837e506e8d02f293b9a0a20
+function bootstrap_librd {
+  if [[ -d "librd" ]]; then
+    # Already bootstrapped
+    return 0
+  fi
+
+  mv "librd-${LIBRD_COMMIT}" librd
+  cd librd
+  make
+}
+
+function checks_librd {
+  mkl_meta_set "librd" "desc" "Magnus Edenhill lib for rapid development"
+  mkl_meta_set "librd" "bootstrap_url" "https://github.com/eugpermar/librd/archive/${LIBRD_COMMIT}.zip"
+  mkl_meta_set "librd" "bootstrap_cppflags" "-I./vendor/librd"
+  mkl_meta_set "librd" "bootstrap_static_lib" "vendor/librd/librd/librd.a"
+  mkl_meta_set "librd" "bootstrap_makefn" "bootstrap_librd"
+
+  mkl_lib_check --static=-lrd "librd" "" fail CC "-lrd -lpthread -lz -lrt" \
+       "#include <librd/rd.h>"
+}
+
+function bootstrap_cmocka {
+  if [[ ! -d cmocka ]]; then
+    mv cmocka-1.1.1 cmocka
+  fi
+
+  mkdir -p cmocka/build
+
+  if [[ ! -f "cmocka/build/Makefile" ]]; then
+    (cd cmocka/build; cmake -DWITH_STATIC_LIB=yes ..)
+  fi
+
+  if [[ ! -f "cmocka/build/src/libcmocka.a" ]]; then
+    (cd cmocka/build; make)
+  fi
+}
+
+function checks_cmocka {
+  mkl_meta_set "cmocka" "desc" "Elegant unit testing framework for C with support for mock objects"
+  mkl_meta_set "cmocka" "bootstrap_url" "https://cmocka.org/files/1.1/cmocka-1.1.1.tar.xz"
+  mkl_meta_set "cmocka" "bootstrap_cppflags" "-I./vendor/cmocka/cmocka/include/"
+  mkl_meta_set "cmocka" "bootstrap_static_lib" "vendor/cmocka/cmocka/build/src/libcmocka.a"
+  mkl_meta_set "cmocka" "bootstrap_makefn" "bootstrap_cmocka"
+
+  mkl_lib_check --static=-lcmocka "cmocka" "" fail CC "-lcmocka" \
+       "#include <stddef.h>
+        #include <setjmp.h>
+        #include <stdarg.h>
+        #include <cmocka.h>"
+}
+
+function xml_coreutils_bootstrap0 {
+  cd xml-coreutils-master
+  if [[ ! -f Makefile ]]; then
+    bash ./configure
+  fi
+  make
+}
+
+readonly XML_COREUTILS_DIR=vendor/xml-coreutils
+function xml_coreutils_bootstrap {
+  local CPPFLAGS=
+  local LIBS=
+  mkl_meta_set xmlcoreutils bootstrap_url https://github.com/eugpermar/xml-coreutils/archive/master.zip
+  mkl_meta_set xmlcoreutils bootstrap_makefn xml_coreutils_bootstrap0
+  mkl_lib_bootstrap xmlcoreutils XML_LIB_BOOTSTRAP fail
+}
+
+# Check & add cml coreutils
+function checks_xml_coreutils {
+    if ! mkl_command_check xml-utils XML_UTILS cont "xml-find"; then
+      xml_coreutils_bootstrap
+      mkl_command_check xml-utils XML_UTILS cont "$XML_COREUTILS_DIR/"
+    fi
+}
 
 function checks_libmicrohttpd {
     # quick hack to avoid bad formatted libmicrohttpd header. With this macro
@@ -39,9 +118,7 @@ function checks_libmicrohttpd {
 }
 
 function checks {
-    mkl_meta_set "librd" "desc" "Magnus Edenhill's librd is available at http://github.com/edenhill/librd"
-    mkl_lib_check --static=-lrd "librd" "" fail CC "-lrd -lpthread -lz -lrt" \
-       "#include <librd/rd.h>"
+    checks_librd
 
     # Check that librdkafka is available, and allow to link it statically.
     mkl_meta_set "librdkafka" "desc" \
@@ -82,5 +159,11 @@ function checks {
     if [[ "x$WITH_COVERAGE" != "xn" ]]; then
       mkl_mkvar_append CPPFLAGS CPPFLAGS "--coverage"
       mkl_mkvar_append LDFLAGS LDFLAGS "--coverage"
+    fi
+
+    if [ "x$WITH_TEST_FRAMEWORK" == "xy" ]; then
+      mkl_command_check valgrind HAVE_VALGRIND fail "valgrind --version"
+      checks_cmocka
+      checks_xml_coreutils
     fi
 }

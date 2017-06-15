@@ -9,11 +9,14 @@ TESTS_OBJS = $(TESTS:.test=.o)
 # TODO infividualize parsing objdeps!
 TEST_COMMON_OBJS_DEPS = tests/assertion_handler.o tests/n2k_kafka_tests.o \
 	tests/rb_json_tests.o tests/zz_http2k_tests.o
-TESTS_CHECKS_XML = $(TESTS_C:.c=.xml)
-TESTS_MEM_XML = $(TESTS_C:.c=.mem.xml)
-TESTS_HELGRIND_XML = $(TESTS_C:.c=.helgrind.xml)
-TESTS_DRD_XML = $(TESTS_C:.c=.drd.xml)
-TESTS_VALGRIND_XML = $(TESTS_MEM_XML) $(TESTS_HELGRIND_XML) $(TESTS_DRD_XML)
+
+TEST_REPORTS_DIR ?= tests/
+
+TESTS_CHECKS_XML = $(TESTS_C:tests/%.c=$(TEST_REPORTS_DIR)/%.xml)
+TESTS_MEM_XML = $(TESTS_C:tests/%.c=$(TEST_REPORTS_DIR)/%.mem.xml)
+TESTS_HELGRIND_XML = $(TESTS_C:tests/%.c=$(TEST_REPORTS_DIR)/%.helgrind.xml)
+TESTS_DRD_XML = $(TESTS_C:tests/%.c=$(TEST_REPORTS_DIR)/%.drd.xml)
+TESTS_VALGRIND_XML = $(TESTS_MEM_XML)
 TESTS_XML = $(TESTS_CHECKS_XML) $(TESTS_VALGRIND_XML)
 
 all: $(BIN)
@@ -58,25 +61,25 @@ checks: $(TESTS_CHECKS_XML)
 memchecks: $(TESTS_VALGRIND_XML)
 	@$(call run_tests,-v)
 
-drdchecks: $(TESTS_DRD_XML)
+drdchecks:
 	@$(call run_tests,-d)
 
-helchecks: $(TESTS_HELGRIND_XML)
+helchecks:
 	@$(call run_tests,-h)
 
-tests/%.mem.xml: tests/%.test $(BIN)
+$(TEST_REPORTS_DIR)/%.mem.xml: tests/%.test $(BIN)
 	@echo -e '\033[0;33m Checking memory:\033[0m $<'
 	-@$(call run_valgrind,memcheck,"$@","./$<")
 
-tests/%.helgrind.xml: tests/%.test $(BIN)
+$(TEST_REPORTS_DIR)/%.helgrind.xml: tests/%.test $(BIN)
 	@echo -e '\033[0;33m Testing concurrency [HELGRIND]:\033[0m $<'
 	-@$(call run_valgrind,helgrind,"$@","./$<")
 
-tests/%.drd.xml: tests/%.test $(BIN)
+$(TEST_REPORTS_DIR)/%.drd.xml: tests/%.test $(BIN)
 	@echo -e '\033[0;33m Testing concurrency [DRD]:\033[0m $<'
 	-@$(call run_valgrind,drd,"$@","./$<")
 
-tests/%.xml: tests/%.test $(BIN)
+$(TEST_REPORTS_DIR)/%.xml: tests/%.test $(BIN)
 	@echo -e '\033[0;33m Testing:\033[0m $<'
 	@CMOCKA_XML_FILE="$@" CMOCKA_MESSAGE_OUTPUT=XML "./$<" >/dev/null 2>&1
 
@@ -90,7 +93,7 @@ tests/%.test: tests/%.o $(TEST_COMMON_OBJS_DEPS) $(filter-out src/engine/n2kafka
 	@echo -e '\033[0;33m Building: $@ \033[0m'
 	$(CC) $(CPPFLAGS) $(LDFLAGS) \
 		$(call WRAP_BASH_FN,$(shell cat $(@:.test=.objdeps))) \
-		$< $(shell cat $(@:.test=.objdeps)) -o $@ $(LIBS) -lcmocka -lcurl
+		$< $(shell cat $(@:.test=.objdeps)) -o $@ $(LIBS) -lcurl
 
 check_coverage:
 	@( if [[ "x$(WITH_COVERAGE)" == "xn" ]]; then \
@@ -109,10 +112,17 @@ coverage: check_coverage $(TESTS)
 	( for test in $(TESTS); do ./$$test; done )
 	$(COV_LCOV) --gcov-tool=$(COV_GCOV) -q \
                 --rc lcov_branch_coverage=1 --capture \
-                --directory ./ --output-file ${COVERAGE_INFO}
+                --directory ./src --output-file ${COVERAGE_INFO}
+
+	# Remove unwanted stuff
+	$(COV_LCOV) --remove ${COVERAGE_INFO} '*vendor/*' '/usr/include/*' \
+		'$(CURDIR)/src/util/tommyds/*' --rc lcov_branch_coverage=1 -o ${COVERAGE_INFO}
+
 	genhtml --branch-coverage ${COVERAGE_INFO} --output-directory \
 				${COVERAGE_OUTPUT_DIRECTORY} > coverage.out
-	# ./display_coverage.sh
+
+dev-docker:
+	@docker build $(DOCKER_BUILD_PARAMETERS) docker/devel
 
 -include $(DEPS)
 

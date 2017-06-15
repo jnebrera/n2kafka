@@ -21,6 +21,11 @@ function valgrind_xml_error_text {
   echo "$TEXT"
 }
 
+readonly XML_COREUTILS_VENDOR_PATH=vendor/xmlcoreutils/xml-coreutils-master/src/
+if [[ -d "$XML_COREUTILS_VENDOR_PATH" ]]; then
+  PATH="$XML_COREUTILS_VENDOR_PATH:$PATH"
+fi
+
 TITLE="TESTS RESULTS"
 printf "\n\e[1m\e[34m%*s\e[0m\n" $(((${#TITLE}+$COLUMNS)/2)) "$TITLE"
 printf "\e[1m\e[34m=====================================================================================================\e[0m\n"

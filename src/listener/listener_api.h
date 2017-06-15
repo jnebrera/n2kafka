@@ -44,7 +44,7 @@ typedef struct listener {
 
 /// @todo return 0 to say OK!
 static void __attribute__((unused)) listener_decode(const struct listener *this,
-						    char *buffer,
+						    const char *buffer,
 						    size_t buf_size,
 						    const keyval_list_t *props,
 						    void *session) {

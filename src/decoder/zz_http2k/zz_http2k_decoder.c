@@ -162,7 +162,7 @@ static void process_zz_buffer(const char *buffer,
 	}
 }
 
-static void zz_decode(char *buffer,
+static void zz_decode(const char *buffer,
 		      size_t buf_size,
 		      const keyval_list_t *props,
 		      void *t_decoder_opaque,

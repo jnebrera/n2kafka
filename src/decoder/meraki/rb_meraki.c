@@ -715,11 +715,11 @@ err:
 	return notifications;
 }
 
-static void meraki_decode(char *buffer,
+static void meraki_decode(const char *buffer,
 			  size_t buf_size,
 			  const keyval_list_t *attrs,
 			  void *_listener_callback_opaque,
-			  void **sessionp __attribute__((unused))) {
+			  void *sessionp __attribute__((unused))) {
 	assert(buffer);
 	assert(_listener_callback_opaque);
 
@@ -738,7 +738,6 @@ static void meraki_decode(char *buffer,
 		send_array_to_kafka(meraki_opaque->rkt, notifications);
 		free(notifications);
 	}
-	free(buffer);
 }
 
 static const char *meraki_decoder_name() {

@@ -25,7 +25,7 @@ static void dumb_decode(char *buffer,
 			size_t buf_size,
 			const keyval_list_t *keyval __attribute__((unused)),
 			void *listener_callback_opaque,
-			void **sessionp __attribute__((unused))) {
+			void *sessionp __attribute__((unused))) {
 
 	rd_kafka_topic_t *rkt =
 			new_rkt_global_config(default_topic_name(), NULL);

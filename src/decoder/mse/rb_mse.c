@@ -787,11 +787,11 @@ err:
 	return notifications;
 }
 
-static void mse_decode(char *buffer,
+static void mse_decode(const char *buffer,
 		       size_t buf_size,
 		       const keyval_list_t *keyval,
 		       void *_listener_callback_opaque,
-		       void **sessionp __attribute__((unused))) {
+		       void *sessionp __attribute__((unused))) {
 	size_t i;
 	struct mse_opaque *mse_opaque = _listener_callback_opaque;
 #ifdef MSE_OPAQUE_MAGIC
@@ -809,7 +809,6 @@ static void mse_decode(char *buffer,
 					   client,
 					   &mse_opaque->decoder_info,
 					   now);
-	free(buffer);
 
 	if (NULL == notifications)
 		return;

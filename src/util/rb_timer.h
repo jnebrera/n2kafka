@@ -22,6 +22,7 @@
 #include <signal.h>
 #include <sys/queue.h>
 #include <time.h>
+#include <pthread.h>
 
 /// Internal - single timer
 struct rb_timer;

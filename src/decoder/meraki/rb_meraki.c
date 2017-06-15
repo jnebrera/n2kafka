@@ -36,6 +36,7 @@
 #include <stdint.h>
 #include <string.h>
 
+static const char CONFIG_MERAKI_DECODER_NAME[] = "meraki";
 static const char CONFIG_MERAKI_SECRETS_KEY[] = "meraki-secrets";
 static const char CONFIG_MERAKI_DEFAULT_SECRET_KEY[] = "*";
 static const char CONFIG_MERAKI_TOPIC_KEY[] = "topic";
@@ -73,8 +74,6 @@ static const char MERAKI_LOCATION_LAT_KEY[] = "lat";
 static const char MERAKI_LOCATION_LNG_KEY[] = "lng";
 static const char MERAKI_CLIENT_LATLON_DESTINATION_KEY[] = "client_latlong";
 static const char MERAKI_ENRICHMENT_KEY[] = "enrichment";
-
-static const long LOCATION_WARNING_THRESHOLD_S = 600;
 
 static struct meraki_database {
 	/* Private */
@@ -743,11 +742,11 @@ static void meraki_decode(char *buffer,
 }
 
 static const char *meraki_decoder_name() {
-	return "meraki";
+	return CONFIG_MERAKI_DECODER_NAME;
 }
 
 static const char *meraki_config_parameter() {
-	return "meraki-secrets";
+	return CONFIG_MERAKI_SECRETS_KEY;
 }
 
 const struct n2k_decoder meraki_decoder = {

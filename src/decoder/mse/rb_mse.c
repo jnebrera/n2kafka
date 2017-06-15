@@ -37,6 +37,7 @@
 #include <string.h>
 #include <sys/queue.h>
 
+static const char CONFIG_MSE_NAME[] = "MSE";
 static const char MSE8_STREAMING_NOTIFICATION_KEY[] = "StreamingNotification";
 static const char MSE8_LOCATION_KEY[] = "location";
 static const char MSE8_MAC_ADDRESS_KEY[] = "macAddress";
@@ -827,11 +828,11 @@ static void mse_decode(char *buffer,
 }
 
 static const char *mse_decoder_name() {
-	return "MSE";
+	return CONFIG_MSE_NAME;
 }
 
 static const char *mse_config_parameter() {
-	return "mse-sensors";
+	return CONFIG_MSE_SENSORS_KEY;
 }
 
 const struct n2k_decoder mse_decoder = {

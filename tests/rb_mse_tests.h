@@ -83,9 +83,8 @@ static void testMSE10Decoder(const char *mse_array_str,
 	{
 		/// @TODO avoid cheating!
 		struct mse_opaque *pmse_opaque = mse_opaque;
-		char *aux = strdup(mse_input);
 		struct mse_array *notifications_array =
-				process_mse_buffer(aux,
+				process_mse_buffer(mse_input,
 						   strlen(mse_input),
 						   "127.0.0.1",
 						   &pmse_opaque->decoder_info,
@@ -93,7 +92,6 @@ static void testMSE10Decoder(const char *mse_array_str,
 
 		check_result(notifications_array);
 
-		free(aux);
 		for (i = 0;
 		     notifications_array && i < notifications_array->size;
 		     ++i) {

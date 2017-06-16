@@ -93,6 +93,7 @@ static void n2k_consume_kafka_msgs(rd_kafka_t *rk,
 		}
 		if (rkm[i]->err == RD_KAFKA_RESP_ERR__PARTITION_EOF) {
 			// Not really an error
+			rd_kafka_message_destroy(rkm[i]);
 			continue;
 		} else if (rkm[i]->err != RD_KAFKA_RESP_ERR_NO_ERROR) {
 			fail_msg("Error consuming from kafka: %s",
@@ -111,6 +112,7 @@ static void n2k_consume_kafka_msgs(rd_kafka_t *rk,
 			}
 			assert_int_equal(eof_rmk->err,
 					 RD_KAFKA_RESP_ERR__PARTITION_EOF);
+			rd_kafka_message_destroy(eof_rmk);
 			break;
 		} else {
 			// No new messages should have arrived

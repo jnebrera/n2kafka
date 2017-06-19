@@ -21,6 +21,8 @@
 
 // rb_json_tests.c
 #include <jansson.h>
+#include <librd/rd.h>
+#include <librd/rdfloat.h>
 #include <librdkafka/rdkafka.h>
 
 #include <setjmp.h> // This needs to be before cmocka.h
@@ -131,9 +133,37 @@ static void assert_trueEqual(const int64_t a,
 	}
 }
 
-static void rb_assert_json_value(const struct checkdata_value *chk_value,
-				 const json_t *json_value,
-				 const char *src) __attribute__((unused));
+static void
+rb_assert_meraki_client_latlon(const char *coord1, const char *coord2) {
+	// clang-format off
+	struct {
+		const char *str;
+		double latitude, longitude;
+	} coordinates[] = {
+		{
+			.str = coord1,
+		},{
+			.str = coord2,
+	}};
+	// clang-format on
+
+	size_t i;
+	for (i = 0; i < RD_ARRAYSIZE(coordinates); ++i) {
+		const int sscanf_rc = sscanf(coordinates[i].str,
+					     "%lf,%lf",
+					     &coordinates[i].latitude,
+					     &coordinates[i].longitude);
+		assert_return_code(sscanf_rc, errno);
+	}
+
+	assert_true(rd_deq0(coordinates[0].latitude,
+			    coordinates[1].latitude,
+			    0.001) &&
+		    rd_deq0(coordinates[0].longitude,
+			    coordinates[1].longitude,
+			    0.001));
+}
+
 static void rb_assert_json_value(const struct checkdata_value *chk_value,
 				 const json_t *json_value,
 				 const char *src) {
@@ -171,7 +201,14 @@ static void rb_assert_json_value(const struct checkdata_value *chk_value,
 	} break;
 	case JSON_STRING: {
 		const char *json_str_value = json_string_value(json_value);
-		assert_true(0 == strcmp(json_str_value, chk_value->value));
+		// Special case for double precision.
+		if (0 == strcmp("client_latlong", chk_value->key)) {
+			rb_assert_meraki_client_latlon(json_str_value,
+						       chk_value->value);
+		} else {
+			assert_true(0 ==
+				    strcmp(json_str_value, chk_value->value));
+		}
 	} break;
 	default:
 		assert_true(!"You should not be here");

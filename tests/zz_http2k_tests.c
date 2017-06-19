@@ -179,8 +179,8 @@ void test_zz_decoder0(const json_t *listener_conf,
 
 			}
 		},
-		.listener = create_http_listener(listener_conf_copy,
-			                         &zz_decoder)
+		.listener = (void *)create_http_listener(listener_conf_copy,
+			                                     &zz_decoder),
 	};
 	// clang-format on
 	json_decref(listener_conf_copy);
@@ -254,14 +254,23 @@ json_t *assert_json_loads(const char *json_txt) {
 	return ret;
 }
 
-int __attribute__((unused))
-__wrap_MHD_queue_response(struct MHD_Connection *connection,
-			  unsigned int status_code,
-			  struct MHD_Response *response) {
+int __wrap_MHD_queue_response(struct MHD_Connection *connection,
+			      unsigned int status_code,
+			      struct MHD_Response *response);
+int __wrap_MHD_queue_response(struct MHD_Connection *connection,
+			      unsigned int status_code,
+			      struct MHD_Response *response) {
+	(void)connection;
+	(void)status_code;
+	(void)response;
 	return MHD_YES;
 }
 
-const union MHD_ConnectionInfo *__attribute__((unused))
+const union MHD_ConnectionInfo *
+__wrap_MHD_get_connection_info(struct MHD_Connection *vconnection,
+			       enum MHD_ConnectionInfoType info_type,
+			       ...);
+const union MHD_ConnectionInfo *
 __wrap_MHD_get_connection_info(struct MHD_Connection *vconnection,
 			       enum MHD_ConnectionInfoType info_type,
 			       ...) {
@@ -271,11 +280,14 @@ __wrap_MHD_get_connection_info(struct MHD_Connection *vconnection,
 	return &connection->ret_client_addr;
 }
 
-int __attribute__((unused))
-__wrap_MHD_get_connection_values(struct MHD_Connection *vconnection,
-				 enum MHD_ValueKind kind,
-				 MHD_KeyValueIterator iterator,
-				 void *iterator_cls) {
+int __wrap_MHD_get_connection_values(struct MHD_Connection *vconnection,
+				     enum MHD_ValueKind kind,
+				     MHD_KeyValueIterator iterator,
+				     void *iterator_cls);
+int __wrap_MHD_get_connection_values(struct MHD_Connection *vconnection,
+				     enum MHD_ValueKind kind,
+				     MHD_KeyValueIterator iterator,
+				     void *iterator_cls) {
 	assert_int_equal(kind, MHD_HEADER_KIND);
 	const struct mock_MHD_connection *connection = (void *)vconnection;
 	size_t i;

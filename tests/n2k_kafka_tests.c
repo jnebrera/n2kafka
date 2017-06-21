@@ -32,17 +32,34 @@
 #include <string.h>
 #include <unistd.h>
 
+static int valid_topic_name(const char *topic_name) {
+	static const char valid_chars[] =
+			"abcdefghijklmnopqrstuvwxyz"
+			"ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789._-";
+	return strspn(topic_name, valid_chars) == strlen(topic_name);
+}
+
 void random_topic_name(char *template) {
 	/// n2kafka temp topic
-	int fd = mkstemp(template);
-	if (fd < 0) {
-		char errmsg_buf[512];
-		fail_msg("Failed to create temp file %s: %s",
-			 template,
-			 strerror_r(errno, errmsg_buf, sizeof(errmsg_buf)));
-	}
+	int valid_topic = 0;
+	const size_t template_len = strlen(template);
+	for (valid_topic = 0; !valid_topic;
+	     valid_topic = valid_topic_name(template)) {
+		int fd = mkstemp(template);
+		if (fd < 0) {
+			assert_return_code(fd, errno);
+		}
 
-	close(fd);
+		valid_topic = valid_topic_name(template);
+		if (!valid_topic) {
+			static const char template_pattern[] = "XXXXXX";
+			memcpy(&template[template_len -
+					 strlen(template_pattern)],
+			       template_pattern,
+			       strlen(template_pattern));
+		}
+		close(fd);
+	}
 }
 
 rd_kafka_t *init_kafka_consumer(const char *brokers, const char *topic) {

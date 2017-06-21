@@ -52,5 +52,10 @@
 
 static __attribute__((unused)) const char *gnu_strerror_r(int t_errno) {
 	static __thread char buffer[512];
+#if !defined(_POSIX_C_SOURCE) || ((_POSIX_C_SOURCE >= 200112L) && !_GNU_SOURCE)
+	strerror_r(t_errno, buffer, sizeof(buffer));
+	return buffer;
+#else
 	return strerror_r(t_errno, buffer, sizeof(buffer));
+#endif
 }

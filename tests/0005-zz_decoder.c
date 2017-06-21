@@ -204,13 +204,14 @@ static void test_zz_decoder_simple() {
 
 	const size_t out_topic_len = (size_t)print_expected_topic(
 			NULL, 0, consumer_uuid, topic);
-	char out_topic[out_topic_len];
-	print_expected_topic(out_topic, out_topic_len, consumer_uuid, topic);
+	char out_topic[out_topic_len + 1];
+	print_expected_topic(
+			out_topic, sizeof(out_topic), consumer_uuid, topic);
 
 	const size_t uri_len = (size_t)print_expected_url(
 			NULL, 0, consumer_uuid, topic);
-	char uri[uri_len];
-	print_expected_url(uri, uri_len, consumer_uuid, topic);
+	char uri[uri_len + 1];
+	print_expected_url(uri, sizeof(uri), consumer_uuid, topic);
 
 #define MESSAGES                                                               \
 	X("{\"client_mac\": \"54:26:96:db:88:01\", "                           \
@@ -264,13 +265,14 @@ static void test_zz_decoder_simple_def() {
 
 	const size_t out_topic_len = (size_t)print_expected_topic(
 			NULL, 0, consumer_uuid, topic);
-	char out_topic[out_topic_len];
-	print_expected_topic(out_topic, out_topic_len, consumer_uuid, topic);
+	char out_topic[out_topic_len + 1];
+	print_expected_topic(
+			out_topic, sizeof(out_topic), consumer_uuid, topic);
 
 	const size_t uri_len = (size_t)print_expected_url(
 			NULL, 0, consumer_uuid, topic);
-	char uri[uri_len];
-	print_expected_url(uri, uri_len, consumer_uuid, topic);
+	char uri[uri_len + 1];
+	print_expected_url(uri, sizeof(uri), consumer_uuid, topic);
 
 #define MESSAGES                                                               \
 	X("{\"client_mac\": \"54:26:96:db:88:02\", "                           \
@@ -325,13 +327,14 @@ static void test_zz_decoder_double() {
 
 	const size_t out_topic_len = (size_t)print_expected_topic(
 			NULL, 0, consumer_uuid, topic);
-	char out_topic[out_topic_len];
-	print_expected_topic(out_topic, out_topic_len, consumer_uuid, topic);
+	char out_topic[out_topic_len + 1];
+	print_expected_topic(
+			out_topic, sizeof(out_topic), consumer_uuid, topic);
 
 	const size_t uri_len = (size_t)print_expected_url(
 			NULL, 0, consumer_uuid, topic);
-	char uri[uri_len];
-	print_expected_url(uri, uri_len, consumer_uuid, topic);
+	char uri[uri_len + 1];
+	print_expected_url(uri, sizeof(uri), consumer_uuid, topic);
 
 #define MESSAGES                                                               \
 	X("{\"client_mac\": \"54:26:96:db:88:01\", "                           \
@@ -386,13 +389,14 @@ static void test_zz_decoder_half() {
 
 	const size_t out_topic_len = (size_t)print_expected_topic(
 			NULL, 0, consumer_uuid, topic);
-	char out_topic[out_topic_len];
-	print_expected_topic(out_topic, out_topic_len, consumer_uuid, topic);
+	char out_topic[out_topic_len + 1];
+	print_expected_topic(
+			out_topic, sizeof(out_topic), consumer_uuid, topic);
 
 	const size_t uri_len = (size_t)print_expected_url(
 			NULL, 0, consumer_uuid, topic);
-	char uri[uri_len];
-	print_expected_url(uri, uri_len, consumer_uuid, topic);
+	char uri[uri_len + 1];
+	print_expected_url(uri, sizeof(uri), consumer_uuid, topic);
 
 #define MESSAGES                                                               \
 	X("{\"client_mac\": \"54:26:96:db:88:01\", ", check_zero_messages, 0)  \
@@ -446,13 +450,14 @@ static void test_zz_decoder_half_string() {
 
 	const size_t out_topic_len = (size_t)print_expected_topic(
 			NULL, 0, consumer_uuid, topic);
-	char out_topic[out_topic_len];
-	print_expected_topic(out_topic, out_topic_len, consumer_uuid, topic);
+	char out_topic[out_topic_len + 1];
+	print_expected_topic(
+			out_topic, sizeof(out_topic), consumer_uuid, topic);
 
 	const size_t uri_len = (size_t)print_expected_url(
 			NULL, 0, consumer_uuid, topic);
-	char uri[uri_len];
-	print_expected_url(uri, uri_len, consumer_uuid, topic);
+	char uri[uri_len + 1];
+	print_expected_url(uri, sizeof(uri), consumer_uuid, topic);
 
 #define MESSAGES                                                               \
 	X("{\"client_mac\": \"54:26:96:", check_zero_messages, 0)              \
@@ -512,13 +517,14 @@ static void test_zz_decoder_half_key() {
 
 	const size_t out_topic_len = (size_t)print_expected_topic(
 			NULL, 0, consumer_uuid, topic);
-	char out_topic[out_topic_len];
-	print_expected_topic(out_topic, out_topic_len, consumer_uuid, topic);
+	char out_topic[out_topic_len + 1];
+	print_expected_topic(
+			out_topic, sizeof(out_topic), consumer_uuid, topic);
 
 	const size_t uri_len = (size_t)print_expected_url(
 			NULL, 0, consumer_uuid, topic);
-	char uri[uri_len];
-	print_expected_url(uri, uri_len, consumer_uuid, topic);
+	char uri[uri_len + 1];
+	print_expected_url(uri, sizeof(uri), consumer_uuid, topic);
 
 #define MESSAGES                                                               \
 	X("{\"client_", check_zero_messages, 0)                                \
@@ -578,13 +584,14 @@ static void test_zz_decoder_objects() {
 
 	const size_t out_topic_len = (size_t)print_expected_topic(
 			NULL, 0, consumer_uuid, topic);
-	char out_topic[out_topic_len];
-	print_expected_topic(out_topic, out_topic_len, consumer_uuid, topic);
+	char out_topic[out_topic_len + 1];
+	print_expected_topic(
+			out_topic, sizeof(out_topic), consumer_uuid, topic);
 
 	const size_t uri_len = (size_t)print_expected_url(
 			NULL, 0, consumer_uuid, topic);
-	char uri[uri_len];
-	print_expected_url(uri, uri_len, consumer_uuid, topic);
+	char uri[uri_len + 1];
+	print_expected_url(uri, sizeof(uri), consumer_uuid, topic);
 
 #define MESSAGES                                                               \
 	X("{\"client_", check_zero_messages, 0)                                \

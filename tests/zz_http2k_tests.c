@@ -143,10 +143,6 @@ void test_zz_decoder0(const json_t *listener_conf,
 		      const size_t *expected_kafka_msgs,
 		      void *check_callback_opaque) {
 
-	size_t i;
-	// Need to copy because listener creation accept mutable json
-	json_t *listener_conf_copy = json_deep_copy(listener_conf);
-
 #define CONNECTION_POST_VALUE(t_key, t_val)                                    \
 	{ .kind = MHD_HEADER_KIND, .key = t_key, .value = t_val, }
 
@@ -179,12 +175,10 @@ void test_zz_decoder0(const json_t *listener_conf,
 
 			}
 		},
-		.listener = (void *)create_http_listener(listener_conf_copy,
+		.listener = (void *)create_http_listener(listener_conf,
 			                                     &zz_decoder),
 	};
 	// clang-format on
-	json_decref(listener_conf_copy);
-	listener_conf_copy = NULL;
 
 	static const char brokers[] = "kafka:9092";
 	rd_kafka_t *rk = init_kafka_consumer(brokers, params->topic);
@@ -202,6 +196,7 @@ void test_zz_decoder0(const json_t *listener_conf,
 		    (size_t[]){0},
 		    &http_connection);
 
+	size_t i;
 	for (i = 0; i < msgs_len; ++i) {
 		rd_kafka_message_t *kafka_msgs[expected_kafka_msgs[i]];
 

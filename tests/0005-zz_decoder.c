@@ -636,6 +636,58 @@ static void test_zz_decoder_objects() {
 #undef MESSAGES
 }
 
+static void test_zz_decoder_no_consumer_uuid() {
+	/// @TODO join with all other tests!
+	char topic[sizeof(zz_topic_template)];
+	strcpy(topic, zz_topic_template);
+	random_topic_name(topic);
+
+	const size_t uri_len = (size_t)print_expected_url(NULL, 0, NULL, topic);
+	char uri[uri_len + 1];
+	print_expected_url(uri, sizeof(uri), NULL, topic);
+
+#define MESSAGES                                                               \
+	X("{\"client_mac\": \"54:26:96:db:88:01\", "                           \
+	  "\"application_name\": \"wwww\", \"sensor_uuid\":\"abc\", \"a\":5}", \
+	  check_zz_decoder_simple,                                             \
+	  1)                                                                   \
+	/* Free & Check that session has been freed */                         \
+	X(NULL, NO_MESSAGES_CHECK, 0)
+
+	struct message_in msgs[] = {
+#define X(a, fn, kafka_msgs) {a, sizeof(a) - 1},
+			MESSAGES
+#undef X
+	};
+
+	static const check_callback_fn callbacks_functions[] = {
+#define X(a, fn, kafka_msgs) fn,
+			MESSAGES
+#undef X
+	};
+
+	static const size_t expected_kafka_msgs[] = {
+#define X(a, fn, kafka_msgs) kafka_msgs,
+			MESSAGES
+#undef X
+	};
+
+	test_zz_decoder0(listener_cfg,
+			 NULL,
+			 &(struct zz_http2k_params){
+					 .uri = uri,
+					 .consumer_uuid = NULL,
+					 .topic = topic,
+			 },
+			 msgs,
+			 callbacks_functions,
+			 RD_ARRAYSIZE(msgs),
+			 expected_kafka_msgs,
+			 NULL);
+
+#undef MESSAGES
+}
+
 int main() {
 	// clang-format off
 	listener_cfg = assert_json_loads("{"
@@ -655,6 +707,7 @@ int main() {
 			cmocka_unit_test(test_zz_decoder_half_string),
 			cmocka_unit_test(test_zz_decoder_half_key),
 			cmocka_unit_test(test_zz_decoder_objects),
+			cmocka_unit_test(test_zz_decoder_no_consumer_uuid),
 	};
 
 	const int cmocka_run_rc = cmocka_run_group_tests(tests, NULL, NULL);

@@ -199,7 +199,7 @@ int new_zz_session(struct zz_session *sess,
 	struct {
 		const char *buf;
 		size_t buf_len;
-	} topic, client_uuid;
+	} topic = {}, client_uuid = {};
 
 	const int parse_url_rc =
 			extract_url_topic(url, &topic.buf, &topic.buf_len);
@@ -209,20 +209,23 @@ int new_zz_session(struct zz_session *sess,
 	}
 	client_uuid.buf = valueof(msg_vars, "X-Consumer-ID");
 
-	if (unlikely(NULL == client_uuid.buf)) {
-		return -1;
+	if (client_uuid.buf) {
+		client_uuid.buf_len = strlen(client_uuid.buf);
 	}
-	client_uuid.buf_len = strlen(client_uuid.buf);
 
 	char uuid_topic[topic.buf_len + sizeof((char)'_') +
 			client_uuid.buf_len + sizeof((char)'\0')];
-	memcpy(uuid_topic, client_uuid.buf, client_uuid.buf_len);
-	uuid_topic[client_uuid.buf_len] = '_';
-	memcpy(&uuid_topic[client_uuid.buf_len + sizeof((char)'_')],
-	       topic.buf,
-	       topic.buf_len);
-	uuid_topic[client_uuid.buf_len + sizeof((char)'_') + topic.buf_len] =
-			'\0';
+
+	char *uuid_topic_cursor = uuid_topic;
+
+	if (client_uuid.buf) {
+		memcpy(uuid_topic, client_uuid.buf, client_uuid.buf_len);
+		uuid_topic[client_uuid.buf_len] = '_';
+		uuid_topic_cursor += client_uuid.buf_len + sizeof((char)'_');
+	}
+
+	memcpy(uuid_topic_cursor, topic.buf, topic.buf_len);
+	uuid_topic_cursor[topic.buf_len] = '\0';
 
 	memset(sess, 0, sizeof(*sess));
 #ifdef ZZ_SESSION_MAGIC

@@ -28,8 +28,6 @@
 #include <string.h>
 #include <unistd.h>
 
-#define DEFAULT_PORT 2057
-
 static int do_reload = 0;
 
 static void shutdown_process() {

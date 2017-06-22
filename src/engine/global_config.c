@@ -47,21 +47,13 @@
 #endif
 
 #define CONFIG_LISTENERS_ARRAY "listeners"
-#define CONFIG_PROTO_KEY "proto"
-#define CONFIG_THREADS_KEY "threads"
 #define CONFIG_TOPIC_KEY "topic"
 #define CONFIG_BROKERS_KEY "brokers"
 #define CONFIG_N2KAFKA_ID_KEY "n2kafka_id"
-#define CONFIG_PORT_KEY "port"
 #define CONFIG_DEBUG_KEY "debug"
 #define CONFIG_RESPONSE_KEY "response"
 #define CONFIG_BLACKLIST_KEY "blacklist"
 #define CONFIG_RDKAFKA_KEY "rdkafka."
-#define CONFIG_TCP_KEEPALIVE "tcp_keepalive"
-
-#define CONFIG_PROTO_TCP "tcp"
-#define CONFIG_PROTO_UDP "udp"
-#define CONFIG_PROTO_HTTP "http"
 
 struct n2kafka_config global_config;
 

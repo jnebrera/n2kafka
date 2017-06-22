@@ -117,7 +117,6 @@ void init_rdkafka() {
 	char errstr[RDKAFKA_ERRSTR_SIZE];
 
 	assert(global_config.kafka_conf);
-	assert(global_config.kafka_topic_conf);
 
 	if (only_stdout_output()) {
 		rblog(LOG_DEBUG,

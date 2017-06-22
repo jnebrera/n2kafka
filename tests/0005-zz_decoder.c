@@ -710,7 +710,7 @@ int main() {
 			cmocka_unit_test(test_zz_decoder_no_consumer_uuid),
 	};
 
-	const int cmocka_run_rc = cmocka_run_group_tests(tests, NULL, NULL);
+	const int cmocka_run_rc = run_zz_decoder_group_tests(tests);
 	json_decref(listener_cfg);
 	return cmocka_run_rc;
 }

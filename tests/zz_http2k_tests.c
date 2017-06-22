@@ -35,14 +35,14 @@
 
 static const char ZZ_LOCK_FILE[] = "n2kt_listener.lck";
 
-void test_zz_decoder_setup(struct zz_test_state *state,
-			   const json_t *decoder_conf) {
-	assert_non_null(state);
-	(void)decoder_conf;
-	char errstr[512];
+int test_zz_decoder_group_tests_setup(void **state) {
+	(void)state;
+	char errstr[256];
 
 	init_global_config();
+
 	global_config.brokers = strdup("kafka:9092");
+
 	const rd_kafka_conf_res_t broker_rc =
 			rd_kafka_conf_set(global_config.kafka_conf,
 					  "metadata.broker.list",
@@ -53,14 +53,17 @@ void test_zz_decoder_setup(struct zz_test_state *state,
 		fail_msg("Failed to set broker: %s", errstr);
 	}
 	init_rdkafka();
+	return 0;
+}
+
+int test_zz_decoder_group_tests_teardown(void *state) {
+	free_global_config();
+	return 0;
 }
 
 void test_zz_decoder_teardown(void *vstate) {
 	struct zz_test_state *state = vstate;
-
 	state->listener->listener.join(&state->listener->listener);
-
-	free_global_config();
 }
 
 /** Consume expected messages, and check that there is no more msgs
@@ -182,8 +185,6 @@ void test_zz_decoder0(const json_t *listener_conf,
 
 	static const char brokers[] = "kafka:9092";
 	rd_kafka_t *rk = init_kafka_consumer(brokers, params->topic);
-
-	test_zz_decoder_setup(&zz_state, decoder_conf);
 
 	void *http_connection = NULL;
 

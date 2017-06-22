@@ -129,9 +129,15 @@ struct zz_test_state {
 	struct http_listener *listener;
 };
 
-/// @TODO make private!
+int test_zz_decoder_group_tests_setup(void **state);
+int test_zz_decoder_group_tests_teardown(void *state);
+
 void test_zz_decoder_setup(struct zz_test_state *state,
 			   const json_t *decoder_conf);
 
-/// @TODO make private!
 void test_zz_decoder_teardown(void *vstate);
+
+#define run_zz_decoder_group_tests(t_tests)                                    \
+	cmocka_run_group_tests(t_tests,                                        \
+			       test_zz_decoder_group_tests_setup,              \
+			       test_zz_decoder_group_tests_teardown);

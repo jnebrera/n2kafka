@@ -150,7 +150,7 @@ function checks {
     # TODO include some function that is only in v2, because CentOS bring us v1
     mkl_meta_set "yajl" "desc" "Small event-driven (SAX-style) JSON parser"
     mkl_lib_check --static=-lyajl "yajl" "" fail CC "-lyajl" \
-       "#include <yajl.h>"
+      "#include <yajl/yajl_parse.h>"
 
     if [[ "x$WITHOUT_OPTIMIZATION" != "xy" || "x$WITH_COVERAGE" != "xy" ]]; then
       mkl_mkvar_append CPPFLAGS CPPFLAGS "-DNDEBUG"

@@ -62,13 +62,11 @@ void random_topic_name(char *template) {
 	}
 }
 
-rd_kafka_t *init_kafka_consumer(const char *brokers, const char *topic) {
+rd_kafka_t *init_kafka_consumer(const char *brokers) {
 	rd_kafka_t *rk;
 
 	// Kafka
 	char errstr[512];
-	rd_kafka_topic_partition_list_t *topics;
-	rd_kafka_resp_err_t err;
 	rd_kafka_conf_t *conf = rd_kafka_conf_new();
 	rd_kafka_topic_conf_t *topic_conf = rd_kafka_topic_conf_new();
 
@@ -127,33 +125,32 @@ rd_kafka_t *init_kafka_consumer(const char *brokers, const char *topic) {
 				conf,
 				errstr,
 				sizeof(errstr)))) {
-		fprintf(stderr,
-			"%% Failed to create new consumer: %s\n",
-			errstr);
-		exit(1);
+		fail_msg("Failed to create new consumer: %s\n", errstr);
 	}
 
 	// Add brokers
 	if (rd_kafka_brokers_add(rk, brokers) == 0) {
-		fprintf(stderr, "%% No valid brokers specified\n");
-		exit(1);
+		fail_msg("No valid brokers specified in [%s]\n", brokers);
 	}
 
 	// Redirect rd_kafka_poll() to consumer_poll()
 	rd_kafka_poll_set_consumer(rk);
 
+	return rk;
+}
+
+void set_rdkafka_consumer_topics(rd_kafka_t *rk, const char *topic) {
 	// Topic list
-	topics = rd_kafka_topic_partition_list_new(1);
+	rd_kafka_topic_partition_list_t *topics =
+			rd_kafka_topic_partition_list_new(1);
 	rd_kafka_topic_partition_list_add(topics, topic, 0);
 
 	// Assign partitions
-	if ((err = rd_kafka_assign(rk, topics))) {
-		fprintf(stderr,
-			"%% Failed to assign partitions: %s\n",
-			rd_kafka_err2str(err));
+	rd_kafka_resp_err_t err = rd_kafka_assign(rk, topics);
+	if (RD_KAFKA_RESP_ERR_NO_ERROR != err) {
+		fail_msg("Failed to assign partitions: %s\n",
+			 rd_kafka_err2str(err));
 	}
 
 	rd_kafka_topic_partition_list_destroy(topics);
-
-	return rk;
 }

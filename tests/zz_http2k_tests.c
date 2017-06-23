@@ -35,10 +35,8 @@
 
 static const char ZZ_LOCK_FILE[] = "n2kt_listener.lck";
 
-int test_zz_decoder_group_tests_setup(void **state) {
-	(void)state;
+int test_zz_decoder_group_tests_setup(void **rkp) {
 	char errstr[256];
-
 	init_global_config();
 
 	global_config.brokers = strdup("kafka:9092");
@@ -53,10 +51,14 @@ int test_zz_decoder_group_tests_setup(void **state) {
 		fail_msg("Failed to set broker: %s", errstr);
 	}
 	init_rdkafka();
+	*rkp = init_kafka_consumer(global_config.brokers);
 	return 0;
 }
 
-int test_zz_decoder_group_tests_teardown(void *state) {
+int test_zz_decoder_group_tests_teardown(void **rkp) {
+	rd_kafka_consumer_close(*rkp);
+	rd_kafka_destroy(*rkp);
+
 	free_global_config();
 	return 0;
 }
@@ -144,6 +146,7 @@ void test_zz_decoder0(const json_t *listener_conf,
 		      const check_callback_fn *check_callback,
 		      size_t msgs_len,
 		      const size_t *expected_kafka_msgs,
+		      rd_kafka_t *rk_consumer,
 		      void *check_callback_opaque) {
 
 #define CONNECTION_POST_VALUE(t_key, t_val)                                    \
@@ -183,9 +186,7 @@ void test_zz_decoder0(const json_t *listener_conf,
 	};
 	// clang-format on
 
-	static const char brokers[] = "kafka:9092";
-	rd_kafka_t *rk = init_kafka_consumer(brokers, params->topic);
-
+	set_rdkafka_consumer_topics(rk_consumer, params->topic);
 	void *http_connection = NULL;
 
 	post_handle(zz_state.listener,
@@ -217,7 +218,9 @@ void test_zz_decoder0(const json_t *listener_conf,
 
 		// Wait for answers
 		// @TODO don't assume that they are ordered!
-		n2k_consume_kafka_msgs(rk, kafka_msgs, expected_kafka_msgs[i]);
+		n2k_consume_kafka_msgs(rk_consumer,
+				       kafka_msgs,
+				       expected_kafka_msgs[i]);
 		check_callback[i](kafka_msgs,
 				  expected_kafka_msgs[i],
 				  check_callback_opaque);
@@ -231,9 +234,6 @@ void test_zz_decoder0(const json_t *listener_conf,
 			  (struct MHD_Connection *)&zz_state.mhd_connection,
 			  &http_connection,
 			  MHD_REQUEST_TERMINATED_COMPLETED_OK);
-
-	rd_kafka_consumer_close(rk);
-	rd_kafka_destroy(rk);
 
 	test_zz_decoder_teardown(&zz_state);
 }

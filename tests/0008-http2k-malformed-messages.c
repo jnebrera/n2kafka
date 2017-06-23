@@ -34,7 +34,7 @@ static json_t *listener_cfg = NULL;
 static json_t *decoder_cfg = NULL;
 
 /// Trying to decode a JSON closing when you still have not open any json
-static void test_zz_decoder_closing() {
+static void test_zz_decoder_closing(void **prk_consumer) {
 	/// @TODO join with all other tests!
 	static const char consumer_uuid[] = "abc";
 	char topic[sizeof(zz_topic_template)];
@@ -100,6 +100,7 @@ static void test_zz_decoder_closing() {
 			 callbacks_functions,
 			 RD_ARRAYSIZE(msgs),
 			 expected_kafka_msgs,
+			 *prk_consumer,
 			 NULL);
 
 #undef MESSAGES

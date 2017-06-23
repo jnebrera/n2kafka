@@ -26,4 +26,5 @@
 /// Return unique random topic name
 void random_topic_name(char *template);
 
-rd_kafka_t *init_kafka_consumer(const char *brokers, const char *topic);
+rd_kafka_t *init_kafka_consumer(const char *brokers);
+void set_rdkafka_consumer_topics(rd_kafka_t *rk, const char *topic);

@@ -195,7 +195,7 @@ static void check_zz_decoder_object(const rd_kafka_message_t *rkm[],
 	json_decref(root);
 }
 
-static void test_zz_decoder_simple() {
+static void test_zz_decoder_simple(void **vrk_consumer) {
 	/// @TODO join with all other tests!
 	static const char consumer_uuid[] = "abc";
 	char topic[sizeof(zz_topic_template)];
@@ -250,13 +250,14 @@ static void test_zz_decoder_simple() {
 			 callbacks_functions,
 			 RD_ARRAYSIZE(msgs),
 			 expected_kafka_msgs,
+			 *vrk_consumer,
 			 NULL);
 
 #undef MESSAGES
 }
 
 /// Simple decoding with another enrichment
-static void test_zz_decoder_simple_def() {
+static void test_zz_decoder_simple_def(void **vrk_consumer) {
 	/// @TODO join with all other tests!
 	static const char consumer_uuid[] = "abc";
 	char topic[sizeof(zz_topic_template)];
@@ -312,13 +313,14 @@ static void test_zz_decoder_simple_def() {
 			 callbacks_functions,
 			 RD_ARRAYSIZE(msgs),
 			 expected_kafka_msgs,
+			 *vrk_consumer,
 			 NULL);
 
 #undef MESSAGES
 }
 
 /** Two messages in the same input string */
-static void test_zz_decoder_double() {
+static void test_zz_decoder_double(void **vrk_consumer) {
 	/// @TODO join with all other tests!
 	static const char consumer_uuid[] = "abc";
 	char topic[sizeof(zz_topic_template)];
@@ -375,12 +377,13 @@ static void test_zz_decoder_double() {
 			 callbacks_functions,
 			 RD_ARRAYSIZE(msgs),
 			 expected_kafka_msgs,
+			 *vrk_consumer,
 			 NULL);
 
 #undef MESSAGES
 }
 
-static void test_zz_decoder_half() {
+static void test_zz_decoder_half(void **vrk_consumer) {
 	/// @TODO join with all other tests!
 	static const char consumer_uuid[] = "abc";
 	char topic[sizeof(zz_topic_template)];
@@ -435,13 +438,14 @@ static void test_zz_decoder_half() {
 			 callbacks_functions,
 			 RD_ARRAYSIZE(msgs),
 			 expected_kafka_msgs,
+			 *vrk_consumer,
 			 NULL);
 
 #undef MESSAGES
 }
 
 /** Checks that the decoder can handle to receive the half of a string */
-static void test_zz_decoder_half_string() {
+static void test_zz_decoder_half_string(void **vrk_consumer) {
 	/// @TODO join with all other tests!
 	static const char consumer_uuid[] = "abc";
 	char topic[sizeof(zz_topic_template)];
@@ -502,13 +506,14 @@ static void test_zz_decoder_half_string() {
 			 callbacks_functions,
 			 RD_ARRAYSIZE(msgs),
 			 expected_kafka_msgs,
+			 *vrk_consumer,
 			 NULL);
 
 #undef MESSAGES
 }
 
 /** Checks that the decoder can handle to receive the half of a key */
-static void test_zz_decoder_half_key() {
+static void test_zz_decoder_half_key(void **vrk_consumer) {
 	/// @TODO join with all other tests!
 	static const char consumer_uuid[] = "abc";
 	char topic[sizeof(zz_topic_template)];
@@ -569,13 +574,14 @@ static void test_zz_decoder_half_key() {
 			 callbacks_functions,
 			 RD_ARRAYSIZE(msgs),
 			 expected_kafka_msgs,
+			 *vrk_consumer,
 			 NULL);
 
 #undef MESSAGES
 }
 
 /** Test object that don't need to enrich */
-static void test_zz_decoder_objects() {
+static void test_zz_decoder_objects(void **vrk_consumer) {
 	/// @TODO join with all other tests!
 	static const char consumer_uuid[] = "abc";
 	char topic[sizeof(zz_topic_template)];
@@ -631,12 +637,13 @@ static void test_zz_decoder_objects() {
 			 callbacks_functions,
 			 RD_ARRAYSIZE(msgs),
 			 expected_kafka_msgs,
+			 *vrk_consumer,
 			 NULL);
 
 #undef MESSAGES
 }
 
-static void test_zz_decoder_no_consumer_uuid() {
+static void test_zz_decoder_no_consumer_uuid(void **vrk_consumer) {
 	/// @TODO join with all other tests!
 	char topic[sizeof(zz_topic_template)];
 	strcpy(topic, zz_topic_template);
@@ -683,6 +690,7 @@ static void test_zz_decoder_no_consumer_uuid() {
 			 callbacks_functions,
 			 RD_ARRAYSIZE(msgs),
 			 expected_kafka_msgs,
+			 *vrk_consumer,
 			 NULL);
 
 #undef MESSAGES

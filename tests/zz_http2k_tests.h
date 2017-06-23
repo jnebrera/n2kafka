@@ -84,6 +84,7 @@ void test_zz_decoder0(const json_t *listener_conf,
 		      const check_callback_fn *check_callback,
 		      size_t msgs_len,
 		      const size_t *expected_kafka_msgs,
+		      rd_kafka_t *rk_consumer,
 		      void *check_callback_opaque);
 
 /** Function that check that no messages has been sent
@@ -130,7 +131,7 @@ struct zz_test_state {
 };
 
 int test_zz_decoder_group_tests_setup(void **state);
-int test_zz_decoder_group_tests_teardown(void *state);
+int test_zz_decoder_group_tests_teardown(void **state);
 
 void test_zz_decoder_setup(struct zz_test_state *state,
 			   const json_t *decoder_conf);

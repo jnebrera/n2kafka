@@ -90,7 +90,8 @@ static void test_send_message_base(
 				struct assertion_handler_s *assertion_handler,
 				void *opaque),
 		void *opaque) {
-	rd_kafka_t *rk = init_kafka_consumer("kafka:9092", "rb_flow");
+	rd_kafka_t *rk = init_kafka_consumer("kafka:9092");
+	set_rdkafka_consumer_topics(rk, "rb_flow");
 	struct assertion_handler_s assertion_handler = {};
 	assertion_handler_new(&assertion_handler);
 

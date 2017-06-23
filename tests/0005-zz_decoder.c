@@ -48,7 +48,7 @@ static const char *INVALID_URL[] = {
 		"", "/", "/noversion", "/v2/topic", "/v1/", "?v1/topic",
 };
 
-static void check_zz_decoder_double0(const rd_kafka_message_t *rkm[],
+static void check_zz_decoder_double0(rd_kafka_message_t *rkm[],
 				     void *unused __attribute__((unused)),
 				     size_t msgs_size) {
 	size_t i = 0;
@@ -97,21 +97,21 @@ static void check_zz_decoder_double0(const rd_kafka_message_t *rkm[],
 	}
 }
 
-static void check_zz_decoder_simple(const rd_kafka_message_t *rkm[],
+static void check_zz_decoder_simple(rd_kafka_message_t *rkm[],
 				    size_t rkm_len,
 				    void *opaque) {
 	assert_int_equal(rkm_len, 1);
 	check_zz_decoder_double0(rkm, opaque, 1);
 }
 
-static void check_zz_decoder_double(const rd_kafka_message_t *rkm[],
+static void check_zz_decoder_double(rd_kafka_message_t *rkm[],
 				    size_t rkm_len,
 				    void *opaque) {
 	assert_int_equal(rkm_len, 2);
 	check_zz_decoder_double0(rkm, opaque, 2);
 }
 
-static void check_zz_decoder_simple_def(const rd_kafka_message_t *rkm[],
+static void check_zz_decoder_simple_def(rd_kafka_message_t *rkm[],
 					size_t msgs_num,
 					void *unused __attribute__((unused))) {
 	json_error_t jerr;
@@ -152,7 +152,7 @@ static void check_zz_decoder_simple_def(const rd_kafka_message_t *rkm[],
 	json_decref(root);
 }
 
-static void check_zz_decoder_object(const rd_kafka_message_t *rkm[],
+static void check_zz_decoder_object(rd_kafka_message_t *rkm[],
 				    size_t msgs_num,
 				    void *unused __attribute__((unused))) {
 	json_error_t jerr;
@@ -213,30 +213,16 @@ static void test_zz_decoder_simple(void **vrk_consumer) {
 	char uri[uri_len + 1];
 	print_expected_url(uri, sizeof(uri), consumer_uuid, topic);
 
-#define MESSAGES                                                               \
-	X("{\"client_mac\": \"54:26:96:db:88:01\", "                           \
-	  "\"application_name\": \"wwww\", \"sensor_uuid\":\"abc\", \"a\":5}", \
-	  check_zz_decoder_simple,                                             \
-	  1)                                                                   \
-	/* Free & Check that session has been freed */                         \
-	X(NULL, NO_MESSAGES_CHECK, 0)
-
-	struct message_in msgs[] = {
-#define X(a, fn, kafka_msgs) {a, sizeof(a) - 1},
-			MESSAGES
-#undef X
-	};
-
-	static const check_callback_fn callbacks_functions[] = {
-#define X(a, fn, kafka_msgs) fn,
-			MESSAGES
-#undef X
-	};
-
-	static const size_t expected_kafka_msgs[] = {
-#define X(a, fn, kafka_msgs) kafka_msgs,
-			MESSAGES
-#undef X
+	static const struct message_in msgs[] = {
+			// clang-format off
+		MESSAGE_IN("{\"client_mac\": \"54:26:96:db:88:01\", "
+		  "\"application_name\": \"wwww\", \"sensor_uuid\":\"abc\", "
+		  "\"a\":5}",
+		  check_zz_decoder_simple,
+		  1),
+		/* Free & Check that session has been freed */
+		MESSAGE_IN(NULL, NO_MESSAGES_CHECK, 0),
+			// clang-format on
 	};
 
 	test_zz_decoder0(listener_cfg,
@@ -247,13 +233,9 @@ static void test_zz_decoder_simple(void **vrk_consumer) {
 					 .topic = out_topic,
 			 },
 			 msgs,
-			 callbacks_functions,
 			 RD_ARRAYSIZE(msgs),
-			 expected_kafka_msgs,
 			 *vrk_consumer,
 			 NULL);
-
-#undef MESSAGES
 }
 
 /// Simple decoding with another enrichment
@@ -275,31 +257,16 @@ static void test_zz_decoder_simple_def(void **vrk_consumer) {
 	char uri[uri_len + 1];
 	print_expected_url(uri, sizeof(uri), consumer_uuid, topic);
 
-#define MESSAGES                                                               \
-	X("{\"client_mac\": \"54:26:96:db:88:02\", "                           \
-	  "\"application_name\": \"wwww\", \"sensor_uuid\":\"def\", "          \
-	  "\"a\":5, \"u\":true}",                                              \
-	  check_zz_decoder_simple_def,                                         \
-	  1)                                                                   \
-	/* Free & Check that session has been freed */                         \
-	X(NULL, NO_MESSAGES_CHECK, 0)
-
-	struct message_in msgs[] = {
-#define X(a, fn, kafka_msgs) {a, sizeof(a) - 1},
-			MESSAGES
-#undef X
-	};
-
-	check_callback_fn callbacks_functions[] = {
-#define X(a, fn, kafka_msgs) fn,
-			MESSAGES
-#undef X
-	};
-
-	static const size_t expected_kafka_msgs[] = {
-#define X(a, fn, kafka_msgs) kafka_msgs,
-			MESSAGES
-#undef X
+	static const struct message_in msgs[] = {
+			// clang-format off
+		MESSAGE_IN("{\"client_mac\": \"54:26:96:db:88:02\", "
+		  "\"application_name\": \"wwww\", \"sensor_uuid\":\"def\", "
+		  "\"a\":5, \"u\":true}",
+		  check_zz_decoder_simple_def,
+		  1),
+		/* Free & Check that session has been freed */
+		MESSAGE_IN(NULL, NO_MESSAGES_CHECK, 0),
+			// clang-format on
 	};
 
 	test_zz_decoder0(listener_cfg,
@@ -310,13 +277,9 @@ static void test_zz_decoder_simple_def(void **vrk_consumer) {
 					 .topic = out_topic,
 			 },
 			 msgs,
-			 callbacks_functions,
 			 RD_ARRAYSIZE(msgs),
-			 expected_kafka_msgs,
 			 *vrk_consumer,
 			 NULL);
-
-#undef MESSAGES
 }
 
 /** Two messages in the same input string */
@@ -338,32 +301,20 @@ static void test_zz_decoder_double(void **vrk_consumer) {
 	char uri[uri_len + 1];
 	print_expected_url(uri, sizeof(uri), consumer_uuid, topic);
 
-#define MESSAGES                                                               \
-	X("{\"client_mac\": \"54:26:96:db:88:01\", "                           \
-	  "\"application_name\": \"wwww\", \"sensor_uuid\":\"abc\", \"a\":5}"  \
-	  "{\"client_mac\": \"54:26:96:db:88:02\", "                           \
-	  "\"application_name\": \"wwww\", \"sensor_uuid\":\"abc\", \"a\":5}", \
-	  check_zz_decoder_double,                                             \
-	  2)                                                                   \
-	/* Free & Check that session has been freed */                         \
-	X(NULL, NO_MESSAGES_CHECK, 0)
+	static const struct message_in msgs[] = {
+			// clang-format off
 
-	struct message_in msgs[] = {
-#define X(a, fn, kafka_msgs) {a, sizeof(a) - 1},
-			MESSAGES
-#undef X
-	};
-
-	check_callback_fn callbacks_functions[] = {
-#define X(a, fn, kafka_msgs) fn,
-			MESSAGES
-#undef X
-	};
-
-	static const size_t expected_kafka_msgs[] = {
-#define X(a, fn, kafka_msgs) kafka_msgs,
-			MESSAGES
-#undef X
+		MESSAGE_IN("{\"client_mac\": \"54:26:96:db:88:01\", "
+		  "\"application_name\": \"wwww\", \"sensor_uuid\":\"abc\", "
+		  "\"a\":5}"
+		  "{\"client_mac\": \"54:26:96:db:88:02\", "
+		  "\"application_name\": \"wwww\", \"sensor_uuid\":\"abc\", "
+		  "\"a\":5}",
+		  check_zz_decoder_double,
+		  2),
+		/* Free & Check that session has been freed */
+		MESSAGE_IN(NULL, NO_MESSAGES_CHECK, 0),
+			// clang-format on
 	};
 
 	test_zz_decoder0(listener_cfg,
@@ -374,13 +325,9 @@ static void test_zz_decoder_double(void **vrk_consumer) {
 					 .topic = out_topic,
 			 },
 			 msgs,
-			 callbacks_functions,
 			 RD_ARRAYSIZE(msgs),
-			 expected_kafka_msgs,
 			 *vrk_consumer,
 			 NULL);
-
-#undef MESSAGES
 }
 
 static void test_zz_decoder_half(void **vrk_consumer) {
@@ -401,30 +348,18 @@ static void test_zz_decoder_half(void **vrk_consumer) {
 	char uri[uri_len + 1];
 	print_expected_url(uri, sizeof(uri), consumer_uuid, topic);
 
-#define MESSAGES                                                               \
-	X("{\"client_mac\": \"54:26:96:db:88:01\", ", check_zero_messages, 0)  \
-	X("\"application_name\": \"wwww\", \"sensor_uuid\":\"abc\", \"a\":5}", \
-	  check_zz_decoder_simple,                                             \
-	  1)                                                                   \
-	/* Free & Check that session has been freed */                         \
-	X(NULL, NO_MESSAGES_CHECK, 0)
+	static const struct message_in msgs[] = {
+			// clang-format off
 
-	struct message_in msgs[] = {
-#define X(a, fn, kafka_msgs) {a, sizeof(a) - 1},
-			MESSAGES
-#undef X
-	};
-
-	check_callback_fn callbacks_functions[] = {
-#define X(a, fn, kafka_msgs) fn,
-			MESSAGES
-#undef X
-	};
-
-	static const size_t expected_kafka_msgs[] = {
-#define X(a, fn, kafka_msgs) kafka_msgs,
-			MESSAGES
-#undef X
+		MESSAGE_IN("{\"client_mac\": \"54:26:96:db:88:01\", ",
+		           check_zero_messages, 0),
+		MESSAGE_IN("\"application_name\": \"wwww\", "
+		           "\"sensor_uuid\":\"abc\", \"a\":5}",
+		           check_zz_decoder_simple,
+		           1),
+		/* Free & Check that session has been freed */
+		MESSAGE_IN(NULL, NO_MESSAGES_CHECK, 0),
+			// clang-format on
 	};
 
 	test_zz_decoder0(listener_cfg,
@@ -435,13 +370,9 @@ static void test_zz_decoder_half(void **vrk_consumer) {
 					 .topic = out_topic,
 			 },
 			 msgs,
-			 callbacks_functions,
 			 RD_ARRAYSIZE(msgs),
-			 expected_kafka_msgs,
 			 *vrk_consumer,
 			 NULL);
-
-#undef MESSAGES
 }
 
 /** Checks that the decoder can handle to receive the half of a string */
@@ -463,36 +394,24 @@ static void test_zz_decoder_half_string(void **vrk_consumer) {
 	char uri[uri_len + 1];
 	print_expected_url(uri, sizeof(uri), consumer_uuid, topic);
 
-#define MESSAGES                                                               \
-	X("{\"client_mac\": \"54:26:96:", check_zero_messages, 0)              \
-	X("db:88:01\", \"application_name\": \"wwww\", "                       \
-	  "\"sensor_uuid\":\"abc\", \"a\":5}",                                 \
-	  check_zz_decoder_simple,                                             \
-	  1)                                                                   \
-	X("{\"client_mac\": \"", check_zero_messages, 0)                       \
-	X("54:26:96:db:88:01\", \"application_name\": \"wwww\", "              \
-	  "\"sensor_uuid\":\"abc\", \"a\":5}",                                 \
-	  check_zz_decoder_simple,                                             \
-	  1)                                                                   \
-	/* Free & Check that session has been freed */                         \
-	X(NULL, NO_MESSAGES_CHECK, 0)
+	static const struct message_in msgs[] = {
+			// clang-format off
+		MESSAGE_IN("{\"client_mac\": \"54:26:96:", check_zero_messages,
+			   0),
+		MESSAGE_IN("db:88:01\", \"application_name\": \"wwww\", "
+		           "\"sensor_uuid\":\"abc\", \"a\":5}",
+		           check_zz_decoder_simple,
+		           1),
+		MESSAGE_IN("{\"client_mac\": \"", check_zero_messages, 0),
+		MESSAGE_IN("54:26:96:db:88:01\", "
+		           "\"application_name\": \"wwww\", "
+		           "\"sensor_uuid\":\"abc\", \"a\":5}",
+		           check_zz_decoder_simple,
+		           1),
+		/* Free & Check that session has been freed */
+		MESSAGE_IN(NULL, NO_MESSAGES_CHECK, 0),
+			// clang-format on
 
-	struct message_in msgs[] = {
-#define X(a, fn, kafka_msgs) {a, sizeof(a) - 1},
-			MESSAGES
-#undef X
-	};
-
-	check_callback_fn callbacks_functions[] = {
-#define X(a, fn, kafka_msgs) fn,
-			MESSAGES
-#undef X
-	};
-
-	static const size_t expected_kafka_msgs[] = {
-#define X(a, fn, kafka_msgs) kafka_msgs,
-			MESSAGES
-#undef X
 	};
 
 	test_zz_decoder0(listener_cfg,
@@ -503,13 +422,9 @@ static void test_zz_decoder_half_string(void **vrk_consumer) {
 					 .topic = out_topic,
 			 },
 			 msgs,
-			 callbacks_functions,
 			 RD_ARRAYSIZE(msgs),
-			 expected_kafka_msgs,
 			 *vrk_consumer,
 			 NULL);
-
-#undef MESSAGES
 }
 
 /** Checks that the decoder can handle to receive the half of a key */
@@ -531,36 +446,23 @@ static void test_zz_decoder_half_key(void **vrk_consumer) {
 	char uri[uri_len + 1];
 	print_expected_url(uri, sizeof(uri), consumer_uuid, topic);
 
-#define MESSAGES                                                               \
-	X("{\"client_", check_zero_messages, 0)                                \
-	X("mac\": \"54:26:96:db:88:01\", \"application_name\": \"wwww\", "     \
-	  "\"sensor_uuid\":\"abc\", \"a\":5}",                                 \
-	  check_zz_decoder_simple,                                             \
-	  1)                                                                   \
-	X("{\"client_mac", check_zero_messages, 0)                             \
-	X("\": \"54:26:96:db:88:01\", \"application_name\": \"wwww\", "        \
-	  "\"sensor_uuid\":\"abc\", \"a\":5}",                                 \
-	  check_zz_decoder_simple,                                             \
-	  1)                                                                   \
-	/* Free & Check that session has been freed */                         \
-	X(NULL, NO_MESSAGES_CHECK, 0)
-
-	struct message_in msgs[] = {
-#define X(a, fn, kafka_msgs) {a, sizeof(a) - 1},
-			MESSAGES
-#undef X
-	};
-
-	check_callback_fn callbacks_functions[] = {
-#define X(a, fn, kafka_msgs) fn,
-			MESSAGES
-#undef X
-	};
-
-	static const size_t expected_kafka_msgs[] = {
-#define X(a, fn, kafka_msgs) kafka_msgs,
-			MESSAGES
-#undef X
+	static const struct message_in msgs[] = {
+			// clang-format off
+		MESSAGE_IN("{\"client_", check_zero_messages, 0),
+		MESSAGE_IN("mac\": \"54:26:96:db:88:01\", "
+			   "\"application_name\": \"wwww\", "
+			   "\"sensor_uuid\":\"abc\", \"a\":5}",
+			   check_zz_decoder_simple,
+			   1),
+		MESSAGE_IN("{\"client_mac", check_zero_messages, 0),
+		MESSAGE_IN("\": \"54:26:96:db:88:01\", \"application_name\": "
+			   "\"wwww\", "
+			   "\"sensor_uuid\":\"abc\", \"a\":5}",
+			   check_zz_decoder_simple,
+			   1),
+		/* Free & Check that session has been freed */
+		MESSAGE_IN(NULL, NO_MESSAGES_CHECK, 0),
+			// clang-format on
 	};
 
 	test_zz_decoder0(listener_cfg,
@@ -571,13 +473,9 @@ static void test_zz_decoder_half_key(void **vrk_consumer) {
 					 .topic = out_topic,
 			 },
 			 msgs,
-			 callbacks_functions,
 			 RD_ARRAYSIZE(msgs),
-			 expected_kafka_msgs,
 			 *vrk_consumer,
 			 NULL);
-
-#undef MESSAGES
 }
 
 /** Test object that don't need to enrich */
@@ -599,31 +497,18 @@ static void test_zz_decoder_objects(void **vrk_consumer) {
 	char uri[uri_len + 1];
 	print_expected_url(uri, sizeof(uri), consumer_uuid, topic);
 
-#define MESSAGES                                                               \
-	X("{\"client_", check_zero_messages, 0)                                \
-	X("mac\": \"54:26:96:db:88:01\", \"application_name\": \"wwww\", "     \
-	  "\"sensor_uuid\":\"abc\", \"object\":{\"t1\":1}, \"a\":5}",          \
-	  check_zz_decoder_object,                                             \
-	  1)                                                                   \
-	/* Free & Check that session has been freed */                         \
-	X(NULL, NO_MESSAGES_CHECK, 0)
-
-	struct message_in msgs[] = {
-#define X(a, fn, kafka_msgs) {a, sizeof(a) - 1},
-			MESSAGES
-#undef X
-	};
-
-	check_callback_fn callbacks_functions[] = {
-#define X(a, fn, kafka_msgs) fn,
-			MESSAGES
-#undef X
-	};
-
-	static const size_t expected_kafka_msgs[] = {
-#define X(a, fn, kafka_msgs) kafka_msgs,
-			MESSAGES
-#undef X
+	static const struct message_in msgs[] = {
+			// clang-format off
+		MESSAGE_IN("{\"client_", check_zero_messages, 0),
+		MESSAGE_IN("mac\": \"54:26:96:db:88:01\", "
+		           "\"application_name\": \"wwww\", "
+		           "\"sensor_uuid\":\"abc\", \"object\":{\"t1\":1}, "
+		           "\"a\":5}",
+		           check_zz_decoder_object,
+		           1),
+		/* Free & Check that session has been freed */
+		MESSAGE_IN(NULL, NO_MESSAGES_CHECK, 0),
+			// clang-format on
 	};
 
 	test_zz_decoder0(listener_cfg,
@@ -634,13 +519,9 @@ static void test_zz_decoder_objects(void **vrk_consumer) {
 					 .topic = out_topic,
 			 },
 			 msgs,
-			 callbacks_functions,
 			 RD_ARRAYSIZE(msgs),
-			 expected_kafka_msgs,
 			 *vrk_consumer,
 			 NULL);
-
-#undef MESSAGES
 }
 
 static void test_zz_decoder_no_consumer_uuid(void **vrk_consumer) {
@@ -653,30 +534,16 @@ static void test_zz_decoder_no_consumer_uuid(void **vrk_consumer) {
 	char uri[uri_len + 1];
 	print_expected_url(uri, sizeof(uri), NULL, topic);
 
-#define MESSAGES                                                               \
-	X("{\"client_mac\": \"54:26:96:db:88:01\", "                           \
-	  "\"application_name\": \"wwww\", \"sensor_uuid\":\"abc\", \"a\":5}", \
-	  check_zz_decoder_simple,                                             \
-	  1)                                                                   \
-	/* Free & Check that session has been freed */                         \
-	X(NULL, NO_MESSAGES_CHECK, 0)
-
-	struct message_in msgs[] = {
-#define X(a, fn, kafka_msgs) {a, sizeof(a) - 1},
-			MESSAGES
-#undef X
-	};
-
-	static const check_callback_fn callbacks_functions[] = {
-#define X(a, fn, kafka_msgs) fn,
-			MESSAGES
-#undef X
-	};
-
-	static const size_t expected_kafka_msgs[] = {
-#define X(a, fn, kafka_msgs) kafka_msgs,
-			MESSAGES
-#undef X
+	static const struct message_in msgs[] = {
+			// clang-format off
+		MESSAGE_IN("{\"client_mac\": \"54:26:96:db:88:01\", "
+		           "\"application_name\": \"wwww\", "
+		           "\"sensor_uuid\":\"abc\", \"a\":5}",
+		           check_zz_decoder_simple,
+		           1),
+		/* Free & Check that session has been freed */
+		MESSAGE_IN(NULL, NO_MESSAGES_CHECK, 0),
+			// clang-format on
 	};
 
 	test_zz_decoder0(listener_cfg,
@@ -687,13 +554,9 @@ static void test_zz_decoder_no_consumer_uuid(void **vrk_consumer) {
 					 .topic = topic,
 			 },
 			 msgs,
-			 callbacks_functions,
 			 RD_ARRAYSIZE(msgs),
-			 expected_kafka_msgs,
 			 *vrk_consumer,
 			 NULL);
-
-#undef MESSAGES
 }
 
 int main() {

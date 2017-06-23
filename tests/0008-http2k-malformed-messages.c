@@ -52,41 +52,27 @@ static void test_zz_decoder_closing(void **prk_consumer) {
 	char uri[uri_len + 1];
 	print_expected_url(uri, sizeof(uri), consumer_uuid, topic);
 
-#define MESSAGES                                                               \
-	X("}{\"client_mac\": \"54:26:96:db:88:02\", "                          \
-	  "\"application_name\": \"wwww\", \"sensor_uuid\":\"def\", "          \
-	  "\"a\":5, \"u\":true}",                                              \
-	  check_zero_messages,                                                 \
-	  0)                                                                   \
-	X("}}{\"client_mac\": \"54:26:96:db:88:02\", "                         \
-	  "\"application_name\": \"wwww\", \"sensor_uuid\":\"def\", "          \
-	  "\"a\":5, \"u\":true}",                                              \
-	  check_zero_messages,                                                 \
-	  0)                                                                   \
-	X("}}}{\"client_mac\": \"54:26:96:db:88:02\", "                        \
-	  "\"application_name\": \"wwww\", \"sensor_uuid\":\"def\", "          \
-	  "\"a\":5, \"u\":true}",                                              \
-	  check_zero_messages,                                                 \
-	  0)                                                                   \
-	/* Free & Check that session has been freed */                         \
-	X(NULL, NO_MESSAGES_CHECK, 0)
+	static const struct message_in msgs[] = {
+			// clang-format off
+		MESSAGE_IN("}{\"client_mac\": \"54:26:96:db:88:02\", "
+			   "\"application_name\": \"wwww\", "
+			   "\"sensor_uuid\":\"def\", \"a\":5, \"u\":true}",
+			   check_zero_messages,
+			   0),
+		MESSAGE_IN("}}{\"client_mac\": \"54:26:96:db:88:02\", "
+			   "\"application_name\": \"wwww\", "
+			   "\"sensor_uuid\":\"def\", \"a\":5, \"u\":true}",
+			   check_zero_messages,
+			   0),
+		MESSAGE_IN("}}}{\"client_mac\": \"54:26:96:db:88:02\", "
+			   "\"application_name\": \"wwww\", "
+			   "\"sensor_uuid\":\"def\", \"a\":5, \"u\":true}",
+			   check_zero_messages,
+			   0), /* Free & Check that session has been
+				  freed */
+		MESSAGE_IN(NULL, NO_MESSAGES_CHECK, 0),
+			// clang-format on
 
-	struct message_in msgs[] = {
-#define X(a, fn, kafka_msgs) {a, sizeof(a) - 1},
-			MESSAGES
-#undef X
-	};
-
-	check_callback_fn callbacks_functions[] = {
-#define X(a, fn, kafka_msgs) fn,
-			MESSAGES
-#undef X
-	};
-
-	static const size_t expected_kafka_msgs[] = {
-#define X(a, fn, kafka_msgs) kafka_msgs,
-			MESSAGES
-#undef X
 	};
 
 	test_zz_decoder0(listener_cfg,
@@ -97,13 +83,9 @@ static void test_zz_decoder_closing(void **prk_consumer) {
 					 .topic = out_topic,
 			 },
 			 msgs,
-			 callbacks_functions,
 			 RD_ARRAYSIZE(msgs),
-			 expected_kafka_msgs,
 			 *prk_consumer,
 			 NULL);
-
-#undef MESSAGES
 }
 
 /** Test that the system is able to skip non-string keys is we are partitioning

@@ -163,9 +163,7 @@ void test_zz_decoder0(const json_t *listener_conf,
 		      const json_t *decoder_conf,
 		      const struct zz_http2k_params *params,
 		      const struct message_in *msgs,
-		      const check_callback_fn *check_callback,
 		      size_t msgs_len,
-		      const size_t *expected_kafka_msgs,
 		      rd_kafka_t *rk_consumer,
 		      void *check_callback_opaque) {
 
@@ -220,7 +218,9 @@ void test_zz_decoder0(const json_t *listener_conf,
 
 	size_t i;
 	for (i = 0; i < msgs_len; ++i) {
-		rd_kafka_message_t *kafka_msgs[expected_kafka_msgs[i]];
+		const size_t expected_kafka_msgs =
+				msgs[i].expected_kafka_messages;
+		rd_kafka_message_t *kafka_msgs[expected_kafka_msgs];
 
 		post_handle(zz_state.listener,
 			    (struct MHD_Connection *)&zz_state.mhd_connection,
@@ -231,21 +231,20 @@ void test_zz_decoder0(const json_t *listener_conf,
 			    (size_t[]){msgs[i].msg ? msgs[i].size : 0},
 			    &http_connection);
 
-		if (NULL == check_callback[i]) {
+		if (NULL == msgs[i].check_callback_fn) {
 			// Nothing else to do
 			continue;
 		}
 
 		// Wait for answers
 		// @TODO don't assume that they are ordered!
-		n2k_consume_kafka_msgs(rk_consumer,
-				       kafka_msgs,
-				       expected_kafka_msgs[i]);
-		check_callback[i](kafka_msgs,
-				  expected_kafka_msgs[i],
-				  check_callback_opaque);
+		n2k_consume_kafka_msgs(
+				rk_consumer, kafka_msgs, expected_kafka_msgs);
+		msgs[i].check_callback_fn(kafka_msgs,
+					  expected_kafka_msgs,
+					  check_callback_opaque);
 		size_t j;
-		for (j = 0; j < expected_kafka_msgs[i]; ++j) {
+		for (j = 0; j < expected_kafka_msgs; ++j) {
 			rd_kafka_message_destroy(kafka_msgs[j]);
 		}
 	}

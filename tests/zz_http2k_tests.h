@@ -51,13 +51,26 @@ void prepare_args(const char *uri,
 		  keyval_list_t *list);
 
 struct message_in {
+	/// Input message
 	const char *msg;
+
+	/// Size of the message
 	size_t size;
+
+	/// Expected produced messages
+	size_t expected_kafka_messages;
+
+	/// Callback to check msgs (1) of msgs_size (2) with a given opaque (3)
+	void (*check_callback_fn)(rd_kafka_message_t *[], size_t, void *);
 };
 
-typedef void (*check_callback_fn)(const rd_kafka_message_t *[],
-				  size_t,
-				  void *opaque);
+/// Helper macro to create message_in struct
+#define MESSAGE_IN(t_msg, t_check_callback_fn, t_expected_kafka_messages)      \
+	{                                                                      \
+		.msg = t_msg, .size = sizeof(t_msg) - 1,                       \
+		.expected_kafka_messages = t_expected_kafka_messages,          \
+		.check_callback_fn = t_check_callback_fn,                      \
+	}
 
 /// zz_http2k test parameters
 struct zz_http2k_params {
@@ -81,9 +94,7 @@ void test_zz_decoder0(const json_t *listener_conf,
 		      const json_t *decoder_conf,
 		      const struct zz_http2k_params *params,
 		      const struct message_in *msgs,
-		      const check_callback_fn *check_callback,
 		      size_t msgs_len,
-		      const size_t *expected_kafka_msgs,
 		      rd_kafka_t *rk_consumer,
 		      void *check_callback_opaque);
 
@@ -93,7 +104,7 @@ void test_zz_decoder0(const json_t *listener_conf,
 	@param unused context information
 */
 static void __attribute__((unused))
-check_zero_messages(const rd_kafka_message_t *msgs[],
+check_zero_messages(rd_kafka_message_t *msgs[],
 		    size_t msgs_len,
 		    void *unused __attribute__((unused))) {
 

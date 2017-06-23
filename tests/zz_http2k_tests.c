@@ -36,20 +36,40 @@
 static const char ZZ_LOCK_FILE[] = "n2kt_listener.lck";
 
 int test_zz_decoder_group_tests_setup(void **rkp) {
-	char errstr[256];
 	init_global_config();
 
 	global_config.brokers = strdup("kafka:9092");
 
-	const rd_kafka_conf_res_t broker_rc =
-			rd_kafka_conf_set(global_config.kafka_conf,
-					  "metadata.broker.list",
-					  global_config.brokers,
-					  errstr,
-					  sizeof(errstr));
-	if (broker_rc != RD_KAFKA_CONF_OK) {
-		fail_msg("Failed to set broker: %s", errstr);
+	struct {
+		const char *key, *value;
+	} rk_props[] = {{
+					.key = "metadata.broker.list",
+					.value = global_config.brokers,
+			},
+			{
+					// reduce produce latency
+					.key = "queue.buffering.max.ms",
+					.value = "1",
+			}};
+
+	size_t i;
+	for (i = 0; i < RD_ARRAYSIZE(rk_props); ++i) {
+		char errstr[256];
+
+		const rd_kafka_conf_res_t conf_set_rc =
+				rd_kafka_conf_set(global_config.kafka_conf,
+						  rk_props[i].key,
+						  rk_props[i].value,
+						  errstr,
+						  sizeof(errstr));
+		if (conf_set_rc != RD_KAFKA_CONF_OK) {
+			fail_msg("Failed to set %s to [%s]: %s",
+				 rk_props[i].key,
+				 rk_props[i].value,
+				 errstr);
+		}
 	}
+
 	init_rdkafka();
 	*rkp = init_kafka_consumer(global_config.brokers);
 	return 0;

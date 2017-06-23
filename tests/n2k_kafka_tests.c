@@ -70,14 +70,37 @@ rd_kafka_t *init_kafka_consumer(const char *brokers) {
 	rd_kafka_conf_t *conf = rd_kafka_conf_new();
 	rd_kafka_topic_conf_t *topic_conf = rd_kafka_topic_conf_new();
 
-	// Set group id
-	if (rd_kafka_conf_set(conf,
-			      "group.id",
-			      "tester",
-			      errstr,
-			      sizeof(errstr)) != RD_KAFKA_CONF_OK) {
-		fprintf(stderr, "%% %s\n", errstr);
-		exit(1);
+	struct {
+		const char *key, *value;
+	} rk_props[] = {
+			{
+					.key = "group.id", .value = "tester",
+			},
+			{
+					.key = "fetch.wait.max.ms",
+					.value = "5",
+			},
+			{
+					.key = "fetch.error.backoff.ms",
+					.value = "10",
+			},
+	};
+
+	size_t i;
+	for (i = 0; i < RD_ARRAYSIZE(rk_props); ++i) {
+		const rd_kafka_conf_res_t set_prop_rc =
+				rd_kafka_conf_set(conf,
+						  rk_props[i].key,
+						  rk_props[i].value,
+						  errstr,
+						  sizeof(errstr));
+		if (set_prop_rc != RD_KAFKA_CONF_OK) {
+			fail_msg("Couldn't set rk consumer %s property to [%s]:"
+				 " %s",
+				 rk_props[i].key,
+				 rk_props[i].value,
+				 errstr);
+		}
 	}
 
 	// Version fallback. Needed for newer brokers
@@ -102,7 +125,6 @@ rd_kafka_t *init_kafka_consumer(const char *brokers) {
 			// clang-format on
 	};
 
-	size_t i;
 	for (i = 0; i < RD_ARRAYSIZE(topic_confs); ++i) {
 		const rd_kafka_conf_res_t rc =
 				rd_kafka_topic_conf_set(topic_conf,

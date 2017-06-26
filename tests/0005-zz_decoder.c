@@ -25,13 +25,6 @@
 
 #include "n2k_kafka_tests.h"
 
-#include <setjmp.h>
-
-#include <cmocka.h>
-
-static json_t *listener_cfg = NULL;
-static json_t *decoder_cfg = NULL;
-
 static const char *VALID_URL[] = {
 		"/v1/topic1",
 		"/v1/topic1/blabla",
@@ -195,373 +188,9 @@ static void check_zz_decoder_object(rd_kafka_message_t *rkm[],
 	json_decref(root);
 }
 
-static void test_zz_decoder_simple(void **vrk_consumer) {
-	/// @TODO join with all other tests!
-	static const char consumer_uuid[] = "abc";
-	char topic[sizeof(zz_topic_template)];
-	strcpy(topic, zz_topic_template);
-	random_topic_name(topic);
-
-	const size_t out_topic_len = (size_t)print_expected_topic(
-			NULL, 0, consumer_uuid, topic);
-	char out_topic[out_topic_len + 1];
-	print_expected_topic(
-			out_topic, sizeof(out_topic), consumer_uuid, topic);
-
-	const size_t uri_len = (size_t)print_expected_url(
-			NULL, 0, consumer_uuid, topic);
-	char uri[uri_len + 1];
-	print_expected_url(uri, sizeof(uri), consumer_uuid, topic);
-
-	static const struct message_in msgs[] = {
-			// clang-format off
-		MESSAGE_IN("{\"client_mac\": \"54:26:96:db:88:01\", "
-		  "\"application_name\": \"wwww\", \"sensor_uuid\":\"abc\", "
-		  "\"a\":5}",
-		  check_zz_decoder_simple,
-		  1),
-		/* Free & Check that session has been freed */
-		MESSAGE_IN(NULL, NO_MESSAGES_CHECK, 0),
-			// clang-format on
-	};
-
-	test_zz_decoder0(listener_cfg,
-			 NULL,
-			 &(struct zz_http2k_params){
-					 .uri = uri,
-					 .consumer_uuid = consumer_uuid,
-					 .topic = out_topic,
-			 },
-			 msgs,
-			 RD_ARRAYSIZE(msgs),
-			 *vrk_consumer,
-			 NULL);
-}
-
-/// Simple decoding with another enrichment
-static void test_zz_decoder_simple_def(void **vrk_consumer) {
-	/// @TODO join with all other tests!
-	static const char consumer_uuid[] = "abc";
-	char topic[sizeof(zz_topic_template)];
-	strcpy(topic, zz_topic_template);
-	random_topic_name(topic);
-
-	const size_t out_topic_len = (size_t)print_expected_topic(
-			NULL, 0, consumer_uuid, topic);
-	char out_topic[out_topic_len + 1];
-	print_expected_topic(
-			out_topic, sizeof(out_topic), consumer_uuid, topic);
-
-	const size_t uri_len = (size_t)print_expected_url(
-			NULL, 0, consumer_uuid, topic);
-	char uri[uri_len + 1];
-	print_expected_url(uri, sizeof(uri), consumer_uuid, topic);
-
-	static const struct message_in msgs[] = {
-			// clang-format off
-		MESSAGE_IN("{\"client_mac\": \"54:26:96:db:88:02\", "
-		  "\"application_name\": \"wwww\", \"sensor_uuid\":\"def\", "
-		  "\"a\":5, \"u\":true}",
-		  check_zz_decoder_simple_def,
-		  1),
-		/* Free & Check that session has been freed */
-		MESSAGE_IN(NULL, NO_MESSAGES_CHECK, 0),
-			// clang-format on
-	};
-
-	test_zz_decoder0(listener_cfg,
-			 decoder_cfg,
-			 &(struct zz_http2k_params){
-					 .uri = uri,
-					 .consumer_uuid = consumer_uuid,
-					 .topic = out_topic,
-			 },
-			 msgs,
-			 RD_ARRAYSIZE(msgs),
-			 *vrk_consumer,
-			 NULL);
-}
-
-/** Two messages in the same input string */
-static void test_zz_decoder_double(void **vrk_consumer) {
-	/// @TODO join with all other tests!
-	static const char consumer_uuid[] = "abc";
-	char topic[sizeof(zz_topic_template)];
-	strcpy(topic, zz_topic_template);
-	random_topic_name(topic);
-
-	const size_t out_topic_len = (size_t)print_expected_topic(
-			NULL, 0, consumer_uuid, topic);
-	char out_topic[out_topic_len + 1];
-	print_expected_topic(
-			out_topic, sizeof(out_topic), consumer_uuid, topic);
-
-	const size_t uri_len = (size_t)print_expected_url(
-			NULL, 0, consumer_uuid, topic);
-	char uri[uri_len + 1];
-	print_expected_url(uri, sizeof(uri), consumer_uuid, topic);
-
-	static const struct message_in msgs[] = {
-			// clang-format off
-
-		MESSAGE_IN("{\"client_mac\": \"54:26:96:db:88:01\", "
-		  "\"application_name\": \"wwww\", \"sensor_uuid\":\"abc\", "
-		  "\"a\":5}"
-		  "{\"client_mac\": \"54:26:96:db:88:02\", "
-		  "\"application_name\": \"wwww\", \"sensor_uuid\":\"abc\", "
-		  "\"a\":5}",
-		  check_zz_decoder_double,
-		  2),
-		/* Free & Check that session has been freed */
-		MESSAGE_IN(NULL, NO_MESSAGES_CHECK, 0),
-			// clang-format on
-	};
-
-	test_zz_decoder0(listener_cfg,
-			 decoder_cfg,
-			 &(struct zz_http2k_params){
-					 .uri = uri,
-					 .consumer_uuid = consumer_uuid,
-					 .topic = out_topic,
-			 },
-			 msgs,
-			 RD_ARRAYSIZE(msgs),
-			 *vrk_consumer,
-			 NULL);
-}
-
-static void test_zz_decoder_half(void **vrk_consumer) {
-	/// @TODO join with all other tests!
-	static const char consumer_uuid[] = "abc";
-	char topic[sizeof(zz_topic_template)];
-	strcpy(topic, zz_topic_template);
-	random_topic_name(topic);
-
-	const size_t out_topic_len = (size_t)print_expected_topic(
-			NULL, 0, consumer_uuid, topic);
-	char out_topic[out_topic_len + 1];
-	print_expected_topic(
-			out_topic, sizeof(out_topic), consumer_uuid, topic);
-
-	const size_t uri_len = (size_t)print_expected_url(
-			NULL, 0, consumer_uuid, topic);
-	char uri[uri_len + 1];
-	print_expected_url(uri, sizeof(uri), consumer_uuid, topic);
-
-	static const struct message_in msgs[] = {
-			// clang-format off
-
-		MESSAGE_IN("{\"client_mac\": \"54:26:96:db:88:01\", ",
-		           check_zero_messages, 0),
-		MESSAGE_IN("\"application_name\": \"wwww\", "
-		           "\"sensor_uuid\":\"abc\", \"a\":5}",
-		           check_zz_decoder_simple,
-		           1),
-		/* Free & Check that session has been freed */
-		MESSAGE_IN(NULL, NO_MESSAGES_CHECK, 0),
-			// clang-format on
-	};
-
-	test_zz_decoder0(listener_cfg,
-			 decoder_cfg,
-			 &(struct zz_http2k_params){
-					 .uri = uri,
-					 .consumer_uuid = consumer_uuid,
-					 .topic = out_topic,
-			 },
-			 msgs,
-			 RD_ARRAYSIZE(msgs),
-			 *vrk_consumer,
-			 NULL);
-}
-
-/** Checks that the decoder can handle to receive the half of a string */
-static void test_zz_decoder_half_string(void **vrk_consumer) {
-	/// @TODO join with all other tests!
-	static const char consumer_uuid[] = "abc";
-	char topic[sizeof(zz_topic_template)];
-	strcpy(topic, zz_topic_template);
-	random_topic_name(topic);
-
-	const size_t out_topic_len = (size_t)print_expected_topic(
-			NULL, 0, consumer_uuid, topic);
-	char out_topic[out_topic_len + 1];
-	print_expected_topic(
-			out_topic, sizeof(out_topic), consumer_uuid, topic);
-
-	const size_t uri_len = (size_t)print_expected_url(
-			NULL, 0, consumer_uuid, topic);
-	char uri[uri_len + 1];
-	print_expected_url(uri, sizeof(uri), consumer_uuid, topic);
-
-	static const struct message_in msgs[] = {
-			// clang-format off
-		MESSAGE_IN("{\"client_mac\": \"54:26:96:", check_zero_messages,
-			   0),
-		MESSAGE_IN("db:88:01\", \"application_name\": \"wwww\", "
-		           "\"sensor_uuid\":\"abc\", \"a\":5}",
-		           check_zz_decoder_simple,
-		           1),
-		MESSAGE_IN("{\"client_mac\": \"", check_zero_messages, 0),
-		MESSAGE_IN("54:26:96:db:88:01\", "
-		           "\"application_name\": \"wwww\", "
-		           "\"sensor_uuid\":\"abc\", \"a\":5}",
-		           check_zz_decoder_simple,
-		           1),
-		/* Free & Check that session has been freed */
-		MESSAGE_IN(NULL, NO_MESSAGES_CHECK, 0),
-			// clang-format on
-
-	};
-
-	test_zz_decoder0(listener_cfg,
-			 decoder_cfg,
-			 &(struct zz_http2k_params){
-					 .uri = uri,
-					 .consumer_uuid = consumer_uuid,
-					 .topic = out_topic,
-			 },
-			 msgs,
-			 RD_ARRAYSIZE(msgs),
-			 *vrk_consumer,
-			 NULL);
-}
-
-/** Checks that the decoder can handle to receive the half of a key */
-static void test_zz_decoder_half_key(void **vrk_consumer) {
-	/// @TODO join with all other tests!
-	static const char consumer_uuid[] = "abc";
-	char topic[sizeof(zz_topic_template)];
-	strcpy(topic, zz_topic_template);
-	random_topic_name(topic);
-
-	const size_t out_topic_len = (size_t)print_expected_topic(
-			NULL, 0, consumer_uuid, topic);
-	char out_topic[out_topic_len + 1];
-	print_expected_topic(
-			out_topic, sizeof(out_topic), consumer_uuid, topic);
-
-	const size_t uri_len = (size_t)print_expected_url(
-			NULL, 0, consumer_uuid, topic);
-	char uri[uri_len + 1];
-	print_expected_url(uri, sizeof(uri), consumer_uuid, topic);
-
-	static const struct message_in msgs[] = {
-			// clang-format off
-		MESSAGE_IN("{\"client_", check_zero_messages, 0),
-		MESSAGE_IN("mac\": \"54:26:96:db:88:01\", "
-			   "\"application_name\": \"wwww\", "
-			   "\"sensor_uuid\":\"abc\", \"a\":5}",
-			   check_zz_decoder_simple,
-			   1),
-		MESSAGE_IN("{\"client_mac", check_zero_messages, 0),
-		MESSAGE_IN("\": \"54:26:96:db:88:01\", \"application_name\": "
-			   "\"wwww\", "
-			   "\"sensor_uuid\":\"abc\", \"a\":5}",
-			   check_zz_decoder_simple,
-			   1),
-		/* Free & Check that session has been freed */
-		MESSAGE_IN(NULL, NO_MESSAGES_CHECK, 0),
-			// clang-format on
-	};
-
-	test_zz_decoder0(listener_cfg,
-			 decoder_cfg,
-			 &(struct zz_http2k_params){
-					 .uri = uri,
-					 .consumer_uuid = consumer_uuid,
-					 .topic = out_topic,
-			 },
-			 msgs,
-			 RD_ARRAYSIZE(msgs),
-			 *vrk_consumer,
-			 NULL);
-}
-
-/** Test object that don't need to enrich */
-static void test_zz_decoder_objects(void **vrk_consumer) {
-	/// @TODO join with all other tests!
-	static const char consumer_uuid[] = "abc";
-	char topic[sizeof(zz_topic_template)];
-	strcpy(topic, zz_topic_template);
-	random_topic_name(topic);
-
-	const size_t out_topic_len = (size_t)print_expected_topic(
-			NULL, 0, consumer_uuid, topic);
-	char out_topic[out_topic_len + 1];
-	print_expected_topic(
-			out_topic, sizeof(out_topic), consumer_uuid, topic);
-
-	const size_t uri_len = (size_t)print_expected_url(
-			NULL, 0, consumer_uuid, topic);
-	char uri[uri_len + 1];
-	print_expected_url(uri, sizeof(uri), consumer_uuid, topic);
-
-	static const struct message_in msgs[] = {
-			// clang-format off
-		MESSAGE_IN("{\"client_", check_zero_messages, 0),
-		MESSAGE_IN("mac\": \"54:26:96:db:88:01\", "
-		           "\"application_name\": \"wwww\", "
-		           "\"sensor_uuid\":\"abc\", \"object\":{\"t1\":1}, "
-		           "\"a\":5}",
-		           check_zz_decoder_object,
-		           1),
-		/* Free & Check that session has been freed */
-		MESSAGE_IN(NULL, NO_MESSAGES_CHECK, 0),
-			// clang-format on
-	};
-
-	test_zz_decoder0(listener_cfg,
-			 decoder_cfg,
-			 &(struct zz_http2k_params){
-					 .uri = uri,
-					 .consumer_uuid = consumer_uuid,
-					 .topic = out_topic,
-			 },
-			 msgs,
-			 RD_ARRAYSIZE(msgs),
-			 *vrk_consumer,
-			 NULL);
-}
-
-static void test_zz_decoder_no_consumer_uuid(void **vrk_consumer) {
-	/// @TODO join with all other tests!
-	char topic[sizeof(zz_topic_template)];
-	strcpy(topic, zz_topic_template);
-	random_topic_name(topic);
-
-	const size_t uri_len = (size_t)print_expected_url(NULL, 0, NULL, topic);
-	char uri[uri_len + 1];
-	print_expected_url(uri, sizeof(uri), NULL, topic);
-
-	static const struct message_in msgs[] = {
-			// clang-format off
-		MESSAGE_IN("{\"client_mac\": \"54:26:96:db:88:01\", "
-		           "\"application_name\": \"wwww\", "
-		           "\"sensor_uuid\":\"abc\", \"a\":5}",
-		           check_zz_decoder_simple,
-		           1),
-		/* Free & Check that session has been freed */
-		MESSAGE_IN(NULL, NO_MESSAGES_CHECK, 0),
-			// clang-format on
-	};
-
-	test_zz_decoder0(listener_cfg,
-			 NULL,
-			 &(struct zz_http2k_params){
-					 .uri = uri,
-					 .consumer_uuid = NULL,
-					 .topic = topic,
-			 },
-			 msgs,
-			 RD_ARRAYSIZE(msgs),
-			 *vrk_consumer,
-			 NULL);
-}
-
 int main() {
 	// clang-format off
-	listener_cfg = assert_json_loads("{"
+	json_t *listener_cfg = assert_json_loads("{"
 			  "\"proto\": \"http\","
 			  "\"port\": 2057,"
 			  "\"mode\": \"epoll\","
@@ -570,15 +199,138 @@ int main() {
 			"}");
 	// clang-format on
 
-	static const struct CMUnitTest tests[] = {
-			cmocka_unit_test(test_zz_decoder_simple),
-			cmocka_unit_test(test_zz_decoder_simple_def),
-			cmocka_unit_test(test_zz_decoder_double),
-			cmocka_unit_test(test_zz_decoder_half),
-			cmocka_unit_test(test_zz_decoder_half_string),
-			cmocka_unit_test(test_zz_decoder_half_key),
-			cmocka_unit_test(test_zz_decoder_objects),
-			cmocka_unit_test(test_zz_decoder_no_consumer_uuid),
+	const struct CMUnitTest tests[] = {
+			// clang-format off
+		// Simple decoding
+		zz_decoder_test("abc message",
+			ZZ_TESTS_PARAMS(.consumer_uuid = "abc",
+				.listener_conf = listener_cfg),
+			MESSAGE_IN("{\"client_mac\": \"54:26:96:db:88:01\", "
+			           "\"application_name\": \"wwww\", "
+			           "\"sensor_uuid\":\"abc\", \"a\":5}",
+			           check_zz_decoder_simple,
+			           1),
+
+			// Free & Check that session has been freed
+			MESSAGE_IN(NULL, NO_MESSAGES_CHECK, 0),
+		),
+
+		// Another simple decoding
+		zz_decoder_test("def messages",
+			ZZ_TESTS_PARAMS(.consumer_uuid = "abc",
+				.listener_conf = listener_cfg),
+			MESSAGE_IN("{\"client_mac\": \"54:26:96:db:88:02\", "
+			           "\"application_name\": \"wwww\", "
+			           "\"sensor_uuid\":\"def\", \"a\":5, "
+			           "\"u\":true}",
+			           check_zz_decoder_simple_def,
+			           1),
+
+			// Free & Check that session has been freed
+			MESSAGE_IN(NULL, NO_MESSAGES_CHECK, 0),
+		),
+
+		// Two messages in the same received HTTP chunk
+		zz_decoder_test("two messages",
+			ZZ_TESTS_PARAMS(.consumer_uuid = "abc",
+				.listener_conf = listener_cfg),
+			MESSAGE_IN("{\"client_mac\": \"54:26:96:db:88:01\", "
+			           "\"application_name\": \"wwww\", "
+			           "\"sensor_uuid\":\"abc\", \"a\":5}"
+			           "{\"client_mac\": \"54:26:96:db:88:02\", "
+			           "\"application_name\": \"wwww\", "
+			           "\"sensor_uuid\":\"abc\", \"a\":5}",
+		                   check_zz_decoder_double,
+		                   2),
+
+			// Free & Check that session has been freed
+			MESSAGE_IN(NULL, NO_MESSAGES_CHECK, 0),
+		),
+
+		// One message divided in two chunks
+		zz_decoder_test("two chunks message",
+			ZZ_TESTS_PARAMS(.consumer_uuid = "abc",
+				.listener_conf = listener_cfg),
+			MESSAGE_IN("{\"client_mac\": \"54:26:96:db:88:01\", ",
+			           check_zero_messages, 0),
+			MESSAGE_IN("\"application_name\": \"wwww\", "
+			           "\"sensor_uuid\":\"abc\", \"a\":5}",
+			           check_zz_decoder_simple,
+			           1),
+			// Free & Check that session has been freed
+			MESSAGE_IN(NULL, NO_MESSAGES_CHECK, 0),
+		),
+
+		// One message divided in three chunks, string value divided too
+		zz_decoder_test("three chunks message",
+			ZZ_TESTS_PARAMS(.consumer_uuid = "abc",
+				.listener_conf = listener_cfg),
+			MESSAGE_IN("{\"client_mac\": \"54:26:96:",
+			           check_zero_messages,
+			           0),
+			MESSAGE_IN("db:88:01\", \"application_name\": \"wwww\","
+			           "\"sensor_uuid\":\"abc\", \"a\":5}",
+			           check_zz_decoder_simple,
+			           1),
+			MESSAGE_IN("{\"client_mac\": \"", check_zero_messages,
+				   0),
+			MESSAGE_IN("54:26:96:db:88:01\", "
+			           "\"application_name\": \"wwww\", "
+			           "\"sensor_uuid\":\"abc\", \"a\":5}",
+			           check_zz_decoder_simple,
+			           1),
+			// Free & Check that session has been freed
+			MESSAGE_IN(NULL, NO_MESSAGES_CHECK, 0),
+		),
+
+		// JSON key divided into chunks
+		zz_decoder_test("split key message",
+			ZZ_TESTS_PARAMS(.consumer_uuid = "abc",
+				.listener_conf = listener_cfg),
+			MESSAGE_IN("{\"client_", check_zero_messages, 0),
+			MESSAGE_IN("mac\": \"54:26:96:db:88:01\", "
+				   "\"application_name\": \"wwww\", "
+				   "\"sensor_uuid\":\"abc\", \"a\":5}",
+				   check_zz_decoder_simple,
+				   1),
+			MESSAGE_IN("{\"client_mac", check_zero_messages, 0),
+			MESSAGE_IN("\": \"54:26:96:db:88:01\", "
+				   "\"application_name\": \"wwww\", "
+				   "\"sensor_uuid\":\"abc\", \"a\":5}",
+				   check_zz_decoder_simple,
+				   1),
+			/* Free & Check that session has been freed */
+			MESSAGE_IN(NULL, NO_MESSAGES_CHECK, 0),
+		),
+
+		zz_decoder_test("message with object",
+			ZZ_TESTS_PARAMS(.consumer_uuid = "abc",
+				.listener_conf = listener_cfg),
+			MESSAGE_IN("{\"client_", check_zero_messages, 0),
+			MESSAGE_IN("mac\": \"54:26:96:db:88:01\", "
+			           "\"application_name\": \"wwww\", "
+			           "\"sensor_uuid\":\"abc\", "
+			           "\"object\":{\"t1\":1}, "
+			           "\"a\":5}",
+			           check_zz_decoder_object,
+			           1),
+			/* Free & Check that session has been freed */
+			MESSAGE_IN(NULL, NO_MESSAGES_CHECK, 0),
+		),
+
+		zz_decoder_test("No consumer id",
+			// no consumer id -> input topic == output_topic
+			ZZ_TESTS_PARAMS(.listener_conf = listener_cfg),
+			MESSAGE_IN("{\"client_mac\": \"54:26:96:db:88:01\", "
+			           "\"application_name\": \"wwww\", "
+			           "\"sensor_uuid\":\"abc\", \"a\":5}",
+			           check_zz_decoder_simple,
+			           1),
+
+			// Free & Check that session has been freed
+			MESSAGE_IN(NULL, NO_MESSAGES_CHECK, 0),
+		),
+			// clang-format on
 	};
 
 	const int cmocka_run_rc = run_zz_decoder_group_tests(tests);

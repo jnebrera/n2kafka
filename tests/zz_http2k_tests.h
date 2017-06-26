@@ -27,20 +27,11 @@
 
 #include <cmocka.h>
 #include <jansson.h>
+#include <librd/rd.h>
 #include <librdkafka/rdkafka.h>
 #include <microhttpd.h>
 
 #include <netinet/in.h>
-
-static const char zz_topic_template[] = "n2ktXXXXXX";
-static const char zz_uri_prefix[] = "/v1/data/";
-
-/// Prints uri based on uuid and topic
-#define print_expected_topic(dst, dst_size, uuid, topic)                       \
-	snprintf(dst, dst_size, "%s_%s", uuid, topic)
-
-#define print_expected_url(dst, dst_size, uuid, topic)                         \
-	snprintf(dst, dst_size, "%s%s", zz_uri_prefix, topic)
 
 /// Prepare decoder args
 void prepare_args(const char *uri,
@@ -51,17 +42,13 @@ void prepare_args(const char *uri,
 		  keyval_list_t *list);
 
 struct message_in {
-	/// Input message
-	const char *msg;
-
-	/// Size of the message
-	size_t size;
-
-	/// Expected produced messages
-	size_t expected_kafka_messages;
+	const char *msg;		///< Input message
+	size_t size;			///< Size of the message
+	size_t expected_kafka_messages; ///< Expected produced messages
 
 	/// Callback to check msgs (1) of msgs_size (2) with a given opaque (3)
 	void (*check_callback_fn)(rd_kafka_message_t *[], size_t, void *);
+	void *check_cb_opaque; ///< check_callback_fn opaque
 };
 
 /// Helper macro to create message_in struct
@@ -74,29 +61,49 @@ struct message_in {
 
 /// zz_http2k test parameters
 struct zz_http2k_params {
+	const json_t *listener_conf; ///< Listener config
+	const json_t *decoder_conf;  ///< Decoder config
+
 	const char *uri;	   ///< POST request URI
 	const char *consumer_uuid; ///< Detected consumer uuid
 	const char *topic;	 ///< Topic to expect messages
+	const char *out_topic;     ///< Topic to expect messages
+
+	/// Test messages
+	struct {
+		const struct message_in *msg; ///< Actual messages
+		size_t num;		      ///< msg length
+	} msgs;
 };
 
-/** Template for zz_decoder test
-	@param listener_conf Listener config
-	@param decoder_conf Decoder config
-	@param params test parameters
-	@param msgs Input messages
-	@param msgs_len Length of msgs
-	@param check_callback Array of functions that will be called with each
-	session status. It is suppose to be the same length as msgs array.
-	@param check_callback_opaque Opaque used in the second parameter of
-	check_callback[iteration] call
-	*/
-void test_zz_decoder0(const json_t *listener_conf,
-		      const json_t *decoder_conf,
-		      const struct zz_http2k_params *params,
-		      const struct message_in *msgs,
-		      size_t msgs_len,
-		      rd_kafka_t *rk_consumer,
-		      void *check_callback_opaque);
+#define ARGS(...) __VA_ARGS__
+/// Adapt test messages to use with
+#define ZZ_TESTS_PARAMS(...) ARGS(__VA_ARGS__)
+
+/// Sanitize pessages
+#define ZZ_TESTS_MSGS(...)                                                     \
+	(struct message_in[]) {                                                \
+		ARGS(__VA_ARGS__)                                              \
+	}
+
+// clang-format off
+/** http2k decoder test
+  @param name Test name
+  @param t_params Test parameters (use with ZZ_TEST_PARAMS)
+  @param ... Test messages (using MESSAGE_IN for each message)
+ */
+#define zz_decoder_test(t_name, t_params, ...) {                                                                      \
+	.name = t_name, .test_func = test_zz_decoder,                          \
+	.initial_state = &(struct zz_http2k_params) {                          \
+		.msgs = {                                                      \
+			.msg = ZZ_TESTS_MSGS(__VA_ARGS__),                     \
+			.num = RD_ARRAY_SIZE(ZZ_TESTS_MSGS(__VA_ARGS__))       \
+		},                                                             \
+		t_params                                                       \
+	}}                                                                     \
+// clang-format on
+
+void test_zz_decoder(void **test_params);
 
 /** Function that check that no messages has been sent
 	@param msgs Messages received
@@ -116,38 +123,8 @@ check_zero_messages(rd_kafka_message_t *msgs[],
 
 json_t *assert_json_loads(const char *json_txt);
 
-/// @TODO make private!
-struct mock_MHD_connection_value {
-	enum MHD_ValueKind kind;
-	const char *key, *value;
-};
-
-/// @TODO make private!
-struct mock_MHD_connection {
-#define MOCK_MHD_CONNECTION_MAGIC 0x0CDC0310A1CCDC031
-	uint64_t magic;
-	union MHD_ConnectionInfo ret_client_addr;
-	struct sockaddr_in client_addr;
-
-	struct {
-		size_t size;
-		const struct mock_MHD_connection_value *values;
-	} connection_values;
-};
-
-/// @TODO make private!
-struct zz_test_state {
-	struct mock_MHD_connection mhd_connection;
-	struct http_listener *listener;
-};
-
 int test_zz_decoder_group_tests_setup(void **state);
 int test_zz_decoder_group_tests_teardown(void **state);
-
-void test_zz_decoder_setup(struct zz_test_state *state,
-			   const json_t *decoder_conf);
-
-void test_zz_decoder_teardown(void *vstate);
 
 #define run_zz_decoder_group_tests(t_tests)                                    \
 	cmocka_run_group_tests(t_tests,                                        \

@@ -30,12 +30,15 @@
 
 #include <cmocka.h>
 
+#include <alloca.h>
 #include <fcntl.h>
 #include <netinet/in.h>
 
 static const char ZZ_LOCK_FILE[] = "n2kt_listener.lck";
+static rd_kafka_t *rk_consumer = NULL;
 
-int test_zz_decoder_group_tests_setup(void **rkp) {
+int test_zz_decoder_group_tests_setup(void **state) {
+	(void)state;
 	init_global_config();
 
 	global_config.brokers = strdup("kafka:9092");
@@ -71,20 +74,71 @@ int test_zz_decoder_group_tests_setup(void **rkp) {
 	}
 
 	init_rdkafka();
-	*rkp = init_kafka_consumer(global_config.brokers);
+	rk_consumer = init_kafka_consumer(global_config.brokers);
+
 	return 0;
 }
 
-int test_zz_decoder_group_tests_teardown(void **rkp) {
-	rd_kafka_consumer_close(*rkp);
-	rd_kafka_destroy(*rkp);
+int test_zz_decoder_group_tests_teardown(void **state) {
+	(void)state;
+	rd_kafka_consumer_close(rk_consumer);
+	rd_kafka_destroy(rk_consumer);
 
 	free_global_config();
 	return 0;
 }
 
-void test_zz_decoder_teardown(void *vstate) {
-	struct zz_test_state *state = vstate;
+struct mock_MHD_connection_value {
+	enum MHD_ValueKind kind;
+	const char *key, *value;
+};
+
+struct mock_MHD_connection {
+#define MOCK_MHD_CONNECTION_MAGIC 0x0CDC0310A1CCDC031
+	uint64_t magic;
+	union MHD_ConnectionInfo ret_client_addr;
+	struct sockaddr_in client_addr;
+
+	struct {
+		size_t size;
+		const struct mock_MHD_connection_value *values;
+	} connection_values;
+};
+
+struct zz_test_state {
+	struct mock_MHD_connection mhd_connection;
+	struct http_listener *listener;
+};
+
+static void
+test_zz_decoder_setup(struct zz_test_state *zz_state,
+		      const struct mock_MHD_connection_value *conn_values,
+		      size_t conn_values_size,
+		      const json_t *listener_conf) {
+	// clang-format off
+	*zz_state = (struct zz_test_state){
+		.mhd_connection = {
+			.magic = MOCK_MHD_CONNECTION_MAGIC,
+			.ret_client_addr.client_addr = (struct sockaddr *)
+				&zz_state->mhd_connection.client_addr,
+			.client_addr = {
+				.sin_family = AF_INET,
+				.sin_port = htons(3490),
+				.sin_addr.s_addr = htonl(0x7f000001),
+			},
+			.connection_values = {
+				.values = conn_values,
+				.size = conn_values_size,
+
+			}
+		},
+		.listener = (void *)create_http_listener(listener_conf,
+			                                     &zz_decoder),
+	};
+	// clang-format on
+}
+
+static void test_zz_decoder_teardown(struct zz_test_state *state) {
 	state->listener->listener.join(&state->listener->listener);
 }
 
@@ -147,25 +201,62 @@ static void n2k_consume_kafka_msgs(rd_kafka_t *rk,
 	} while (1);
 }
 
-/** Template for zz_decoder test
-	@param args Arguments like client_ip, topic, etc
-	@param msgs Input messages
-	@param msgs_len Length of msgs
-	@param check_callback Array of functions that will be called
-   with each
-	session status. It is suppose to be the same length as msgs
-   array.
-	@param check_callback_opaque Opaque used in the second parameter
-   of
-	check_callback[iteration] call
-	*/
-void test_zz_decoder0(const json_t *listener_conf,
-		      const json_t *decoder_conf,
-		      const struct zz_http2k_params *params,
-		      const struct message_in *msgs,
-		      size_t msgs_len,
-		      rd_kafka_t *rk_consumer,
-		      void *check_callback_opaque) {
+/** Stack-allocated snprintf
+  @param fmt String format
+  @param ... format attributes
+  @return Expected topic in stack-allocated buffer
+  */
+#define alloca_sprintf(fmt...)                                                 \
+	({                                                                     \
+		char *ret = NULL;                                              \
+		int size = 0, pass = 0;                                        \
+		for (pass = 0; pass < 2; pass++) {                             \
+			size = snprintf(ret, (size_t)size, fmt);               \
+			assert_return_code(size, errno);                       \
+			size++;                                                \
+			if (NULL == ret) {                                     \
+				ret = alloca(size);                            \
+			}                                                      \
+		}                                                              \
+		ret;                                                           \
+	})
+
+/** Print expected topic in stack allocated buffer
+  @param t_uuid Consumer uuid
+  @param t_topic Consumer topic
+  @return stack-allocated topic buffer
+  */
+#define expected_topic(t_uuid, t_topic) alloca_sprintf("%s_%s", t_uuid, t_topic)
+#define zz_url(t_uuid, t_topic) alloca_sprintf("/v1/data/%s", t_topic)
+
+void test_zz_decoder(void **vparams) {
+	struct zz_http2k_params *params = *vparams;
+
+	//
+	// Prepare default arguments
+	//
+	static const char zz_topic_template[] = "n2ktXXXXXX";
+
+	char topic[sizeof(zz_topic_template)];
+	if (NULL == params->topic) {
+		// Default
+		strcpy(topic, zz_topic_template);
+		random_topic_name(topic);
+		params->topic = topic;
+	}
+
+	if (NULL == params->out_topic) {
+		// Default
+		params->out_topic =
+				params->consumer_uuid
+						? expected_topic(params->consumer_uuid,
+								 params->topic)
+						: params->topic;
+	}
+
+	if (NULL == params->uri) {
+		params->uri = zz_url(consumer_uuid, topic);
+	}
 
 #define CONNECTION_POST_VALUE(t_key, t_val)                                    \
 	{ .kind = MHD_HEADER_KIND, .key = t_key, .value = t_val, }
@@ -180,31 +271,21 @@ void test_zz_decoder0(const json_t *listener_conf,
 		CONNECTION_POST_VALUE("X-Credential-Username", "not_important"),
 		CONNECTION_POST_VALUE("X-Anonymous-Consumer", "false"),
 	};
+// clang-format on
 
 #undef CONNECTION_POST_VALUE
 
-	struct zz_test_state zz_state = {
-		.mhd_connection = {
-			.magic = MOCK_MHD_CONNECTION_MAGIC,
-			.ret_client_addr.client_addr = (struct sockaddr *)
-				&zz_state.mhd_connection.client_addr,
-			.client_addr = {
-				.sin_family = AF_INET,
-				.sin_port = htons(3490),
-				.sin_addr.s_addr = htonl(0x7f000001),
-			},
-			.connection_values = {
-				.size = RD_ARRAYSIZE(conn_values),
-				.values = conn_values
+	//
+	// ACTUAL TEST
+	//
 
-			}
-		},
-		.listener = (void *)create_http_listener(listener_conf,
-			                                     &zz_decoder),
-	};
-	// clang-format on
+	struct zz_test_state zz_state;
+	test_zz_decoder_setup(&zz_state,
+			      conn_values,
+			      RD_ARRAYSIZE(conn_values),
+			      params->listener_conf);
 
-	set_rdkafka_consumer_topics(rk_consumer, params->topic);
+	set_rdkafka_consumer_topics(rk_consumer, params->out_topic);
 	void *http_connection = NULL;
 
 	post_handle(zz_state.listener,
@@ -217,9 +298,10 @@ void test_zz_decoder0(const json_t *listener_conf,
 		    &http_connection);
 
 	size_t i;
-	for (i = 0; i < msgs_len; ++i) {
+	for (i = 0; i < params->msgs.num; ++i) {
+		const struct message_in *msg_i = &params->msgs.msg[i];
 		const size_t expected_kafka_msgs =
-				msgs[i].expected_kafka_messages;
+				msg_i->expected_kafka_messages;
 		rd_kafka_message_t *kafka_msgs[expected_kafka_msgs];
 
 		post_handle(zz_state.listener,
@@ -227,11 +309,11 @@ void test_zz_decoder0(const json_t *listener_conf,
 			    params->uri,
 			    "POST",
 			    "1.1",
-			    msgs[i].msg,
-			    (size_t[]){msgs[i].msg ? msgs[i].size : 0},
+			    msg_i->msg,
+			    (size_t[]){msg_i->msg ? msg_i->size : 0},
 			    &http_connection);
 
-		if (NULL == msgs[i].check_callback_fn) {
+		if (NULL == msg_i->check_callback_fn) {
 			// Nothing else to do
 			continue;
 		}
@@ -240,9 +322,9 @@ void test_zz_decoder0(const json_t *listener_conf,
 		// @TODO don't assume that they are ordered!
 		n2k_consume_kafka_msgs(
 				rk_consumer, kafka_msgs, expected_kafka_msgs);
-		msgs[i].check_callback_fn(kafka_msgs,
-					  expected_kafka_msgs,
-					  check_callback_opaque);
+		msg_i->check_callback_fn(kafka_msgs,
+					 msg_i->expected_kafka_messages,
+					 msg_i->check_cb_opaque);
 		size_t j;
 		for (j = 0; j < expected_kafka_msgs; ++j) {
 			rd_kafka_message_destroy(kafka_msgs[j]);

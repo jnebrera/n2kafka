@@ -169,26 +169,20 @@ static void zz_decode(const char *buffer,
 		      void *t_session) {
 	(void)props;
 	(void)t_decoder_opaque;
+	assert(buffer);
+	assert(session);
+	assert(session->topic_handler);
 
 	struct zz_session *session = t_session;
 	assert_zz_session(session);
 
 	process_zz_buffer(buffer, buf_size, session);
 
-	if (buffer) {
-		/* It was not the last call, designed to free session */
-		const size_t n_messages =
-				rd_kafka_msg_q_size(&session->msg_queue);
-		rd_kafka_message_t msgs[n_messages];
-		rd_kafka_msg_q_dump(&session->msg_queue, msgs);
+	const size_t n_messages = rd_kafka_msg_q_size(&session->msg_queue);
+	rd_kafka_message_t msgs[n_messages];
+	rd_kafka_msg_q_dump(&session->msg_queue, msgs);
 
-		if (session->topic_handler) {
-			produce_or_free(session,
-					session->topic_handler,
-					msgs,
-					n_messages);
-		}
-	}
+	produce_or_free(session, session->topic_handler, msgs, n_messages);
 }
 
 static void zz_decoder_done() {

@@ -44,7 +44,6 @@ static void MerakiDecoder_test_base(const char *config_str,
 				    const char *secrets,
 				    const char *msg,
 				    const struct checkdata_array *checkdata) {
-	size_t i;
 	const char *topic_name = NULL;
 	json_error_t jerr;
 	struct meraki_decoder_info decoder_info;
@@ -67,19 +66,29 @@ static void MerakiDecoder_test_base(const char *config_str,
 	assert_true(parse_rc == 0);
 	json_decref(meraki_secrets_array);
 
-	struct kafka_message_array *notifications_array = process_meraki_buffer(
-			msg, strlen(msg), "127.0.0.1", &decoder_info);
+	struct kafka_message_array notifications_array =
+			KAFKA_MESSAGE_ARRAY_INITIALIZER;
+	process_meraki_buffer(&notifications_array,
+			      msg,
+			      strlen(msg),
+			      "127.0.0.1",
+			      &decoder_info);
 
 	if (checkdata) {
-		rb_assert_json_array(notifications_array->msgs,
-				     notifications_array->count,
-				     checkdata);
+		rb_assert_json_array(&notifications_array, checkdata);
+		struct kafka_message_array_internal *karray =
+				kafka_message_array_get_internal(
+						&notifications_array);
 
-		for (i = 0; i < notifications_array->count; ++i)
-			free(notifications_array->msgs[i].payload);
-		free(notifications_array);
+		size_t i;
+		for (i = 0; i < karray->count; i++) {
+			free(karray->msgs[i].payload);
+		}
+		free(karray);
 	} else {
-		assert_true(0 == notifications_array);
+		assert_int_equal(
+				0,
+				kafka_message_array_size(&notifications_array));
 	}
 
 	meraki_decoder_info_destructor(&decoder_info);

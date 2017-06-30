@@ -20,6 +20,8 @@
 */
 
 // rb_json_tests.c
+#include "util/kafka_message_array.h"
+
 #include <jansson.h>
 #include <librd/rd.h>
 #include <librd/rdfloat.h>
@@ -201,21 +203,21 @@ static void rb_assert_json(const char *str, const struct checkdata *checkdata) {
 	rb_assert_json_n(str, strlen(str), checkdata);
 }
 
-static void rb_assert_json_array(const rd_kafka_message_t *msgs,
-				 size_t msgs_size,
+static void rb_assert_json_array(const kafka_message_array *msgs,
 				 const struct checkdata_array *checkdata_array)
 		__attribute__((unused));
 static void
-rb_assert_json_array(const rd_kafka_message_t *msgs,
-		     size_t msgs_size,
+rb_assert_json_array(const kafka_message_array *msgs,
 		     const struct checkdata_array *checkdata_array) {
 
 	size_t i;
 
-	assert_true(msgs_size == checkdata_array->size);
-	for (i = 0; i < checkdata_array->size; ++i) {
-		size_t payload_size = msgs[i].len;
-		rb_assert_json_n(msgs[i].payload,
+	assert_int_equal(checkdata_array->size, kafka_message_array_size(msgs));
+	const struct kafka_message_array_internal *karray =
+			kafka_message_array_get_internal_const(msgs);
+	for (i = 0; i < kafka_message_array_size(msgs); ++i) {
+		size_t payload_size = karray->msgs[i].len;
+		rb_assert_json_n(karray->msgs[i].payload,
 				 payload_size,
 				 checkdata_array->checks[i]);
 	}

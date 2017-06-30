@@ -1,7 +1,7 @@
 THIS_SRCS := \
 	in_addr_list.c \
 	kafka.c \
-	kafka_message_list.c \
+	kafka_message_array.c \
 	pair.c \
 	rb_json.c \
 	rb_mac.c \

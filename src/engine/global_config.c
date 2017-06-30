@@ -313,6 +313,19 @@ static void parse_config_keyval(const char *key, const json_t *value) {
 	} else if (NULL != locate_registered_decoder(key)) {
 		// Already parsed
 	} else {
+		size_t i;
+		for (i = 0; i < RD_ARRAYSIZE(registered_decoders); ++i) {
+			if (!registered_decoders[i]->config_parameter) {
+				continue;
+			}
+			const char *decoder_config_key =
+					registered_decoders[i]
+							->config_parameter();
+			if (0 == strcasecmp(key, decoder_config_key)) {
+				// Already parsed
+				return;
+			}
+		}
 		fatal("Unknown config key %s", key);
 	}
 }

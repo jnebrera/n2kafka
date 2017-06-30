@@ -26,9 +26,7 @@
 #include "engine/global_config.h"
 
 #include "util/kafka.h"
-#include "util/kafka_message_list.h"
-#include "util/rb_json.h"
-#include "util/rb_mac.h"
+#include "util/kafka_message_array.h"
 #include "util/rb_time.h"
 #include "util/topic_database.h"
 #include "util/util.h"
@@ -44,22 +42,6 @@
 #include <string.h>
 
 static struct zz_database zz_database = {NULL};
-
-static enum warning_times_pos
-kafka_error_to_warning_time_pos(rd_kafka_resp_err_t err) {
-	switch (err) {
-	case RD_KAFKA_RESP_ERR__QUEUE_FULL:
-		return LAST_WARNING_TIME__QUEUE_FULL;
-	case RD_KAFKA_RESP_ERR_MSG_SIZE_TOO_LARGE:
-		return LAST_WARNING_TIME__MSG_SIZE_TOO_LARGE;
-	case RD_KAFKA_RESP_ERR__UNKNOWN_PARTITION:
-		return LAST_WARNING_TIME__UNKNOWN_PARTITION;
-	case RD_KAFKA_RESP_ERR__UNKNOWN_TOPIC:
-		return LAST_WARNING_TIME__UNKNOWN_TOPIC;
-	default:
-		return LAST_WARNING_TIME__END;
-	};
-}
 
 static int zz_decoder_init(const struct json_t *config) {
 	(void)config;
@@ -77,67 +59,6 @@ static int zz_decoder_init(const struct json_t *config) {
 	}
 
 	return 0;
-}
-
-/** Produce a batch of messages
-	@param topic Topic handler
-	@param msgs Messages to send
-	@param len Length of msgs */
-static void produce_or_free(struct zz_session *opaque,
-			    struct topic_s *topic,
-			    rd_kafka_message_t *msgs,
-			    int len) {
-	assert(topic);
-	assert(msgs);
-	static const time_t alert_threshold = 5 * 60;
-
-	rd_kafka_topic_t *rkt = topics_db_get_rdkafka_topic(topic);
-
-	int msgs_ok = rd_kafka_produce_batch(rkt,
-					     RD_KAFKA_PARTITION_UA,
-					     RD_KAFKA_MSG_F_FREE,
-					     msgs,
-					     len);
-
-	if (likely(msgs_ok == len)) {
-		// all OK!
-		return;
-	}
-
-	int i;
-	for (i = 0; i < len && msgs_ok < len; ++i) {
-		int warn = 1;
-		if (msgs[i].err == RD_KAFKA_RESP_ERR_NO_ERROR) {
-			continue;
-		}
-
-		msgs_ok++;
-		const size_t last_warning_time_pos =
-				kafka_error_to_warning_time_pos(msgs[i].err);
-
-		if (last_warning_time_pos <= LAST_WARNING_TIME__END) {
-			const time_t last_warning_time =
-					opaque->produce_error_last_time
-							[last_warning_time_pos];
-			const time_t now = time(NULL);
-			if (difftime(now, last_warning_time) <
-			    alert_threshold) {
-				warn = 0;
-			} else {
-				opaque->produce_error_last_time
-						[last_warning_time_pos] = now;
-			}
-		}
-
-		if (warn) {
-			rdlog(LOG_ERR,
-			      "Can't produce to topic %s: %s",
-			      rd_kafka_topic_name(rkt),
-			      rd_kafka_err2str(msgs[i].err));
-		}
-
-		free(msgs[i].payload);
-	}
 }
 
 /*
@@ -162,27 +83,93 @@ static void process_zz_buffer(const char *buffer,
 	}
 }
 
+static void zz_decode0(char *buffer,
+		       size_t buf_size,
+		       const keyval_list_t *props,
+		       void *t_decoder_opaque,
+		       void *t_session) {
+	(void)props;
+	(void)t_decoder_opaque;
+	assert(buffer);
+
+	struct zz_session *session = zz_session_cast(t_session);
+	assert(session->topic_handler);
+
+	kafka_msg_array_init(&session->http_chunk.kafka_msgs);
+	session->http_chunk.in_buffer = buffer;
+	process_zz_buffer(buffer, buf_size, session);
+
+	//
+	// Check if we are in the middle of JSON object processing
+	//
+
+	// clang-format off
+	const int append_rc =
+		(session->http_chunk.last_open_map) ?
+			// JSON object is not closed, save it for the next
+			// decode call
+			string_append(&session->http_prev_chunk.last_object,
+			              session->http_chunk.last_open_map,
+			              buf_size -
+			                 (size_t)(
+			                       session->http_chunk.last_open_map
+			                       - buffer))
+		: (string_size(&session->http_prev_chunk.last_object) != 0) ?
+			// process_zz_buffer did not consume last object buffer,
+			// so JSON object is divided in >2 chunks. Act like all
+			// JSON object was in the last message!
+			string_append(&session->http_prev_chunk.last_object,
+			              buffer,
+			              buf_size)
+		: 0;
+	// clang-format on
+
+	if (unlikely(append_rc != 0)) {
+		rdlog(LOG_ERR,
+		      "Couldn't append chunked JSON object to temp buffer "
+		      "(OOM?)");
+		// @TODO signal error, buffer is not valid anymore!
+	}
+
+	//
+	// Clean & consume all info generated in this call
+	//
+
+	if (kafka_message_array_size(&session->http_chunk.kafka_msgs)) {
+		rd_kafka_topic_t *rkt = topics_db_get_rdkafka_topic(
+				session->topic_handler);
+
+		kafka_message_array_produce(rkt,
+					    &session->http_chunk.kafka_msgs,
+					    buffer,
+					    0 /* rdkafka flags */,
+					    &session->kafka_msgs_last_warning);
+	} else {
+		free(buffer);
+	}
+
+	memset(&session->http_chunk, 0, sizeof(session->http_chunk));
+}
+
+/// zz_decode with const buffer, need to copy it
 static void zz_decode(const char *buffer,
 		      size_t buf_size,
 		      const keyval_list_t *props,
 		      void *t_decoder_opaque,
 		      void *t_session) {
-	(void)props;
-	(void)t_decoder_opaque;
-	assert(buffer);
-	assert(session);
-	assert(session->topic_handler);
 
-	struct zz_session *session = t_session;
-	assert_zz_session(session);
-
-	process_zz_buffer(buffer, buf_size, session);
-
-	const size_t n_messages = rd_kafka_msg_q_size(&session->msg_queue);
-	rd_kafka_message_t msgs[n_messages];
-	rd_kafka_msg_q_dump(&session->msg_queue, msgs);
-
-	produce_or_free(session, session->topic_handler, msgs, n_messages);
+	char *buffer_copy = malloc(buf_size);
+	if (unlikely(NULL == buffer_copy)) {
+		rdlog(LOG_ERR, "Couldn't copy buffer (OOM?)");
+		/// @todo return error!
+	} else {
+		memcpy(buffer_copy, buffer, buf_size);
+		zz_decode0(buffer_copy,
+			   buf_size,
+			   props,
+			   t_decoder_opaque,
+			   t_session);
+	}
 }
 
 static void zz_decoder_done() {
@@ -206,9 +193,7 @@ static int vnew_zz_session(void *t_session,
 }
 
 static void vfree_zz_session(void *t_session) {
-	struct zz_session *session = t_session;
-	assert_zz_session(session);
-	free_zz_session(session);
+	free_zz_session(zz_session_cast(t_session));
 }
 
 static size_t size_align_to(size_t size, size_t alignment) {

@@ -215,7 +215,7 @@ static void n2k_consume_kafka_msgs(rd_kafka_t *rk,
 			assert_return_code(size, errno);                       \
 			size++;                                                \
 			if (NULL == ret) {                                     \
-				ret = alloca(size);                            \
+				ret = alloca((size_t)size);                    \
 			}                                                      \
 		}                                                              \
 		ret;                                                           \

@@ -22,6 +22,7 @@
 /// @TODO this should not have engine/ dependences
 #include "engine/global_config.h"
 #include "engine/parse.h"
+#include "util/kafka_message_array.h"
 
 #include <pthread.h>
 
@@ -74,24 +75,28 @@ const char *default_topic_name() {
 * Called once for each message.
 * See rdkafka.h for more information.
 */
-static void msg_delivered(rd_kafka_t *_rk ZZ_UNUSED,
-			  void *payload,
-			  size_t len,
-			  int error_code,
-			  void *opaque ZZ_UNUSED,
-			  void *msg_opaque ZZ_UNUSED) {
+static void msg_delivered(rd_kafka_t *rk RD_UNUSED,
+			  const rd_kafka_message_t *rkmessage,
+			  void *opaque RD_UNUSED) {
 
-	if (error_code) {
+	if (unlikely(rkmessage->err)) {
 		rblog(LOG_ERR,
 		      "Message delivery failed: %s",
-		      rd_kafka_err2str(error_code));
+		      rd_kafka_err2str(rkmessage->err));
 	} else {
 		rblog(LOG_DEBUG,
 		      "Message delivered (%zd bytes): %*.*s",
-		      len,
-		      (int)len,
-		      (int)len,
-		      (char *)payload);
+		      rkmessage->len,
+		      (int)rkmessage->err,
+		      (int)rkmessage->err,
+		      (char *)rkmessage->payload);
+	}
+
+	if (rkmessage->_private) {
+		struct kafka_message_array_internal *karray =
+				kafka_message_array_internal_cast(
+						rkmessage->_private);
+		kafka_message_array_internal_decref(karray);
 	}
 }
 
@@ -127,7 +132,7 @@ void init_rdkafka() {
 
 	rd_kafka_conf_t *my_kafka_conf =
 			rd_kafka_conf_dup(global_config.kafka_conf);
-	rd_kafka_conf_set_dr_cb(my_kafka_conf, msg_delivered);
+	rd_kafka_conf_set_dr_msg_cb(my_kafka_conf, msg_delivered);
 	if (NULL == my_kafka_conf) {
 		fatal("%% Failed to duplicate kafka conf (out of memory?)");
 	}
@@ -194,90 +199,6 @@ void send_to_kafka(rd_kafka_topic_t *rkt,
 			break;
 		}
 	} while (1);
-}
-
-struct kafka_message_array *new_kafka_message_array(size_t size) {
-	const size_t memsize = sizeof(struct kafka_message_array) +
-			       size * sizeof(rd_kafka_message_t);
-	struct kafka_message_array *ret = calloc(1, memsize);
-	if (NULL == ret) {
-		rdlog(LOG_ERR,
-		      "Error allocating kafka message array (out of memory?)");
-	} else {
-		ret->size = size;
-		ret->msgs = (void *)&ret[1];
-	}
-
-	return ret;
-}
-
-int save_kafka_msg_key_partition_in_array(struct kafka_message_array *array,
-					  char *key,
-					  size_t key_len,
-					  char *buffer,
-					  size_t buf_size,
-					  int partition,
-					  void *opaque) {
-	if (array->count == array->size) {
-		rdlog(LOG_ERR, "Can't save msg in array: Not enough space");
-		return -1;
-	}
-
-	const size_t i = array->count;
-	array->msgs[i].key = key;
-	array->msgs[i].key_len = key_len;
-	array->msgs[i].partition = partition;
-	array->msgs[i].payload = buffer;
-	array->msgs[i].len = buf_size;
-	array->msgs[i]._private = opaque;
-
-	array->count++;
-
-	return 0;
-}
-
-static int send_array_to_rkt(rd_kafka_topic_t *rkt,
-			     int flags,
-			     struct kafka_message_array *msgs) {
-	int produce_rc = 0;
-	int i;
-
-	if (rkt) {
-		produce_rc = rd_kafka_produce_batch(rkt,
-						    RD_KAFKA_PARTITION_UA,
-						    flags,
-						    msgs->msgs,
-						    msgs->count);
-	}
-
-	for (i = 0; produce_rc != (int)msgs->count && i < (int)msgs->count;
-	     ++i) {
-		// Print error
-		if (msgs->msgs[i].err) {
-			const char *payload = msgs->msgs[i].payload;
-			int payload_len = msgs->msgs[i].len;
-			const char *msg_error =
-					rd_kafka_err2str(msgs->msgs[i].err);
-			rdlog(LOG_ERR,
-			      "Couldn't produce message [%.*s]: %s",
-			      payload_len,
-			      payload,
-			      msg_error);
-		}
-
-		// Free the message if needed/requested
-		if (!rkt ||
-		    ((flags & RD_KAFKA_MSG_F_FREE) && msgs->msgs[i].err)) {
-			free(msgs->msgs[i].payload);
-		}
-	}
-
-	return produce_rc;
-}
-
-int send_array_to_kafka(rd_kafka_topic_t *rkt,
-			struct kafka_message_array *msgs) {
-	return send_array_to_rkt(rkt, RD_KAFKA_MSG_F_FREE, msgs);
 }
 
 void flush_kafka() {

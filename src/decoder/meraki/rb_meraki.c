@@ -22,9 +22,9 @@
 #include "rb_meraki.h"
 #include "engine/global_config.h"
 #include "util/kafka.h"
+#include "util/kafka_message_array.h"
 #include "util/rb_json.h"
 #include "util/rb_mac.h"
-
 #include "util/util.h"
 
 #include <assert.h>
@@ -560,7 +560,7 @@ transform_meraki_observation(json_t *observation,
 }
 
 static void
-extract_meraki_observation(struct kafka_message_array *msgs,
+extract_meraki_observation(kafka_message_array *msgs,
 			   size_t idx,
 			   json_t *observations,
 			   struct meraki_transversal_data *transversal_data) {
@@ -575,12 +575,18 @@ extract_meraki_observation(struct kafka_message_array *msgs,
 	transform_meraki_observation(observation_i, transversal_data);
 
 	char *buf = json_dumps(observation_i, JSON_COMPACT | JSON_ENSURE_ASCII);
-	/// @TODO Don't use strlen
-	save_kafka_msg_in_array(msgs, buf, strlen(buf), NULL);
+	kafka_msg_array_add(msgs,
+			    &(rd_kafka_message_t){
+					    .payload = buf,
+					    /// @TODO Don't use strlen
+					    .len = strlen(buf),
+			    });
 }
 
 static struct kafka_message_array *
-extract_meraki_data(json_t *json, struct meraki_decoder_info *decoder_info) {
+extract_meraki_data(kafka_message_array *msgs,
+		    json_t *json,
+		    struct meraki_decoder_info *decoder_info) {
 	assert(json);
 	assert(decoder_info);
 
@@ -668,8 +674,6 @@ extract_meraki_data(json_t *json, struct meraki_decoder_info *decoder_info) {
 					decoder_info->per_listener_enrichment);
 
 	const size_t msgs_size = json_array_size(observations);
-	struct kafka_message_array *msgs = new_kafka_message_array(msgs_size);
-
 	for (i = 0; i < msgs_size; ++i)
 		extract_meraki_observation(
 				msgs, i, observations, &meraki_transversal);
@@ -679,12 +683,11 @@ extract_meraki_data(json_t *json, struct meraki_decoder_info *decoder_info) {
 	return msgs;
 }
 
-static struct kafka_message_array *
-process_meraki_buffer(const char *buffer,
-		      size_t bsize,
-		      const char *client,
-		      struct meraki_decoder_info *decoder_info) {
-	struct kafka_message_array *notifications = NULL;
+static void process_meraki_buffer(kafka_message_array *notifications,
+				  const char *buffer,
+				  size_t bsize,
+				  const char *client,
+				  struct meraki_decoder_info *decoder_info) {
 	assert(bsize);
 
 	json_error_t err;
@@ -701,18 +704,10 @@ process_meraki_buffer(const char *buffer,
 		goto err;
 	}
 
-	notifications = extract_meraki_data(json, decoder_info);
-	if (!notifications || notifications->size == 0) {
-		/* Nothing to do here */
-		free(notifications);
-		notifications = NULL;
-		goto err;
-	}
-
+	extract_meraki_data(notifications, json, decoder_info);
 err:
 	if (json)
 		json_decref(json);
-	return notifications;
 }
 
 static void meraki_decode(const char *buffer,
@@ -731,13 +726,18 @@ static void meraki_decode(const char *buffer,
 		client = "(unknown)";
 	}
 
-	struct kafka_message_array *notifications = process_meraki_buffer(
-			buffer, buf_size, client, &meraki_opaque->decoder_info);
+	struct kafka_message_array notifications = {};
+	process_meraki_buffer(&notifications,
+			      buffer,
+			      buf_size,
+			      client,
+			      &meraki_opaque->decoder_info);
 
-	if (notifications) {
-		send_array_to_kafka(meraki_opaque->rkt, notifications);
-		free(notifications);
-	}
+	kafka_message_array_produce(meraki_opaque->rkt,
+				    &notifications,
+				    NULL /* payload buffer */,
+				    RD_KAFKA_MSG_F_FREE,
+				    NULL /* last warning state */);
 }
 
 static const char *meraki_decoder_name() {

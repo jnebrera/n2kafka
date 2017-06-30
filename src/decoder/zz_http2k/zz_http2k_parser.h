@@ -23,21 +23,11 @@
 
 #include "zz_database.h"
 
-#include <jansson.h>
-#include <util/kafka_message_list.h>
+#include <util/kafka_message_array.h>
 #include <util/pair.h>
-#include <yajl/yajl_gen.h>
 #include <yajl/yajl_parse.h>
 
 #include <assert.h>
-
-enum warning_times_pos {
-	LAST_WARNING_TIME__QUEUE_FULL,
-	LAST_WARNING_TIME__MSG_SIZE_TOO_LARGE,
-	LAST_WARNING_TIME__UNKNOWN_PARTITION,
-	LAST_WARNING_TIME__UNKNOWN_TOPIC,
-	LAST_WARNING_TIME__END
-};
 
 /// @TODO many of the fields here could be a state machine
 /// @TODO separate parsing <-> not parsing fields
@@ -47,8 +37,6 @@ struct zz_session {
 #define ZZ_SESSION_MAGIC 0x535510A1C535510A
 	uint64_t magic;
 #endif
-	/// Output generator.
-	yajl_gen gen;
 
 	/// JSON handler
 	yajl_handle handler;
@@ -59,26 +47,34 @@ struct zz_session {
 	/// Parsing stack position
 	size_t stack_pos;
 
-	/// Message list in this call to decode()
-	rd_kafka_message_queue_t msg_queue;
+	/// Warning state of kafka_msgs_produce
+	struct kafka_message_array_last_warning_state kafka_msgs_last_warning;
 
-	/// Error last warning
-	time_t produce_error_last_time[LAST_WARNING_TIME__END];
+	/// Previous chunk object, in case that
+	struct {
+		string last_object;
+	} http_prev_chunk;
+
+	/// Per chunk information
+	struct {
+		kafka_message_array kafka_msgs; ///< Kafka output messages
+		const char *in_buffer;     ///< current yajl_parse call chunk
+		const char *last_open_map; ///< Last seen open map
+	} http_chunk;
 };
 
-static void __attribute__((unused))
-assert_zz_session(const struct zz_session *sess) {
+/// Cast an opaque pointer to zz_session
+static struct zz_session *zz_session_cast(void *opaque) RD_UNUSED;
+static struct zz_session *zz_session_cast(void *opaque) {
+	struct zz_session *ret = opaque;
 #ifdef ZZ_SESSION_MAGIC
-	assert(ZZ_SESSION_MAGIC == sess->magic);
-#else
-	(void)sess;
+	assert(ZZ_SESSION_MAGIC == ret->magic);
 #endif
+	return ret;
 }
 
 int new_zz_session(struct zz_session *sess,
 		   struct zz_database *zz_db,
 		   const keyval_list_t *msg_vars);
-
-int gen_jansson_object(yajl_gen gen, json_t *enrichment_data);
 
 void free_zz_session(struct zz_session *sess);

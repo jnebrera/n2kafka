@@ -233,7 +233,7 @@ create_connection_info(const char *uri,
 				   &con_info->decoder_opts[i]);
 	}
 
-	init_string(&con_info->str);
+	string_init(&con_info->str);
 
 	if (con_info->zlib.enable) {
 		con_info->zlib.strm.zalloc = Z_NULL;

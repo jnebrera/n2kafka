@@ -22,6 +22,7 @@
 #include "util.h"
 
 #include <limits.h>
+#include <stdlib.h>
 
 #define STRING_MIN_SIZE 4096
 
@@ -38,9 +39,24 @@ typedef struct string {
 		     ///< be (log2(size)<<1), with a minimum of STRING_MIN_SIZE.
 } string;
 
-static int __attribute__((unused)) init_string(struct string *str) {
-	memset(str, 0, sizeof(*str));
+#define N2K_STRING_INITIALIZER                                                 \
+	(string) {                                                             \
+	}
+
+static int __attribute__((unused)) string_init(struct string *str) {
+	*str = N2K_STRING_INITIALIZER;
 	return 0;
+}
+
+static void string_done(struct string *str) __attribute__((unused));
+static void string_done(struct string *str) {
+	free(str->buf);
+	memset(str, 0, sizeof(*str));
+}
+
+static size_t string_size(const string *str) __attribute__((unused));
+static size_t string_size(const string *str) {
+	return str->size;
 }
 
 static size_t __attribute__((unused)) next_pow2(size_t x) {

@@ -32,136 +32,116 @@
 #include <assert.h>
 #include <string.h>
 
-/*
-    PARSING & ENRICHMENT
-*/
+#define YAJL_PARSER_OK 1
+#define YAJL_PARSER_ABORT 0
 
-#define GEN_AND_RETURN(func)                                                   \
-	do {                                                                   \
-		return yajl_gen_status_ok == func;                             \
-	} while (0);
-
-static int zz_parse_null(void *ctx) {
-	struct zz_session *sess = ctx;
-	yajl_gen g = sess->gen;
-
-	GEN_AND_RETURN(yajl_gen_null(g));
-}
-
-static int zz_parse_boolean(void *ctx, int boolean) {
-	struct zz_session *sess = ctx;
-	yajl_gen g = sess->gen;
-
-	GEN_AND_RETURN(yajl_gen_bool(g, boolean));
-}
-
-static int zz_parse_number(void *ctx, const char *s, size_t l) {
-	struct zz_session *sess = ctx;
-	yajl_gen g = sess->gen;
-
-	GEN_AND_RETURN(yajl_gen_number(g, s, l));
-}
-
-static int
-zz_parse_string(void *ctx, const unsigned char *stringVal, size_t stringLen) {
-	struct zz_session *sess = ctx;
-	yajl_gen g = sess->gen;
-
-	GEN_AND_RETURN(yajl_gen_string(g, stringVal, stringLen));
-}
-
-static int
-zz_parse_map_key(void *ctx, const unsigned char *stringVal, size_t stringLen) {
-	struct zz_session *sess = ctx;
-	yajl_gen g = sess->gen;
-
-	GEN_AND_RETURN(yajl_gen_string(g, stringVal, stringLen));
-}
+//
+// PARSING
+//
 
 static int zz_parse_start_map(void *ctx) {
 	struct zz_session *sess = ctx;
-	yajl_gen g = sess->gen;
+	if (0 == sess->stack_pos++) {
+		sess->http_chunk.last_open_map =
+				sess->http_chunk.in_buffer +
+				yajl_get_bytes_consumed(sess->handler) -
+				sizeof((char)'{');
+	}
+	return YAJL_PARSER_OK;
+}
 
-	sess->stack_pos++;
-	GEN_AND_RETURN(yajl_gen_map_open(g));
+/// Remove constness. Only for rdkafka produce api.
+static void *const_cast(const void *ptr) {
+	void *ret;
+	memcpy(&ret, &ptr, sizeof(ret));
+	return ret;
 }
 
 /** Generate kafka message.
     */
-static int zz_parse_generate_rdkafka_message(const struct zz_session *sess,
-					     rd_kafka_message_t *msg) {
-	const unsigned char *buf;
-	memset(msg, 0, sizeof(*msg));
+static void zz_parse_generate_rdkafka_message(struct zz_session *sess,
+					      rd_kafka_message_t *msg) {
+	assert(sess);
+	assert(msg);
+	const char *end_msg = sess->http_chunk.in_buffer +
+			      yajl_get_bytes_consumed(sess->handler);
+	assert(end_msg > sess->http_chunk.last_open_map);
+	*msg = (rd_kafka_message_t){
+			.payload = const_cast(sess->http_chunk.last_open_map),
+			.len = (size_t)(end_msg -
+					sess->http_chunk.last_open_map),
+	};
+}
 
-	msg->partition = RD_KAFKA_PARTITION_UA;
+static int zz_parse_end_map0(struct zz_session *sess) {
+	rd_kafka_message_t msg;
+	zz_parse_generate_rdkafka_message(sess, &msg);
+	const int add_rc =
+			kafka_msg_array_add(&sess->http_chunk.kafka_msgs, &msg);
 
-	yajl_gen_get_buf(sess->gen, &buf, &msg->len);
-
-	/// @TODO do not copy, steal the buffer!
-	msg->payload = strdup((const char *)buf);
-	if (NULL == msg->payload) {
-		rdlog(LOG_ERR, "Unable to duplicate buffer");
-		return -1;
+	// This is not the last message anymore
+	sess->http_chunk.last_open_map = NULL;
+	if (unlikely(add_rc != 0)) {
+		rdlog(LOG_ERR, "Couldn't add kafka message (OOM?)");
 	}
 
-	return 0;
+	return YAJL_PARSER_OK;
+}
+
+/** Send a message of a split message
+  @param sess Parsing message session
+  @return do keep or not to keep parsing
+  */
+static int zz_parse_end_map_split(struct zz_session *sess) {
+	const int append_rc =
+			string_append(&sess->http_prev_chunk.last_object,
+				      sess->http_chunk.in_buffer,
+				      yajl_get_bytes_consumed(sess->handler));
+	if (unlikely(append_rc != 0)) {
+		rdlog(LOG_ERR, "Couldn't append message (OOM?)");
+		goto err;
+	}
+
+	rd_kafka_topic_t *rkt =
+			topics_db_get_rdkafka_topic(sess->topic_handler);
+	const int produce_rc = rd_kafka_produce_batch(
+			// clang-format off
+		rkt,
+		RD_KAFKA_PARTITION_UA,
+		RD_KAFKA_MSG_F_FREE,
+		&(rd_kafka_message_t){
+			.payload = sess->http_prev_chunk.last_object.buf,
+			.len = string_size(&sess->http_prev_chunk.last_object),
+		},
+		1);
+	// clang-format on
+
+	if (likely(1 == produce_rc)) {
+		// librdkafka will free it
+		sess->http_prev_chunk.last_object.buf = NULL;
+	}
+
+err:
+	string_done(&sess->http_prev_chunk.last_object);
+
+	return YAJL_PARSER_OK;
 }
 
 static int zz_parse_end_map(void *ctx) {
 	struct zz_session *sess = ctx;
-	yajl_gen g = sess->gen;
 
-	const int yajl_gen_status_rc = yajl_gen_map_close(g);
-
-	sess->stack_pos--;
-	// const unsigned char *buf = NULL;
-	// size_t buf_len = 0;
-
-	// yajl_gen_get_buf(g, &buf, &buf_len);
-	// rdlog(LOG_ERR, "CLOSING MAP! [rc=%d][msg=%.*s]",
-	// 	yajl_gen_status_rc,
-	// 	(int)buf_len,
-	// 	buf);
-
-	if (0 == sess->stack_pos) {
-		rd_kafka_message_t msg;
-		/* Ending message */
-		if (0 == zz_parse_generate_rdkafka_message(sess, &msg)) {
-			rd_kafka_msg_q_add(&sess->msg_queue, &msg);
-		}
-
-		yajl_gen_reset(sess->gen, NULL);
-		yajl_gen_clear(sess->gen);
+	if (0 != --sess->stack_pos) {
+		return YAJL_PARSER_OK;
 	}
 
-	GEN_AND_RETURN(yajl_gen_status_rc);
+	return (string_size(&sess->http_prev_chunk.last_object) > 0)
+			       ?
+			       // The message is divided between two chunks
+			       zz_parse_end_map_split(sess)
+			       :
+
+			       zz_parse_end_map0(sess);
 }
-
-static int zz_parse_start_array(void *ctx) {
-	struct zz_session *sess = ctx;
-	yajl_gen g = sess->gen;
-	GEN_AND_RETURN(yajl_gen_array_open(g));
-}
-
-/// @TODO allow array root?
-static int zz_parse_end_array(void *ctx) {
-	struct zz_session *sess = ctx;
-	yajl_gen g = sess->gen;
-
-	GEN_AND_RETURN(yajl_gen_array_close(g));
-}
-
-static const yajl_callbacks callbacks = {zz_parse_null,
-					 zz_parse_boolean,
-					 NULL,
-					 NULL,
-					 zz_parse_number,
-					 zz_parse_string,
-					 zz_parse_start_map,
-					 zz_parse_map_key,
-					 zz_parse_end_map,
-					 zz_parse_start_array,
-					 zz_parse_end_array};
 
 /* Return code: Valid uri prefix (i.e., /v1/data/) & topic */
 static int
@@ -241,15 +221,12 @@ int new_zz_session(struct zz_session *sess,
 		goto topic_err;
 	}
 
-	rd_kafka_msg_q_init(&sess->msg_queue);
+	static const yajl_callbacks yajl_callbacks = {
+			.yajl_start_map = zz_parse_start_map,
+			.yajl_end_map = zz_parse_end_map,
+	};
 
-	sess->gen = yajl_gen_alloc(NULL);
-	if (NULL == sess->gen) {
-		rdlog(LOG_CRIT, "Couldn't allocate yajl_gen");
-		goto err_yajl_gen;
-	}
-
-	sess->handler = yajl_alloc(&callbacks, NULL, sess);
+	sess->handler = yajl_alloc(&yajl_callbacks, NULL, sess);
 	if (NULL == sess->handler) {
 		rdlog(LOG_CRIT, "Couldn't allocate yajl_handler");
 		goto err_yajl_handler;
@@ -261,9 +238,6 @@ int new_zz_session(struct zz_session *sess,
 	return 0;
 
 err_yajl_handler:
-	yajl_gen_free(sess->gen);
-
-err_yajl_gen:
 	topic_decref(sess->topic_handler);
 
 topic_err:
@@ -272,7 +246,5 @@ topic_err:
 
 void free_zz_session(struct zz_session *sess) {
 	yajl_free(sess->handler);
-	yajl_gen_free(sess->gen);
-
 	topic_decref(sess->topic_handler);
 }

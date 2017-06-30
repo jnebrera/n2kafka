@@ -33,57 +33,6 @@
 #include <stddef.h>
 #include <string.h>
 
-typedef json_error_t rb_json_err_t;
-
-/// you have to json_decref(return) when done
-static void *
-rb_json_assert_unpack(const char *json, size_t flags, const char *fmt, ...)
-		__attribute((unused));
-static void *
-rb_json_assert_unpack(const char *json, size_t flags, const char *fmt, ...) {
-	json_error_t error;
-	json_t *root = json_loads(json, 0, &error);
-	if (root == NULL) {
-		fprintf(stderr,
-			"[EROR PARSING JSON][%s][%s]\n",
-			error.text,
-			error.source);
-		assert_true(0);
-	}
-
-	va_list args;
-	va_start(args, fmt);
-
-	const int unpack_rc = json_vunpack_ex(root, &error, flags, fmt, args);
-
-	if (unpack_rc != 0 /* Failure */) {
-		fprintf(stderr,
-			"[ERROR UNPACKING][%s][%s]\n",
-			error.text,
-			error.source);
-		assert_true(0);
-	}
-
-	va_end(args);
-
-	return root;
-}
-
-static void free_json_unpacked(void *mem) __attribute__((unused));
-static void free_json_unpacked(void *mem) {
-	json_decref(mem);
-}
-
-static int
-str_equal(const char *str1, const char *str2) __attribute__((unused));
-static int str_equal(const char *str1, const char *str2) {
-	if ((str1 != NULL && str2 == NULL) || (str1 == NULL && str2 != NULL))
-		return 0;
-	if (str1 == NULL && str2 == NULL)
-		return 1;
-	return 0 == strcmp(str1, str2);
-}
-
 struct checkdata_value {
 	const char *key;
 	json_type type;
@@ -220,11 +169,9 @@ static json_t *rb_assert_json_loadb(const char *buf, size_t buflen) {
 	json_t *root = json_loadb(buf, buflen, 0, &error);
 
 	if (root == NULL) {
-		fprintf(stderr,
-			"[EROR PARSING JSON][%s][%s]\n",
-			error.text,
-			error.source);
-		assert_true(0);
+		fail_msg("[EROR PARSING JSON][reason:%s][source:%s]\n",
+			 error.text,
+			 error.source);
 	}
 
 	return root;

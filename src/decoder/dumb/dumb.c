@@ -21,7 +21,7 @@
 
 #include "util/kafka.h"
 
-static void dumb_decode(char *buffer,
+static void dumb_decode(const char *buffer,
 			size_t buf_size,
 			const keyval_list_t *keyval __attribute__((unused)),
 			void *listener_callback_opaque,

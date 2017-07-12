@@ -424,7 +424,7 @@ static size_t compressed_callback(struct http_listener *h_listener,
 					(char *)buffer,
 					zprocessed,
 					&con_info->decoder_params,
-					&con_info->decoder_sess);
+					con_info->decoder_sess);
 		}
 	} while (con_info->zlib.strm.avail_out == 0);
 

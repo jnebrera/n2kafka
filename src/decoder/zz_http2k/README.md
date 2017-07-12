@@ -6,9 +6,10 @@ them to many different topics using the same n2kafka instance.
 ## HTTP POST format
 HTTP POST format has the next restrictions:
 - URL needs to be `v1/data/<topic>`
-- It needs to include the next POST parameters:
+- It reads the next POST parameters:
   * `X-Consumer-ID`: Client used. It's NOT a kafka consumer id, but wizzie
-    client ID
+    client ID. Output topic will be ${X-Consumer-ID}_${last URL part}. If not
+    included, it will be sent to the last part of URL.
 
 That way, you can send this POST to zz decoder:
 
@@ -28,7 +29,12 @@ And message `{"test":1}` will be sent to topic `abc_topic1`. Similarly, you can
 send `{"test":1}{"test":2}` in POST body and two different messages,
 `{"test":1}` and `{"test":2}` will be sent to topic `abc_topic1`.
 
+If you do not use HTTP `X-Consumer-ID` header:
+`curl -v http://<n2kafka host>/v1/data/topic1 -d '{"test":1}'`
+
+Output will be sent to topic `topic1`.
+
 ## Deflate compression
 
-You can send compressed messages to ZZ decoder using `Content-Type: deflate` in
+You can send compressed messages to ZZ decoder using `Content-Encoding: deflate` in
 POST header. Messages has to be compressed with zlib library (http://zlib.net/).

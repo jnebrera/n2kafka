@@ -193,6 +193,10 @@ static int parse_meraki_decoder_info(struct meraki_decoder_info *decoder_info,
 				&decoder_info->per_listener_enrichment_rwlock);
 	}
 
+	if (*topic_name) {
+		*topic_name = strdup(*topic_name);
+	}
+
 	json_decref(config);
 
 	return json_unpack_rc;

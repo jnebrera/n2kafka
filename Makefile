@@ -38,6 +38,10 @@ install: bin-install
 clean: bin-clean
 	rm -f $(TESTS) $(TESTS_OBJS) $(TESTS_XML) $(COV_FILES)
 
+#
+# Testing
+#
+
 COV_FILES = $(foreach ext,gcda gcno, $(SRCS:.c=.$(ext)) $(TESTS_C:.c=.$(ext)))
 
 VALGRIND ?= valgrind
@@ -46,7 +50,8 @@ ifneq ($(wildcard $(SUPPRESSIONS_FILE)),)
 SUPPRESSIONS_VALGRIND_ARG = --suppressions=$(SUPPRESSIONS_FILE)
 endif
 
-.PHONY: tests checks memchecks drdchecks helchecks coverage check_coverage
+.PHONY: tests checks memchecks drdchecks helchecks coverage check_coverage \
+	docker dev-docker
 
 run_tests = tests/run_tests.sh $(1) $(TESTS_C:.c=)
 run_valgrind = $(VALGRIND) --tool=$(1) $(SUPPRESSIONS_VALGRIND_ARG) --xml=yes \
@@ -121,8 +126,27 @@ coverage: check_coverage $(TESTS)
 	genhtml --branch-coverage ${COVERAGE_INFO} --output-directory \
 				${COVERAGE_OUTPUT_DIRECTORY} > coverage.out
 
-dev-docker:
+
+#
+# Docker containers
+#
+
+DOCKER_OUTPUT_TAG?=gcr.io/wizzie-registry/n2kafka
+DOCKER_OUTPUT_VERSION?=1.99-2
+
+DOCKER_RELEASE_FILES=n2kafka docker/release/config.json.env docker/release/n2k_setup.sh
+
+docker: $(BIN) docker/release/Dockerfile
+	docker build -t $(DOCKER_OUTPUT_TAG):$(DOCKER_OUTPUT_VERSION) -f docker/release/Dockerfile .
+
+dev-docker: docker/devel/Dockerfile
 	@docker build $(DOCKER_BUILD_PARAMETERS) docker/devel
+
+docker/release/Dockerfile: RELEASEFILES_ARG=--define=releasefiles='$(DOCKER_RELEASE_FILES)'
+%/Dockerfile: docker/Dockerfile.m4
+	mkdir -p "$(dir $@)"
+	m4 $(RELEASEFILES_ARG) --define=version="$(@:docker/%/Dockerfile=%)" "$<" > "$@"
+
 
 -include $(DEPS)
 

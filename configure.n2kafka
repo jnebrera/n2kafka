@@ -152,8 +152,6 @@ function checks {
     mkl_lib_check --static=-lyajl "yajl" "" fail CC "-lyajl" \
       "#include <yajl/yajl_parse.h>"
 
-    echo "[\$WITHOUT_OPTIMIZATION=$WITHOUT_OPTIMIZATION][\$WITH_COVERAGE=$WITH_COVERAGE]"
-
     if [[ "x$WITH_COVERAGE" == "xy" ]]; then
       mkl_mkvar_append CPPFLAGS CPPFLAGS "-DNDEBUG"
     fi

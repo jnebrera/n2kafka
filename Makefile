@@ -89,7 +89,7 @@ $(TEST_REPORTS_DIR)/%.xml: tests/%.test $(BIN)
 	@CMOCKA_XML_FILE="$@" CMOCKA_MESSAGE_OUTPUT=XML "./$<" >/dev/null 2>&1
 
 #Transforms __wrap_fn in -Wl,-wrap,fn
-WRAP_BASH_FN = $(shell nm -P $(1) | grep -e "^__wrap" | cut -d ' ' -f 1 | \
+WRAP_BASH_FN = $(shell gcc-nm -P $(1) | grep -e "^__wrap" | cut -d ' ' -f 1 | \
 	sed 's/__wrap_/-Wl,-wrap=/' | xargs)
 
 tests/%.test: WRAP_LDFLAGS := -Wl,-wrap,MHD_get_connection_info

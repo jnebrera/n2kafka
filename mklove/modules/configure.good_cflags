@@ -11,6 +11,11 @@ function checks {
     mkl_mkvar_append CPPFLAGS CPPFLAGS \
         "-Wall -Wsign-compare -Wfloat-equal -Wpointer-arith"
 
+	mkl_compile_check --ldflags='-flto' HAVE_LTO HAVE_LTO cont CC '-flto' ''
+	if [[ $HAVE_LTO = "y" ]]; then
+		mkl_mkvar_append CPPFLAGS CPPFLAGS '-flto'
+	fi
+
     if [[ $MKL_WANT_WERROR = "y" ]]; then
         mkl_mkvar_append CPPFLAGS CPPFLAGS \
             "-Werror"

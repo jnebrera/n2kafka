@@ -353,7 +353,7 @@ json_t *assert_json_loads(const char *json_txt) {
 
 int __wrap_MHD_queue_response(struct MHD_Connection *connection,
 			      unsigned int status_code,
-			      struct MHD_Response *response);
+			      struct MHD_Response *response) __attribute__((used));
 int __wrap_MHD_queue_response(struct MHD_Connection *connection,
 			      unsigned int status_code,
 			      struct MHD_Response *response) {
@@ -366,7 +366,7 @@ int __wrap_MHD_queue_response(struct MHD_Connection *connection,
 const union MHD_ConnectionInfo *
 __wrap_MHD_get_connection_info(struct MHD_Connection *vconnection,
 			       enum MHD_ConnectionInfoType info_type,
-			       ...);
+			       ...) __attribute__((used));
 const union MHD_ConnectionInfo *
 __wrap_MHD_get_connection_info(struct MHD_Connection *vconnection,
 			       enum MHD_ConnectionInfoType info_type,
@@ -380,7 +380,7 @@ __wrap_MHD_get_connection_info(struct MHD_Connection *vconnection,
 int __wrap_MHD_get_connection_values(struct MHD_Connection *vconnection,
 				     enum MHD_ValueKind kind,
 				     MHD_KeyValueIterator iterator,
-				     void *iterator_cls);
+				     void *iterator_cls) __attribute__((used));
 int __wrap_MHD_get_connection_values(struct MHD_Connection *vconnection,
 				     enum MHD_ValueKind kind,
 				     MHD_KeyValueIterator iterator,

@@ -910,7 +910,7 @@ function mkl_check_done {
 #  [--ldflags="..." ]  (appended after "compiler arguments" below)
 #  config name
 #  define name
-#  action (fail|disable)
+#  action (fail|disable|cont)
 #  compiler (CC|CXX)
 #  compiler arguments (optional "", example: "-lzookeeper")
 #  source snippet

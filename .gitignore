@@ -31,14 +31,14 @@
 /coverage.info
 /coverage.out.html/
 
-
 # mklove
-Makefile.config
-config.cache
-config.h
-config.log
-config.log.old
-version.c
+/Makefile.config
+/config.cache
+/config.h
+/config.log
+/config.log.old
+/version.c
+/vendor/
 
 # Tests
 /tests/*.test
@@ -46,11 +46,14 @@ version.c
 /tests/coverage.info
 /tests/out
 
+# Docker
+/docker/devel/
+
 # Binary
-n2kafka
+/n2kafka
 
 # Clang complete tools
-.clang_complete
+/.clang_complete
 
 # Editors garbage
 *~

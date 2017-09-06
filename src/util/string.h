@@ -21,8 +21,13 @@
 
 #include "util.h"
 
+#include <assert.h>
 #include <limits.h>
 #include <stdlib.h>
+
+#ifndef static_assert
+#define static_assert(...)
+#endif
 
 #define STRING_MIN_SIZE 4096
 
@@ -60,8 +65,8 @@ static size_t string_size(const string *str) {
 }
 
 static size_t __attribute__((unused)) next_pow2(size_t x) {
-	_Static_assert(sizeof(x) == sizeof(unsigned long),
-		       "Please expand this function!");
+	static_assert(sizeof(x) == sizeof(unsigned long),
+		      "Please expand this function!");
 	// bits of size_t
 	static const size_t bits_x = CHAR_BIT * sizeof(x);
 	return (x && x - 1) ? 1u << (bits_x - (size_t)__builtin_clzl(x - 1))

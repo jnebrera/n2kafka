@@ -14,7 +14,7 @@ RUN apk add --no-cache yajl libmicrohttpd libev
 define(builddeps,bash build-base ca-certificates librdkafka-dev \
 		jansson-dev zlib-dev libarchive-tools openssl bsd-compat-headers cmake \
 		cgdb valgrind ncurses-dev slang-dev expat-dev yajl-dev \
-		libmicrohttpd-dev libev-dev curl-dev)dnl
+		libmicrohttpd-dev libev-dev curl-dev git)dnl
 dnl
 ifelse(version,devel,
 RUN apk add --no-cache builddeps && \

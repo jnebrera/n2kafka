@@ -7,9 +7,6 @@ THIS_SRCS := \
 	rb_mac.c \
 	topic_database.c \
 	rb_timer.c \
-	tommyds/tommyhash.c \
-	tommyds/tommyhashdyn.c \
-	tommyds/tommylist.c \
 
 SRCS += $(addprefix $(CURRENT_N2KAFKA_DIR), $(THIS_SRCS))
 

@@ -24,8 +24,8 @@
 
 #include "engine/global_config.h"
 
-#include "util/tommyds/tommyhashdyn.h"
-#include "util/tommyds/tommylist.h"
+#include "tommyds/tommyhashdyn.h"
+#include "tommyds/tommylist.h"
 
 #include "util/util.h"
 

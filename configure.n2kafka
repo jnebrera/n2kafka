@@ -55,6 +55,38 @@ function checks_librd {
        "#include <librd/rd.h>"
 }
 
+readonly tommyds_version=2.1
+
+function bootstrap_tommyds {
+  if [[ -f "vendor/tommyds/tommyds-${tommyds_version}/tommyds/tommy.o" ]]; then
+    # Already bootstrapped
+    return 0
+  fi
+
+  cd tommyds-${tommyds_version}
+  # -Werror=sign-conversion
+  sed -i 's%return __builtin_c%return (tommy_uint_t)__builtin_c%' -- tommyds/tommytypes.h
+  if [[ $HAVE_LTO = 'y' ]]; then
+    sed -i 's%^CFLAGS =%^CFLAGS +=%' -- Makefile
+    local -r cflag_lto='-flto'
+  fi
+  CFLAGS="$cflag_lto" make tommyds/tommy.o
+}
+
+function checks_tommyds {
+  readonly vendor_path="vendor/tommyds/tommyds-${tommyds_version}"
+  mkl_meta_set "tommyds" "desc" "high performance library of array, hashtables and tries data structures".
+  mkl_meta_set "tommyds" "bootstrap_url" "https://github.com/amadvance/tommyds/archive/v${tommyds_version}.tar.gz"
+  mkl_meta_set "tommyds" "bootstrap_cppflags" "-I./${vendor_path}"
+  mkl_meta_set "tommyds" "bootstrap_static_lib" "${vendor_path}/tommyds/tommy.o"
+  mkl_meta_set "tommyds" "bootstrap_makefn" "bootstrap_tommyds"
+
+  mkl_lib_check "tommyds" "" fail CC "${vendor_path}/tommyds/tommy.o" \
+       "#include <tommyds/tommyhashtbl.h>
+       void f();
+       void f() {tommy_hashtable_init(NULL, 16);}"
+}
+
 function bootstrap_cmocka {
   if [[ ! -d cmocka ]]; then
     mv cmocka-1.1.1 cmocka
@@ -125,6 +157,7 @@ function checks_libmicrohttpd {
 
 function checks {
     checks_librd
+    checks_tommyds
 
     # Check that librdkafka is available, and allow to link it statically.
     mkl_meta_set "librdkafka" "desc" \

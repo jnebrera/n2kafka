@@ -26,12 +26,19 @@ CURRENT_N2KAFKA_DIR = $(dir $(lastword $(MAKEFILE_LIST)))
 include src/Makefile.mk
 include mklove/Makefile.base
 
-.PHONY: version.c tests coverage .clang_complete
+# Update binary version if needed
+actual_git_version:=$(shell git describe --abbrev=6 --tags HEAD --always)
+ifneq (,$(wildcard version.c))
+version_c_version:=$(shell sed -n 's/.*n2kafka_version="\([^"]*\)";/\1/p' -- version.c)
+endif
+
+ifneq (,$(filter-out $(actual_git_version),$(GITVERSION) $(version_c_version)))
+VERSION_C_PHONY=version.c
+endif
 
 version.c:
-	@rm -f $@
-	@echo "const char *n2kafka_revision=\"`git describe --abbrev=6 --dirty --tags --always`\";" >> $@
-	@echo 'const char *n2kafka_version="1.0.0";' >> $@
+	sed -i 's%^GITVERSION=.*%GITVERSION=$(actual_git_version)%g' Makefile.config
+	@echo "const char *n2kafka_version=\"$(actual_git_version)\";" > $@
 
 install: bin-install
 
@@ -51,7 +58,7 @@ SUPPRESSIONS_VALGRIND_ARG = --suppressions=$(SUPPRESSIONS_FILE)
 endif
 
 .PHONY: tests checks memchecks drdchecks helchecks coverage check_coverage \
-	docker dev-docker
+	docker dev-docker .clang_complete $(VERSION_C_PHONY)
 
 run_tests = tests/run_tests.sh $(1) $(TESTS_C:.c=)
 run_valgrind = $(VALGRIND) --tool=$(1) $(SUPPRESSIONS_VALGRIND_ARG) --xml=yes \

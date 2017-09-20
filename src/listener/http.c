@@ -35,16 +35,17 @@
 
 #include "engine/global_config.h"
 
+#include <librd/rdlog.h>
+#include <librd/rdmem.h>
+#include <microhttpd.h>
+#include <zlib.h>
+
 #include <arpa/inet.h>
 #include <assert.h>
 #include <jansson.h>
-#include <librd/rdlog.h>
-#include <librd/rdmem.h>
 #include <math.h>
-#include <microhttpd.h>
 #include <stdlib.h>
 #include <string.h>
-#include <zlib.h>
 
 /// Initial string to start with
 #define STRING_INITIAL_SIZE 2048
@@ -62,6 +63,14 @@ struct http_listener {
 #endif
 	struct MHD_Daemon *d; ///< Associated daemon
 };
+
+static struct http_listener *http_listener_cast(void *vhttp_listener) {
+	struct http_listener *http_listener = vhttp_listener;
+#ifdef HTTP_PRIVATE_MAGIC
+	assert(HTTP_PRIVATE_MAGIC == http_listener->magic);
+#endif
+	return http_listener;
+}
 
 /// Per connection information
 struct conn_info {
@@ -86,7 +95,7 @@ struct conn_info {
 	size_t decoder_opts_size;
 
 	/// Memory pool for decoder_params
-	struct pair decoder_opts[0];
+	struct pair decoder_opts[];
 };
 
 static void free_con_info(struct conn_info *con_info) {
@@ -108,11 +117,12 @@ static void request_completed(void *cls,
 	}
 
 	struct conn_info *con_info = *con_cls;
-	struct http_listener *http_listener = cls;
-#ifdef HTTP_PRIVATE_MAGIC
-	assert(HTTP_PRIVATE_MAGIC == http_listener->magic);
-#endif
+	struct http_listener *http_listener = http_listener_cast(cls);
 	const struct n2k_decoder *decoder = http_listener->listener.decoder;
+
+	if (NULL == con_info) {
+		return;
+	}
 
 	if (!decoder->new_session) {
 		/* No streaming processing -> need to process buffer */
@@ -120,6 +130,8 @@ static void request_completed(void *cls,
 				con_info->str.buf,
 				con_info->str.size,
 				&con_info->decoder_params,
+				NULL,
+				NULL,
 				NULL);
 		con_info->str.buf = NULL; /* librdkafka will free it */
 	} else if (decoder->delete_session) {
@@ -178,20 +190,51 @@ static const char *zlib_error2str(const int z_status) {
 	};
 }
 
+/// Save all decoder options in conn_info, or ask for size if !conn_info
+static size_t decoder_opts(struct MHD_Connection *connection,
+			   const char *http_method,
+			   const char *uri,
+			   const char *client,
+			   struct conn_info *conn_info) {
+	const struct pair listener_options[] = {
+			{.key = "D-HTTP-method", .value = http_method},
+			{.key = "D-HTTP-URI", .value = uri},
+			{.key = "D-Client-IP", .value = client},
+	};
+
+	const size_t num_http_headers = (size_t)MHD_get_connection_values(
+			connection,
+			MHD_HEADER_KIND,
+			conn_info ? connection_args_iterator : NULL,
+			conn_info);
+
+	if (conn_info) {
+		memcpy(&conn_info->decoder_opts[conn_info->decoder_opts_size],
+		       listener_options,
+		       sizeof(listener_options));
+
+		conn_info->decoder_opts_size += RD_ARRAYSIZE(listener_options);
+
+		keyval_list_init(&conn_info->decoder_params);
+		for (size_t i = 0; i < conn_info->decoder_opts_size; ++i) {
+			add_key_value_pair(&conn_info->decoder_params,
+					   &conn_info->decoder_opts[i]);
+		}
+	}
+
+	return num_http_headers + RD_ARRAYSIZE(listener_options);
+}
+
 static struct conn_info *
-create_connection_info(const char *uri,
+create_connection_info(const char *http_method,
+		       const char *uri,
 		       const char *client,
 		       const size_t decoder_session_size,
 		       struct MHD_Connection *connection) {
 
 	/* First call, creating all needed structs */
-	const int num_post_headers =
-			MHD_get_connection_values(connection,
-						  MHD_HEADER_KIND,
-						  /* iterator */ NULL,
-						  /* iterator opaque */ NULL);
-	const size_t num_decoder_opts =
-			(size_t)num_post_headers + 2 /* URI & client IP */;
+	const size_t num_decoder_opts = decoder_opts(
+			connection, http_method, uri, client, NULL);
 	struct conn_info *con_info = NULL;
 
 	const size_t con_info_size =
@@ -216,22 +259,7 @@ create_connection_info(const char *uri,
 				&con_info->decoder_opts[num_decoder_opts];
 	}
 
-	con_info->decoder_opts[0].key = "D-Client-IP";
-	con_info->decoder_opts[1].key = "D-HTTP-URI";
-	con_info->decoder_opts[1].value = uri;
-	con_info->decoder_opts_size = 2;
-
-	MHD_get_connection_values(connection,
-				  MHD_HEADER_KIND,
-				  connection_args_iterator,
-				  con_info);
-
-	keyval_list_init(&con_info->decoder_params);
-	size_t i;
-	for (i = 0; i < con_info->decoder_opts_size; ++i) {
-		add_key_value_pair(&con_info->decoder_params,
-				   &con_info->decoder_opts[i]);
-	}
+	decoder_opts(connection, http_method, uri, client, con_info);
 
 	string_init(&con_info->str);
 
@@ -278,10 +306,18 @@ send_buffered_response(struct MHD_Connection *con,
 	return ret;
 }
 
-static int send_http_ok(struct MHD_Connection *connection) {
+static void *const_cast(const void *arg) {
+	void *ret;
+	memcpy(&ret, &arg, sizeof(ret));
+	return ret;
+}
+
+static int send_http_ok(struct MHD_Connection *connection,
+			const char *persistent_buf,
+			size_t persistent_buf_siz) {
 	return send_buffered_response(connection,
-				      0,
-				      NULL,
+				      persistent_buf_siz,
+				      const_cast(persistent_buf),
 				      MHD_RESPMEM_PERSISTENT,
 				      MHD_HTTP_OK,
 				      NULL);
@@ -424,6 +460,8 @@ static size_t compressed_callback(struct http_listener *h_listener,
 					(char *)buffer,
 					zprocessed,
 					&con_info->decoder_params,
+					NULL,
+					NULL,
 					con_info->decoder_sess);
 		}
 	} while (con_info->zlib.strm.avail_out == 0);
@@ -435,7 +473,7 @@ static size_t compressed_callback(struct http_listener *h_listener,
 	return upload_data_size - con_info->zlib.strm.avail_in;
 }
 
-static int post_handle(void *vhttp_listener,
+static int handle_post(void *vhttp_listener,
 		       struct MHD_Connection *connection,
 		       const char *url,
 		       const char *method,
@@ -443,18 +481,8 @@ static int post_handle(void *vhttp_listener,
 		       const char *upload_data,
 		       size_t *upload_data_size,
 		       void **ptr) {
-	struct http_listener *http_listener = vhttp_listener;
-#ifdef HTTP_PRIVATE_MAGIC
-	assert(HTTP_PRIVATE_MAGIC == http_listener->magic);
-#endif
-
-	if (0 != strcmp(method, MHD_HTTP_METHOD_POST)) {
-		rdlog(LOG_WARNING,
-		      "Received invalid method %s. "
-		      "Returning METHOD NOT ALLOWED.",
-		      method);
-		return send_http_method_not_allowed(connection);
-	}
+	struct http_listener *http_listener =
+			http_listener_cast(vhttp_listener);
 
 	if (NULL == ptr) {
 		return MHD_NO;
@@ -473,8 +501,11 @@ static int post_handle(void *vhttp_listener,
 				decoder->session_size ? decoder->session_size()
 						      : 0;
 
-		*ptr = create_connection_info(
-				url, client, decoder_session_size, connection);
+		*ptr = create_connection_info(method,
+					      url,
+					      client,
+					      decoder_session_size,
+					      connection);
 		if (unlikely(NULL == *ptr)) {
 			return MHD_NO;
 		}
@@ -523,6 +554,8 @@ static int post_handle(void *vhttp_listener,
 					upload_data,
 					*upload_data_size,
 					&con_info->decoder_params,
+					NULL,
+					NULL,
 					con_info->decoder_sess);
 			/// @TODO fix it
 			if (0 /* ERROR */) {
@@ -535,7 +568,92 @@ static int post_handle(void *vhttp_listener,
 	} else {
 		/* Send OK. Resources will be freed in request_completed
 		 */
-		return send_http_ok(connection);
+		return send_http_ok(connection, NULL, 0);
+	}
+}
+
+static int handle_get(void *vhttp_listener,
+		      struct MHD_Connection *connection,
+		      const char *uri,
+		      const char *method,
+		      const char *version HTTP_UNUSED,
+		      const char *upload_data,
+		      size_t *upload_data_size,
+		      void **ptr) {
+	if (NULL == *ptr) {
+		// If we queue response now, MHD close the transport connection,
+		// forbidding HTTP pipelining. Wait until next call.
+		*ptr = (void *)1;
+		return MHD_YES;
+	}
+
+	struct http_listener *http_listener =
+			http_listener_cast(vhttp_listener);
+	char client_buf[BUFSIZ];
+	const char *client =
+			client_addr(client_buf, sizeof(client_buf), connection);
+
+	/* First call, creating all needed structs */
+	const size_t num_decoder_opts =
+			decoder_opts(connection, method, uri, client, NULL);
+
+	struct conn_info *con_info = NULL;
+	const size_t con_info_size =
+			sizeof(con_info[0]) +
+			num_decoder_opts * sizeof(con_info->decoder_opts[0]);
+	con_info = alloca(con_info_size);
+	memset(con_info, 0, con_info_size);
+
+	decoder_opts(connection, method, uri, client, con_info);
+
+	const char *response;
+	size_t response_size;
+	listener_decode(&http_listener->listener,
+			upload_data,
+			*upload_data_size,
+			&con_info->decoder_params,
+			&response,
+			&response_size,
+			con_info->decoder_sess);
+
+	*ptr = NULL;
+
+	//@TODO difference between 200, 400, 500...
+	return send_http_ok(connection, response, response_size);
+}
+
+static int handle_request(void *vhttp_listener,
+			  struct MHD_Connection *connection,
+			  const char *url,
+			  const char *method,
+			  const char *version,
+			  const char *upload_data,
+			  size_t *upload_data_size,
+			  void **ptr) {
+	if (0 == strcmp(method, MHD_HTTP_METHOD_POST)) {
+		return handle_post(vhttp_listener,
+				   connection,
+				   url,
+				   method,
+				   version,
+				   upload_data,
+				   upload_data_size,
+				   ptr);
+	} else if (0 == strcmp(method, MHD_HTTP_METHOD_GET)) {
+		return handle_get(vhttp_listener,
+				  connection,
+				  url,
+				  method,
+				  version,
+				  upload_data,
+				  upload_data_size,
+				  ptr);
+	} else {
+		rdlog(LOG_WARNING,
+		      "Received invalid method %s. "
+		      "Returning METHOD NOT ALLOWED.",
+		      method);
+		return send_http_method_not_allowed(connection);
 	}
 }
 
@@ -642,16 +760,17 @@ static struct http_listener *start_http_loop(const struct http_loop_args *args,
 
 			{MHD_OPTION_END, 0, NULL}};
 
-	http_listener->d = MHD_start_daemon(flags,
-					    args->port,
-					    NULL, /* Auth callback */
-					    NULL, /* Auth callback parameter */
-					    post_handle,   /* Request handler */
-					    http_listener, /* Request handler
-							      parameter */
-					    MHD_OPTION_ARRAY,
-					    opts,
-					    MHD_OPTION_END);
+	http_listener->d =
+			MHD_start_daemon(flags,
+					 args->port,
+					 NULL, /* Auth callback */
+					 NULL, /* Auth callback parameter */
+					 handle_request, /* Request handler */
+					 http_listener,  /* Request handler
+							    parameter */
+					 MHD_OPTION_ARRAY,
+					 opts,
+					 MHD_OPTION_END);
 
 	if (NULL == http_listener->d) {
 		rdlog(LOG_ERR,
@@ -751,7 +870,8 @@ static const char *http_name() {
 }
 
 const n2k_listener_factory http_listener_factory = {
-		.name = http_name, .create = create_http_listener,
+		.name = http_name,
+		.create = create_http_listener,
 };
 
 #endif

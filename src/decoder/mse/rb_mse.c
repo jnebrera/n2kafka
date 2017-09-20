@@ -791,7 +791,11 @@ static void mse_decode(const char *buffer,
 		       size_t buf_size,
 		       const keyval_list_t *keyval,
 		       void *_listener_callback_opaque,
+		       const char **response,
+		       size_t *response_size,
 		       void *sessionp __attribute__((unused))) {
+	(void)response;
+	(void)response_size;
 	size_t i;
 	struct mse_opaque *mse_opaque = _listener_callback_opaque;
 #ifdef MSE_OPAQUE_MAGIC

@@ -271,7 +271,7 @@ void test_zz_decoder(void **vparams) {
 		CONNECTION_POST_VALUE("X-Credential-Username", "not_important"),
 		CONNECTION_POST_VALUE("X-Anonymous-Consumer", "false"),
 	};
-// clang-format on
+	// clang-format on
 
 #undef CONNECTION_POST_VALUE
 
@@ -288,7 +288,7 @@ void test_zz_decoder(void **vparams) {
 	set_rdkafka_consumer_topics(rk_consumer, params->out_topic);
 	void *http_connection = NULL;
 
-	post_handle(zz_state.listener,
+	handle_post(zz_state.listener,
 		    (struct MHD_Connection *)&zz_state.mhd_connection,
 		    params->uri,
 		    "POST",
@@ -304,7 +304,7 @@ void test_zz_decoder(void **vparams) {
 				msg_i->expected_kafka_messages;
 		rd_kafka_message_t *kafka_msgs[expected_kafka_msgs];
 
-		post_handle(zz_state.listener,
+		handle_post(zz_state.listener,
 			    (struct MHD_Connection *)&zz_state.mhd_connection,
 			    params->uri,
 			    "POST",
@@ -353,7 +353,8 @@ json_t *assert_json_loads(const char *json_txt) {
 
 int __wrap_MHD_queue_response(struct MHD_Connection *connection,
 			      unsigned int status_code,
-			      struct MHD_Response *response) __attribute__((used));
+			      struct MHD_Response *response)
+		__attribute__((used));
 int __wrap_MHD_queue_response(struct MHD_Connection *connection,
 			      unsigned int status_code,
 			      struct MHD_Response *response) {

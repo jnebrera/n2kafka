@@ -19,7 +19,7 @@
 ** along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "../src/decoder/meraki/rb_meraki.c"
+#include "../src/decoder/meraki/meraki.c"
 #include "rb_json_tests.c"
 
 #include <cmocka.h>

@@ -22,7 +22,7 @@
 #include "config.h"
 
 #include "decoder/decoder_api.h"
-#include "decoder/meraki/rb_meraki.h"
+#include "decoder/meraki/meraki.h"
 #include "decoder/mse/rb_mse.h"
 #include "decoder/zz_http2k/zz_http2k_decoder.h"
 #include "util/in_addr_list.h"

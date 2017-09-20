@@ -156,7 +156,11 @@ static void zz_decode(const char *buffer,
 		      size_t buf_size,
 		      const keyval_list_t *props,
 		      void *t_decoder_opaque,
+		      const char **response,
+		      size_t *response_size,
 		      void *t_session) {
+	(void)response;
+	(void)response_size;
 
 	char *buffer_copy = malloc(buf_size);
 	if (unlikely(NULL == buffer_copy)) {

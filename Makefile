@@ -101,11 +101,12 @@ WRAP_BASH_FN = $(shell gcc-nm -P $(1) | grep -e "^__wrap" | cut -d ' ' -f 1 | \
 
 tests/%.test: WRAP_LDFLAGS := -Wl,-wrap,MHD_get_connection_info
 tests/%.test: CPPFLAGS := -I. $(CPPFLAGS)
-tests/%.test: tests/%.o $(TEST_COMMON_OBJS_DEPS) $(filter-out src/engine/n2kafka.o,$(OBJS))
+tests/%.test: tests/%.o $(BIN) $(TEST_COMMON_OBJS_DEPS) $(filter-out src/engine/n2kafka.o,$(OBJS))
 	@echo -e '\033[0;33m Building: $@ \033[0m'
 	$(CC) $(CPPFLAGS) $(LDFLAGS) \
 		$(call WRAP_BASH_FN,$(shell cat $(@:.test=.objdeps))) \
-		$< $(shell cat $(@:.test=.objdeps)) -o $@ $(LIBS) -lcurl
+		$< $(shell cat $(@:.test=.objdeps)) \
+		-o $@ $(LIBS) -lcurl
 
 check_coverage:
 	@( if [[ "x$(WITH_COVERAGE)" == "xn" ]]; then \

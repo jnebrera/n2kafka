@@ -237,7 +237,13 @@ static void process_data_received_from_socket(char *buffer,
 	if (unlikely(only_stdout_output())) {
 		free(buffer);
 	} else {
-		listener_decode(l, buffer, recv_result, &attrs, NULL);
+		listener_decode(l,
+				buffer,
+				recv_result,
+				&attrs,
+				NULL,
+				NULL,
+				NULL);
 	}
 }
 

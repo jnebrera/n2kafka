@@ -23,9 +23,15 @@
 
 static void dumb_decode(const char *buffer,
 			size_t buf_size,
-			const keyval_list_t *keyval __attribute__((unused)),
+			const keyval_list_t *keyval,
 			void *listener_callback_opaque,
-			void *sessionp __attribute__((unused))) {
+			const char **response,
+			size_t *response_size,
+			void *sessionp) {
+	(void)keyval;
+	(void)response;
+	(void)response_size;
+	(void)sessionp;
 
 	rd_kafka_topic_t *rkt =
 			new_rkt_global_config(default_topic_name(), NULL);
@@ -47,5 +53,6 @@ static const char *dumb_decoder_name() {
 }
 
 const struct n2k_decoder dumb_decoder = {
-		.name = dumb_decoder_name, .callback = dumb_decode,
+		.name = dumb_decoder_name,
+		.callback = dumb_decode,
 };

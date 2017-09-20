@@ -367,11 +367,9 @@ static void parse_config0(json_t *root) {
 	const int unpack_rc = json_unpack_ex(root,
 					     &jerr,
 					     0,
-					     "{s?o,s?o,s?o}",
+					     "{s?o,s?o}",
 					     mse_decoder.config_parameter(),
 					     &mse,
-					     meraki_decoder.config_parameter(),
-					     &meraki,
 					     zz_decoder.config_parameter(),
 					     &zz_http2k);
 

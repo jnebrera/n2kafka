@@ -47,7 +47,11 @@ In order to treat received data, you can use one of the provided decoders. The
 most useful is http2k decoder, that allows to send to many topics. You can get
 more info about it [here](src/decoder/zz_http2k/README.md).
 
+Another useful decoder is [Meraki](src/decoder/meraki/README.md). You can send
+your meraki location reports to n2kafka and it will forward to a kafka broker.
+
 # Docker setup
 If you want an easy setup, you can use n2kafka docker image provided at
-gcr.io/wizzie-registry/n2kafka. This container provides default http2k decoder
+gcr.io/wizzie-registry/n2kafka. This container provides default
+[http2k](src/decoder/zz_http2k/README.md) decoder
 listening in port `7980`, and send data to `kafka` bootstrap broker.

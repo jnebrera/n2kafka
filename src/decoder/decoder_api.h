@@ -36,6 +36,8 @@ typedef struct n2k_decoder {
 			 size_t buf_size,
 			 const keyval_list_t *props,
 			 void *listener_callback_opaque,
+			 const char **response,
+			 size_t *response_size,
 			 void *sessionp);
 
 	int (*init)();			     ///< Init decoder global config

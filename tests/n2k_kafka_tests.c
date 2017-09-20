@@ -74,7 +74,13 @@ rd_kafka_t *init_kafka_consumer(const char *brokers) {
 		const char *key, *value;
 	} rk_props[] = {
 			{
-					.key = "group.id", .value = "tester",
+					// No need for different groups ids
+					.key = "group.id",
+					.value = "tester",
+			},
+			{
+					.key = "metadata.broker.list",
+					.value = brokers,
 			},
 			{
 					.key = "fetch.wait.max.ms",
@@ -148,11 +154,6 @@ rd_kafka_t *init_kafka_consumer(const char *brokers) {
 				errstr,
 				sizeof(errstr)))) {
 		fail_msg("Failed to create new consumer: %s\n", errstr);
-	}
-
-	// Add brokers
-	if (rd_kafka_brokers_add(rk, brokers) == 0) {
-		fail_msg("No valid brokers specified in [%s]\n", brokers);
 	}
 
 	// Redirect rd_kafka_poll() to consumer_poll()

@@ -81,9 +81,15 @@ static int assert_mkstemp(char *template) {
 	return mktmp_fd;
 }
 
-static void random_topic(char *template) {
+static void random_topic0(char *template) {
 	const int topic_fd = assert_mkstemp(template);
 	close(topic_fd);
+}
+
+const char *random_topic() {
+	char *ret = strdup(n2k_topic_template);
+	random_topic0(ret);
+	return ret;
 }
 
 static json_t *n2k_base_listener(struct test_listener *args) {
@@ -109,6 +115,14 @@ static json_t *n2k_base_listener(struct test_listener *args) {
 		fail_msg("%s", jerr.text);
 	}
 
+	if (args->topic) {
+		json_t *jlistener_topic = json_string(args->topic);
+		assert_non_null(jlistener_topic);
+		const int set_rc =
+				json_object_set(ret, "topic", jlistener_topic);
+		assert_int_equal(set_rc, 0);
+	}
+
 	return ret;
 }
 
@@ -124,20 +138,7 @@ static void n2k_base_config(char *config_filepath_template,
 
 	while (t_listeners->proto) {
 		json_t *listener = n2k_base_listener(t_listeners);
-		if (NULL == default_topic) {
-			// Per listener topic
-			char listener_topic[sizeof(n2k_topic_template)];
-			memcpy(listener_topic,
-			       n2k_topic_template,
-			       sizeof(listener_topic));
-			random_topic(listener_topic);
-
-			json_t *jlistener_topic = json_string(listener_topic);
-			assert_non_null(jlistener_topic);
-			const int set_rc = json_object_set(
-					listener, "topic", jlistener_topic);
-			assert_int_equal(set_rc, 0);
-		}
+		assert_non_null(listener);
 
 		const int append_rc = json_array_append_new(listeners_array,
 							    listener);
@@ -236,15 +237,19 @@ test_toppar_list(const struct test_iteration *iteration) {
 	for (; iteration->test_messages; iteration++) {
 		for (struct test_messages *test_messages =
 				     iteration->test_messages;
-		     test_messages->send_msg;
+		     test_messages->uri;
 		     test_messages++) {
 
 			const char *topic = test_messages->topic;
-			if (NULL !=
-			    rd_kafka_topic_partition_list_find(ret, topic, 0)) {
+			if (NULL == topic) {
 				continue;
 			}
 
+			if (!topic ||
+			    NULL != rd_kafka_topic_partition_list_find(
+						    ret, topic, 0)) {
+				continue;
+			}
 			rd_kafka_topic_partition_list_add(ret, topic, 0);
 		}
 	}
@@ -351,9 +356,8 @@ void test_n2k(void **state) {
 	struct test_iteration *iterations = *state;
 	assert_true(iterations->magic = TEST_ITERATION_MAGIC);
 
-	if (iterations->default_topic == test_random_topic) {
-		random_topic(test_random_topic);
-	}
+	memset(test_random_topic + sizeof(test_random_topic) - 7, 'X', 6);
+	random_topic0(test_random_topic);
 
 	/// @TODO reload
 	n2k_base_config(config_file_path,

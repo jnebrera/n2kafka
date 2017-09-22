@@ -31,6 +31,7 @@
 struct test_listener {
 	const char *decoder;
 	const char *proto;
+	const char *topic;
 	int num_threads;
 	uint16_t port;
 };
@@ -55,12 +56,16 @@ struct test_iteration {
 	struct test_messages *test_messages;
 };
 
-// Point topic here to generate it randomly
+/// Point topic here to generate it randomly. It will be the same in all test,
+/// but different between tests
 extern char test_random_topic[];
 
 void test_n2k(void **state);
 int n2k_group_setup(void **state);
 int n2k_group_teardown(void **state);
+
+/// Generate a new random topic
+const char *random_topic(void);
 
 #define n2k_test(t_state) cmocka_unit_test_prestate(test_n2k, t_state)
 #define n2k_run_group_tests(t_tests)                                           \

@@ -15,9 +15,15 @@ function zz_var {
 # ZZ variables
 #
 
+zz_var DECODER zz_http2k
 zz_var N2K_NTHREADS 3
 zz_var KAFKA_BROKERS kafka
-zz_var HTTP2K_PORT 7980
+zz_var LISTENER_PORT 7980
+zz_var DEFAULT_TOPIC ''
+
+if [ ! -z DEFAULT_TOPIC ]; then
+	export topic_config="\"topic\": \"${DEFAULT_TOPIC}\","
+fi
 
 #
 # All RDKAFKA_ vars will be passed to librdkafka as-is

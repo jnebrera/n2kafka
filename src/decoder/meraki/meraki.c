@@ -61,17 +61,19 @@ static int meraki_opaque_creator(const struct json_t *config, void **_opaque) {
 
 	const json_t *jlistener_topic_name =
 			json_object_get(config, CONFIG_MERAKI_TOPIC_KEY);
-	if (jlistener_topic_name) {
-		if (!json_is_string(jlistener_topic_name)) {
-			rdlog(LOG_ERR,
-			      "meraki listener-configured topic is not a "
-			      "string in config");
-		} else {
-			listener_topic_name =
-					json_string_value(jlistener_topic_name);
-			listener_topic_name_len = json_string_length(
-					jlistener_topic_name);
-		}
+
+	if (!jlistener_topic_name) {
+		return 0; // no need for listener opaque
+	}
+
+	if (!json_is_string(jlistener_topic_name)) {
+		rdlog(LOG_ERR,
+		      "meraki listener-configured topic is not a "
+		      "string in config");
+	} else {
+		listener_topic_name = json_string_value(jlistener_topic_name);
+		listener_topic_name_len =
+				json_string_length(jlistener_topic_name);
 	}
 
 	struct meraki_listener_opaque *opaque = (*_opaque) = calloc(
@@ -95,9 +97,11 @@ static int meraki_opaque_creator(const struct json_t *config, void **_opaque) {
 }
 
 static void meraki_opaque_destructor(void *vopaque) {
-	struct meraki_listener_opaque *opaque =
-			meraki_listener_opaque_cast(vopaque);
-	free(opaque);
+	if (vopaque) {
+		struct meraki_listener_opaque *opaque =
+				meraki_listener_opaque_cast(vopaque);
+		free(opaque);
+	}
 }
 
 static int new_meraki_session(void *zz_sess,
@@ -108,13 +112,9 @@ static int new_meraki_session(void *zz_sess,
 	assert(msg_vars);
 
 	static const char meraki_topic_prefix[] = "/v1/data/";
-	const char *meraki_topic = "";
-
-	if (strlen(listener_opaque->listener_topic)) {
-		meraki_topic = listener_opaque->listener_topic;
-	} else if (default_topic_name()) {
-		meraki_topic = default_topic_name();
-	}
+	const char *meraki_topic =
+			listener_opaque->listener_topic
+					?: default_topic_name() ?: "";
 
 	char meraki_uri[strlen(meraki_topic_prefix) + strlen(meraki_topic) + 1];
 	memcpy(meraki_uri, meraki_topic_prefix, strlen(meraki_topic_prefix));

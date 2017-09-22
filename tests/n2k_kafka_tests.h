@@ -22,9 +22,22 @@
 #pragma once
 
 #include <librdkafka/rdkafka.h>
+#include <stdbool.h>
 
 /// Return unique random topic name
 void random_topic_name(char *template);
 
 rd_kafka_t *init_kafka_consumer(const char *brokers);
 void set_rdkafka_consumer_topics(rd_kafka_t *rk, const char *topic);
+
+/// Consume all kafka messages in specified topic
+void consume_kafka_messages(rd_kafka_t *rk,
+			    const char *expected_topic,
+			    const char **expected_kafka_messages,
+			    rd_kafka_topic_partition_list_t *topic_list,
+			    bool *eof_reached);
+
+/// Reach EOF in all topics
+void reach_eof(rd_kafka_t *rk,
+	       rd_kafka_topic_partition_list_t *topic_list,
+	       bool *eof_reached);

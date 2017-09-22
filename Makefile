@@ -8,7 +8,7 @@ TESTS = $(TESTS_C:.c=.test)
 TESTS_OBJS = $(TESTS:.test=.o)
 # TODO infividualize parsing objdeps!
 TEST_COMMON_OBJS_DEPS = tests/assertion_handler.o tests/n2k_kafka_tests.o \
-	tests/rb_json_tests.o tests/zz_http2k_tests.o
+	tests/rb_json_tests.o tests/zz_http2k_tests.o tests/n2k_base_test.o
 
 TEST_REPORTS_DIR ?= tests/
 

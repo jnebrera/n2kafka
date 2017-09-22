@@ -177,3 +177,91 @@ void set_rdkafka_consumer_topics(rd_kafka_t *rk, const char *topic) {
 
 	rd_kafka_topic_partition_list_destroy(topics);
 }
+
+static bool
+bool_array_all(const bool *array, size_t array_len, bool test_value) {
+	for (size_t i = 0; i < array_len; ++i) {
+		if (array[i] != test_value) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+void consume_kafka_messages(rd_kafka_t *rk,
+			    const char *expected_topic,
+			    const char **expected_kafka_messages,
+			    rd_kafka_topic_partition_list_t *topic_list,
+			    bool *eof_reached) {
+
+	if (NULL == *expected_kafka_messages) {
+		// We are only expecting for EOF
+		if (bool_array_all(eof_reached,
+				   (size_t)topic_list->cnt,
+				   true)) {
+			return;
+		}
+	}
+
+	while (true) {
+		rd_kafka_message_t *rkmessage =
+				rd_kafka_consumer_poll(rk, 60000);
+		if (NULL == rkmessage) {
+			fail_msg("Timeout consuming with kafka");
+		}
+
+		const char *topic_name = rd_kafka_topic_name(rkmessage->rkt);
+
+		if (RD_KAFKA_RESP_ERR__PARTITION_EOF == rkmessage->err) {
+			rd_kafka_topic_partition_t *eof =
+					rd_kafka_topic_partition_list_find(
+							topic_list,
+							topic_name,
+							rkmessage->partition);
+			assert_non_null(eof);
+			eof_reached[eof - topic_list->elems] = true;
+
+			if (bool_array_all(eof_reached,
+					   (size_t)topic_list->cnt,
+					   true)) {
+				return;
+			}
+
+		} else if (0 != rkmessage->err) {
+			fail_msg("Error consuming from topic %s: %s",
+				 topic_name,
+				 rd_kafka_message_errstr(rkmessage));
+		} else if ((expected_topic &&
+			    strcmp(topic_name, expected_topic)) ||
+			   NULL == *expected_kafka_messages) {
+			expected_topic = expected_topic ?: "(null)";
+			fail_msg("Unexpected message received from topic %s, "
+				 "expected %s",
+				 topic_name,
+				 expected_topic);
+		} else {
+			assert_int_equal(
+					0,
+					strncmp(rkmessage->payload,
+						*expected_kafka_messages,
+						strlen(*expected_kafka_messages)));
+			expected_kafka_messages++;
+		}
+
+		rd_kafka_message_destroy(rkmessage);
+	}
+}
+
+void reach_eof(rd_kafka_t *rk,
+	       rd_kafka_topic_partition_list_t *topic_list,
+	       bool *eof_reached) {
+	const char *expected_topic = NULL;
+	const char **expected_kafka_messages = (const char *[]){NULL};
+
+	consume_kafka_messages(rk,
+			       expected_topic,
+			       expected_kafka_messages,
+			       topic_list,
+			       eof_reached);
+}

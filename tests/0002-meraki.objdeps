@@ -1,1 +1,1 @@
-tests/n2k_kafka_tests.o
+tests/n2k_kafka_tests.o tests/n2k_base_test.o

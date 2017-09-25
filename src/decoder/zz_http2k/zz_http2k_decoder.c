@@ -184,10 +184,6 @@ static const char *zz_name() {
 	return "zz_http2k";
 }
 
-static const char *zz_config_token() {
-	return "zz_http2k_config";
-}
-
 static int vnew_zz_session(void *t_session,
 			   void *listener_opaque,
 			   const keyval_list_t *msg_vars) {
@@ -212,7 +208,6 @@ static size_t zz_session_size() {
 
 const struct n2k_decoder zz_decoder = {
 		.name = zz_name,
-		.config_parameter = zz_config_token,
 
 		.init = zz_decoder_init,
 		.done = zz_decoder_done,

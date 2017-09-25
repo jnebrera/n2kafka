@@ -25,7 +25,6 @@
 #include "listener/socket.h"
 
 #include "decoder/dumb/dumb.h"
-#include "decoder/mse/rb_mse.h"
 
 #include <librd/rd.h>
 #include <librd/rdfile.h>
@@ -57,11 +56,8 @@
 
 struct n2kafka_config global_config;
 
-static const struct n2k_decoder *registered_decoders[] = {&dumb_decoder,
-							  &mse_decoder,
-
-							  &meraki_decoder,
-							  &zz_decoder};
+static const struct n2k_decoder *registered_decoders[] = {
+		&dumb_decoder, &meraki_decoder, &zz_decoder};
 
 static const n2k_listener_factory *registered_listeners[] = {
 #ifdef HAVE_LIBMICROHTTPD
@@ -349,8 +345,6 @@ static void parse_rdkafka_config_keyval(const char *key, const json_t *value) {
 }
 
 static void parse_config0(json_t *root) {
-	json_error_t jerr;
-	json_t *mse = NULL, *meraki = NULL, *zz_http2k = NULL;
 	const char *key;
 	json_t *value;
 
@@ -363,44 +357,9 @@ static void parse_config0(json_t *root) {
 		init_rdkafka();
 	}
 
-	/// @TODO replace next unpack by a for loop in decoders struct
-	const int unpack_rc = json_unpack_ex(root,
-					     &jerr,
-					     0,
-					     "{s?o,s?o}",
-					     mse_decoder.config_parameter(),
-					     &mse,
-					     zz_decoder.config_parameter(),
-					     &zz_http2k);
-
-	if (unpack_rc != 0) {
-		rdlog(LOG_ERR, "Can't parse config file: %s", jerr.text);
-		exit(-1);
+	json_object_foreach(root, key, value) {
+		parse_config_keyval(key, value);
 	}
-
-	if (mse) {
-		const int parse_rc = mse_decoder.reload(mse);
-		if (0 != parse_rc) {
-			rdlog(LOG_ERR, "Can't init MSE config");
-			exit(-1);
-		}
-	}
-	if (meraki) {
-		const int parse_rc = meraki_decoder.reload(meraki);
-		if (0 != parse_rc) {
-			rdlog(LOG_ERR, "Can't init meraki");
-			exit(-1);
-		}
-	}
-	if (zz_http2k) {
-		const int parse_rc = zz_decoder.reload(zz_http2k);
-		if (0 != parse_rc) {
-			rdlog(LOG_ERR, "Can't parse zz_http2k config");
-			exit(-1);
-		}
-	}
-
-	json_object_foreach(root, key, value) parse_config_keyval(key, value);
 }
 
 static void check_config() {

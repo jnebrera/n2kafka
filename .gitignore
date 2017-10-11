@@ -41,10 +41,11 @@
 /vendor/
 
 # Tests
-/tests/*.test
 /tests/*.xml
 /tests/coverage.info
 /tests/out
+__pycache__
+.pytest_cache/
 
 # Docker
 /docker/devel/

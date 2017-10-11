@@ -2,22 +2,17 @@ BIN=	n2kafka
 
 SRCS=   version.c
 OBJS = $(SRCS:.c=.o)
-TESTS_C = $(wildcard tests/0*.c)
+TESTS_PY = $(wildcard tests/0*.py)
 
-TESTS = $(TESTS_C:.c=.test)
-TESTS_OBJS = $(TESTS:.test=.o)
-# TODO infividualize parsing objdeps!
-TEST_COMMON_OBJS_DEPS = tests/assertion_handler.o tests/n2k_kafka_tests.o \
-	tests/rb_json_tests.o tests/zz_http2k_tests.o tests/n2k_base_test.o
+TEST_REPORTS_DIR ?= tests
 
-TEST_REPORTS_DIR ?= tests/
-
-TESTS_CHECKS_XML = $(TESTS_C:tests/%.c=$(TEST_REPORTS_DIR)/%.xml)
-TESTS_MEM_XML = $(TESTS_C:tests/%.c=$(TEST_REPORTS_DIR)/%.mem.xml)
-TESTS_HELGRIND_XML = $(TESTS_C:tests/%.c=$(TEST_REPORTS_DIR)/%.helgrind.xml)
-TESTS_DRD_XML = $(TESTS_C:tests/%.c=$(TEST_REPORTS_DIR)/%.drd.xml)
+TESTS_CHECKS_XML = $(TESTS_PY:tests/%.py=$(TEST_REPORTS_DIR)/%.xml)
+TESTS_MEM_XML = $(TESTS_PY:tests/%.py=$(TEST_REPORTS_DIR)/%.mem.xml)
+TESTS_HELGRIND_XML = $(TESTS_PY:tests/%.py=$(TEST_REPORTS_DIR)/%.helgrind.xml)
+TESTS_DRD_XML = $(TESTS_PY:tests/%.py=$(TEST_REPORTS_DIR)/%.drd.xml)
 TESTS_VALGRIND_XML = $(TESTS_MEM_XML)
 TESTS_XML = $(TESTS_CHECKS_XML) $(TESTS_VALGRIND_XML)
+TESTS_PY_DEPS = $(wildcard tests/[!0]*.py)
 
 all: $(BIN)
 
@@ -49,7 +44,7 @@ clean: bin-clean
 # Testing
 #
 
-COV_FILES = $(foreach ext,gcda gcno, $(SRCS:.c=.$(ext)) $(TESTS_C:.c=.$(ext)))
+COV_FILES = $(foreach ext,gcda gcno, $(SRCS:.c=.$(ext)))
 
 VALGRIND ?= valgrind
 SUPPRESSIONS_FILE ?= tests/valgrind.suppressions
@@ -60,15 +55,15 @@ endif
 .PHONY: tests checks memchecks drdchecks helchecks coverage check_coverage \
 	docker dev-docker .clang_complete $(VERSION_C_PHONY)
 
-run_tests = tests/run_tests.sh $(1) $(TESTS_C:.c=)
-run_valgrind = $(VALGRIND) --tool=$(1) $(SUPPRESSIONS_VALGRIND_ARG) --xml=yes \
-					--xml-file=$(2) $(3) >/dev/null 2>&1
+run_tests = tests/run_tests.sh $(1) $(TESTS_CHECKS_XML:.xml=)
+run_valgrind = py.test --junitxml="$@" "./$<" -- $(VALGRIND) --tool=$(1) \
+	$(SUPPRESSIONS_VALGRIND_ARG) --xml=yes --xml-file=$(2) $(3) >/dev/null 2>&1
 
 tests: $(TESTS_XML)
 	@$(call run_tests, -cvdh)
 
 checks: $(TESTS_CHECKS_XML)
-	@$(call run_tests,-c)
+	$(call run_tests,-c)
 
 memchecks: $(TESTS_VALGRIND_XML)
 	@$(call run_tests,-v)
@@ -79,34 +74,25 @@ drdchecks:
 helchecks:
 	@$(call run_tests,-h)
 
-$(TEST_REPORTS_DIR)/%.mem.xml: tests/%.test $(BIN)
+$(TEST_REPORTS_DIR)/%.mem.xml: tests/%.py $(TESTS_PY_DEPS) $(BIN)
 	@echo -e '\033[0;33m Checking memory:\033[0m $<'
-	-@$(call run_valgrind,memcheck,"$@","./$<")
+	@$(call run_valgrind,memcheck,"$@",$(BIN))
 
-$(TEST_REPORTS_DIR)/%.helgrind.xml: tests/%.test $(BIN)
+$(TEST_REPORTS_DIR)/%.helgrind.xml: tests/%.py $(TESTS_PY_DEPS) $(BIN)
 	@echo -e '\033[0;33m Testing concurrency [HELGRIND]:\033[0m $<'
-	-@$(call run_valgrind,helgrind,"$@","./$<")
+	-@$(call run_valgrind,helgrind,"$@",$(BIN))
 
-$(TEST_REPORTS_DIR)/%.drd.xml: tests/%.test $(BIN)
+$(TEST_REPORTS_DIR)/%.drd.xml: tests/%.py $(TESTS_PY_DEPS) $(BIN)
 	@echo -e '\033[0;33m Testing concurrency [DRD]:\033[0m $<'
-	-@$(call run_valgrind,drd,"$@","./$<")
+	-@$(call run_valgrind,drd,"$@",$(BIN))
 
-$(TEST_REPORTS_DIR)/%.xml: tests/%.test $(BIN)
+$(TEST_REPORTS_DIR)/%.xml: tests/%.py $(TESTS_PY_DEPS) $(BIN)
 	@echo -e '\033[0;33m Testing:\033[0m $<'
-	@CMOCKA_XML_FILE="$@" CMOCKA_MESSAGE_OUTPUT=XML "./$<" >/dev/null 2>&1
+	py.test --junitxml="$@" "./$<" #>/dev/null 2>&1
 
-#Transforms __wrap_fn in -Wl,-wrap,fn
-WRAP_BASH_FN = $(shell gcc-nm -P $(1) | grep -e "^__wrap" | cut -d ' ' -f 1 | \
-	sed 's/__wrap_/-Wl,-wrap=/' | xargs)
-
-tests/%.test: WRAP_LDFLAGS := -Wl,-wrap,MHD_get_connection_info
-tests/%.test: CPPFLAGS := -I. $(CPPFLAGS)
-tests/%.test: tests/%.o $(BIN) $(TEST_COMMON_OBJS_DEPS) $(filter-out src/engine/n2kafka.o,$(OBJS))
-	@echo -e '\033[0;33m Building: $@ \033[0m'
-	$(CC) $(CPPFLAGS) $(LDFLAGS) \
-		$(call WRAP_BASH_FN,$(shell cat $(@:.test=.objdeps))) \
-		$< $(shell cat $(@:.test=.objdeps)) \
-		-o $@ $(LIBS) -lcurl
+#
+# COVERAGE
+#
 
 check_coverage:
 	@( if [[ "x$(WITH_COVERAGE)" == "xn" ]]; then \
@@ -117,22 +103,26 @@ check_coverage:
 
 COVERAGE_INFO ?= coverage.info
 COVERAGE_OUTPUT_DIRECTORY ?= coverage.out.html
-COV_VALGRIND ?= valgrind
 COV_GCOV ?= gcov
 COV_LCOV ?= lcov
 
-coverage: check_coverage $(TESTS)
-	( for test in $(TESTS); do ./$$test; done )
+coverage.out: $(COV_FILES) coverage.info
+	genhtml --branch-coverage $(COVERAGE_INFO) --output-directory \
+				${COVERAGE_OUTPUT_DIRECTORY} > coverage.out
+
+coverage.info: $(COV_FILES)
 	$(COV_LCOV) --gcov-tool=$(COV_GCOV) -q \
                 --rc lcov_branch_coverage=1 --capture \
-                --directory ./src --output-file ${COVERAGE_INFO}
+                --directory ./src --output-file $(COVERAGE_INFO)
 
 	# Remove unwanted stuff
-	$(COV_LCOV) --remove ${COVERAGE_INFO} '*vendor/*' '/usr/include/*' \
-		'$(CURDIR)/src/util/tommyds/*' --rc lcov_branch_coverage=1 -o ${COVERAGE_INFO}
+	$(COV_LCOV) --remove $(COVERAGE_INFO) '*vendor/*' '/usr/include/*' \
+		'$(CURDIR)/src/util/tommyds/*' --rc lcov_branch_coverage=1 -o $(COVERAGE_INFO)
 
-	genhtml --branch-coverage ${COVERAGE_INFO} --output-directory \
-				${COVERAGE_OUTPUT_DIRECTORY} > coverage.out
+# Execution profile.
+$(SRCS:.c=.gcda): $(TESTS_CHECKS_XML)
+
+coverage: check_coverage coverage.out
 
 
 #

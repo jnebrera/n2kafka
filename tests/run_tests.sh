@@ -79,7 +79,7 @@ for FILE in $*; do
     # Parse the XML
     TIME=$(xml-printf '%s' $RESULT_XML ://testcase[$i]@time)
     NAME=$(xml-printf '%s' $RESULT_XML ://testcase[$i]@name)
-    FAIL=$(xml-printf '%s' $RESULT_XML ://testcase[$i])
+    FAIL=$(xml-printf '%s' $RESULT_XML ://testcase[$i]/failure 2>/dev/null)
 
     if [ -z "$FAIL" ] && [ $MEM_ERRORS -eq 0 ] && [ $HELGRIND_ERRORS -eq 0 ] && [ $DRD_ERRORS -eq 0 ]; then
       # No errors at all

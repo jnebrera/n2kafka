@@ -132,19 +132,11 @@ coverage: check_coverage coverage.out
 DOCKER_OUTPUT_TAG?=gcr.io/wizzie-registry/n2kafka
 DOCKER_OUTPUT_VERSION?=1.99-2
 
-DOCKER_RELEASE_FILES=n2kafka docker/release/config.json.env docker/release/n2k_setup.sh
+docker: $(BIN)
+	docker build -t $(DOCKER_OUTPUT_TAG):$(DOCKER_OUTPUT_VERSION) -f docker/Dockerfile
 
-docker: $(BIN) docker/release/Dockerfile
-	docker build -t $(DOCKER_OUTPUT_TAG):$(DOCKER_OUTPUT_VERSION) -f docker/release/Dockerfile .
-
-dev-docker: docker/devel/Dockerfile
-	@docker build $(DOCKER_BUILD_PARAMETERS) docker/devel
-
-docker/release/Dockerfile: RELEASEFILES_ARG=--define=releasefiles='$(DOCKER_RELEASE_FILES)'
-%/Dockerfile: docker/Dockerfile.m4
-	mkdir -p "$(dir $@)"
-	m4 $(RELEASEFILES_ARG) --define=version="$(@:docker/%/Dockerfile=%)" "$<" > "$@"
-
+dev-docker:
+	@docker build $(DOCKER_BUILD_PARAMETERS) --target n2k-dev -f docker/Dockerfile .
 
 -include $(DEPS)
 

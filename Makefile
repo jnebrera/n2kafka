@@ -1,6 +1,6 @@
 BIN=	n2kafka
 
-SRCS=   version.c
+SRCS=
 OBJS = $(SRCS:.c=.o)
 TESTS_PY = $(wildcard tests/0*.py)
 
@@ -17,23 +17,25 @@ TESTS_PY_DEPS = $(wildcard tests/[!0]*.py)
 all: $(BIN)
 
 CURRENT_N2KAFKA_DIR = $(dir $(lastword $(MAKEFILE_LIST)))
-
 include src/Makefile.mk
 include mklove/Makefile.base
 
+#
+# Version
+#
+
 # Update binary version if needed
-actual_git_version:=$(shell git describe --abbrev=6 --tags HEAD --always)
-ifneq (,$(wildcard version.c))
-version_c_version:=$(shell sed -n 's/.*n2kafka_version="\([^"]*\)";/\1/p' -- version.c)
+actual_git_version:=$(shell git describe --abbrev=6 --tags --dirty --always)
+
+# Modify version in needed files
+ifneq ($(actual_git_version),$(GITVERSION))
+$(shell sed -i 's/$(GITVERSION)/$(actual_git_version)/' -- config.h Makefile.config)
+GITVERSION=$actual_git_version
 endif
 
-ifneq (,$(filter-out $(actual_git_version),$(GITVERSION) $(version_c_version)))
-VERSION_C_PHONY=version.c
-endif
-
-version.c:
-	sed -i 's%^GITVERSION=.*%GITVERSION=$(actual_git_version)%g' Makefile.config
-	@echo "const char *n2kafka_version=\"$(actual_git_version)\";" > $@
+#
+# Binary related targets
+#
 
 install: bin-install
 
@@ -53,7 +55,7 @@ SUPPRESSIONS_VALGRIND_ARG = --suppressions=$(SUPPRESSIONS_FILE)
 endif
 
 .PHONY: tests checks memchecks drdchecks helchecks coverage check_coverage \
-	docker dev-docker .clang_complete $(VERSION_C_PHONY)
+	docker dev-docker .clang_complete
 
 run_tests = tests/run_tests.sh $(1) $(TESTS_CHECKS_XML:.xml=)
 run_valgrind = py.test --junitxml="$@" "./$<" -- $(VALGRIND) --tool=$(1) \

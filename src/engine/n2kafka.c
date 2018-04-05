@@ -18,10 +18,10 @@
 ** along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include "config.h"
 #include "engine.h"
 #include "global_config.h"
 #include "util/kafka.h"
-#include "version.h"
 
 #include <jansson.h>
 #include <signal.h>
@@ -37,10 +37,7 @@ static void shutdown_process() {
 }
 
 static void show_usage(const char *progname) {
-	fprintf(stdout,
-		"n2kafka version %s-%s\n",
-		n2kafka_version,
-		n2kafka_revision);
+	fprintf(stdout, "n2kafka version %s\n", GITVERSION);
 	fprintf(stdout, "Usage: %s <config_file>\n", progname);
 	fprintf(stdout, "\n");
 	fprintf(stdout,

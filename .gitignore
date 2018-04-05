@@ -37,7 +37,6 @@
 /config.h
 /config.log
 /config.log.old
-/version.c
 /vendor/
 
 # Tests

@@ -43,9 +43,10 @@ RUN	apk add --no-cache \
 
 RUN	update-ca-certificates
 RUN	pip3 install \
-		requests \
 		pykafka \
-		pytest
+		pytest \
+		pytest-xdist \
+		requests
 
 #
 # RELEASE

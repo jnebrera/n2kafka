@@ -86,9 +86,14 @@ $(TEST_REPORTS_DIR)/%.drd.xml: tests/%.py $(TESTS_PY_DEPS) $(BIN)
 	@echo -e '\033[0;33m Testing concurrency [DRD]:\033[0m $<'
 	-@$(call run_valgrind,drd,"$@",$(BIN))
 
+PYTEST_JOBS ?= 0
+ifneq ($(PYTEST_JOBS), 0)
+pytest_jobs_arg := -n $(PYTEST_JOBS)
+endif
+
 $(TEST_REPORTS_DIR)/%.xml: tests/%.py $(TESTS_PY_DEPS) $(BIN)
 	@echo -e '\033[0;33m Testing:\033[0m $<'
-	py.test --junitxml="$@" "./$<" #>/dev/null 2>&1
+	@py.test $(pytest_jobs_arg) --junitxml="$@" "./$<"
 
 #
 # COVERAGE

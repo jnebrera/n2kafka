@@ -606,8 +606,8 @@ static int handle_get(void *vhttp_listener,
 
 	decoder_opts(connection, method, uri, client, con_info);
 
-	const char *response;
-	size_t response_size;
+	const char *response = NULL;
+	size_t response_size = 0;
 	listener_decode(&http_listener->listener,
 			upload_data,
 			*upload_data_size,

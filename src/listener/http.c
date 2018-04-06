@@ -134,7 +134,6 @@ static void request_completed(void *cls,
 				NULL,
 				NULL,
 				NULL);
-		con_info->str.buf = NULL; /* librdkafka will free it */
 	} else if (decoder->delete_session) {
 		/* Streaming processing -> need to free session pointer */
 		decoder->delete_session(con_info->decoder_sess);

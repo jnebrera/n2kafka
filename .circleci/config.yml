@@ -131,8 +131,7 @@ jobs:
       - PYTEST_JOBS: 16
       - PYTEST: py.test-3
       - docker_cmds: |
-          ./configure --bootstrap
-          sed -i 's/-DNDEBUG//g' Makefile.config
+          ./configure --bootstrap --enable-assertions
           make
           make checks
 

@@ -67,6 +67,7 @@ struct http_listener {
 
 static struct {
 	struct MHD_Response *empty_response;
+	struct MHD_Response *method_not_allowed;
 	int listeners_counter;
 } http_responses;
 
@@ -287,23 +288,17 @@ create_connection_info(const char *http_method,
 	return con_info;
 }
 
-static int
-send_buffered_response(struct MHD_Connection *con,
-		       size_t sz,
-		       char *buf,
-		       int buf_kind,
-		       unsigned int response_code,
-		       int (*custom_response)(struct MHD_Response *)) {
+static int send_buffered_response(struct MHD_Connection *con,
+				  size_t sz,
+				  char *buf,
+				  int buf_kind,
+				  unsigned int response_code) {
 	struct MHD_Response *http_response =
 			MHD_create_response_from_buffer(sz, buf, buf_kind);
 
 	if (NULL == http_response) {
 		rdlog(LOG_CRIT, "Can't create HTTP response");
 		return MHD_NO;
-	}
-
-	if (custom_response) {
-		custom_response(http_response);
 	}
 
 	const int ret = MHD_queue_response(con, response_code, http_response);
@@ -316,27 +311,10 @@ static int send_http_ok(struct MHD_Connection *connection) {
 			connection, MHD_HTTP_OK, http_responses.empty_response);
 }
 
-static int
-customize_method_not_allowed_response(struct MHD_Response *response) {
-	return MHD_add_response_header(response, "Allow", "POST");
-}
-
 static int send_http_method_not_allowed(struct MHD_Connection *connection) {
-	return send_buffered_response(connection,
-				      0,
-				      NULL,
-				      MHD_RESPMEM_PERSISTENT,
-				      MHD_HTTP_METHOD_NOT_ALLOWED,
-				      customize_method_not_allowed_response);
-}
-
-static int send_http_bad_request(struct MHD_Connection *connection) {
-	return send_buffered_response(connection,
-				      0,
-				      NULL,
-				      MHD_RESPMEM_PERSISTENT,
-				      MHD_HTTP_BAD_REQUEST,
-				      NULL);
+	return MHD_queue_response(connection,
+				  MHD_HTTP_METHOD_NOT_ALLOWED,
+				  http_responses.method_not_allowed);
 }
 
 static const char *
@@ -621,8 +599,7 @@ static int handle_get(void *vhttp_listener,
 				      response_size,
 				      const_cast(response),
 				      MHD_RESPMEM_PERSISTENT,
-				      MHD_HTTP_OK,
-				      NULL);
+				      MHD_HTTP_OK);
 }
 
 static int handle_request(void *vhttp_listener,
@@ -673,6 +650,7 @@ static void break_http_loop(struct listener *vhttp_listener) {
 
 	if (0 == --http_responses.listeners_counter) {
 		MHD_destroy_response(http_responses.empty_response);
+		MHD_destroy_response(http_responses.method_not_allowed);
 	}
 }
 
@@ -814,6 +792,14 @@ create_http_listener(const struct json_t *t_config,
 	if (0 == http_responses.listeners_counter++) {
 		http_responses.empty_response = MHD_create_response_from_buffer(
 				0, NULL, MHD_RESPMEM_PERSISTENT);
+		http_responses.method_not_allowed =
+				MHD_create_response_from_buffer(
+						0,
+						NULL,
+						MHD_RESPMEM_PERSISTENT);
+		MHD_add_response_header(http_responses.method_not_allowed,
+					"Allow",
+					"GET, POST");
 	}
 
 	struct http_loop_args handler_args = {

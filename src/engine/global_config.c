@@ -396,6 +396,8 @@ static void shutdown_listener(struct listener *i) {
 	if (NULL == i->join) {
 		return;
 	}
+
+	i->join(i);
 }
 
 static void shutdown_listeners(struct n2kafka_config *config) {

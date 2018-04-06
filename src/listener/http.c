@@ -65,6 +65,11 @@ struct http_listener {
 	struct MHD_Daemon *d; ///< Associated daemon
 };
 
+static struct {
+	struct MHD_Response *empty_response;
+	int listeners_counter;
+} http_responses;
+
 static struct http_listener *http_listener_cast(void *vhttp_listener) {
 	struct http_listener *http_listener = vhttp_listener;
 #ifdef HTTP_PRIVATE_MAGIC
@@ -306,21 +311,9 @@ send_buffered_response(struct MHD_Connection *con,
 	return ret;
 }
 
-static void *const_cast(const void *arg) {
-	void *ret;
-	memcpy(&ret, &arg, sizeof(ret));
-	return ret;
-}
-
-static int send_http_ok(struct MHD_Connection *connection,
-			const char *persistent_buf,
-			size_t persistent_buf_siz) {
-	return send_buffered_response(connection,
-				      persistent_buf_siz,
-				      const_cast(persistent_buf),
-				      MHD_RESPMEM_PERSISTENT,
-				      MHD_HTTP_OK,
-				      NULL);
+static int send_http_ok(struct MHD_Connection *connection) {
+	return MHD_queue_response(
+			connection, MHD_HTTP_OK, http_responses.empty_response);
 }
 
 static int
@@ -568,8 +561,14 @@ static int handle_post(void *vhttp_listener,
 	} else {
 		/* Send OK. Resources will be freed in request_completed
 		 */
-		return send_http_ok(connection, NULL, 0);
+		return send_http_ok(connection);
 	}
+}
+
+static void *const_cast(const void *arg) {
+	void *ret;
+	memcpy(&ret, &arg, sizeof(ret));
+	return ret;
 }
 
 static int handle_get(void *vhttp_listener,
@@ -618,8 +617,12 @@ static int handle_get(void *vhttp_listener,
 
 	*ptr = NULL;
 
-	//@TODO difference between 200, 400, 500...
-	return send_http_ok(connection, response, response_size);
+	return send_buffered_response(connection,
+				      response_size,
+				      const_cast(response),
+				      MHD_RESPMEM_PERSISTENT,
+				      MHD_HTTP_OK,
+				      NULL);
 }
 
 static int handle_request(void *vhttp_listener,
@@ -667,6 +670,10 @@ static void break_http_loop(struct listener *vhttp_listener) {
 	MHD_stop_daemon(http_listener->d);
 	listener_join(&http_listener->listener);
 	free(http_listener);
+
+	if (0 == --http_responses.listeners_counter) {
+		MHD_destroy_response(http_responses.empty_response);
+	}
 }
 
 struct http_loop_args {
@@ -760,17 +767,17 @@ static struct http_listener *start_http_loop(const struct http_loop_args *args,
 
 			{MHD_OPTION_END, 0, NULL}};
 
-	http_listener->d =
-			MHD_start_daemon(flags,
-					 args->port,
-					 NULL, /* Auth callback */
-					 NULL, /* Auth callback parameter */
-					 handle_request, /* Request handler */
-					 http_listener,  /* Request handler
-							    parameter */
-					 MHD_OPTION_ARRAY,
-					 opts,
-					 MHD_OPTION_END);
+	http_listener->d = MHD_start_daemon(flags,
+					    args->port,
+					    NULL, /* Auth callback */
+					    NULL, /* Auth callback parameter */
+					    handle_request, /* Request handler
+							     */
+					    http_listener,  /* Request handler
+							       parameter */
+					    MHD_OPTION_ARRAY,
+					    opts,
+					    MHD_OPTION_END);
 
 	if (NULL == http_listener->d) {
 		rdlog(LOG_ERR,
@@ -803,6 +810,11 @@ create_http_listener(const struct json_t *t_config,
 		return NULL;
 	}
 	json_error_t error;
+
+	if (0 == http_responses.listeners_counter++) {
+		http_responses.empty_response = MHD_create_response_from_buffer(
+				0, NULL, MHD_RESPMEM_PERSISTENT);
+	}
 
 	struct http_loop_args handler_args = {
 			/* Default arguments */

@@ -1,44 +1,9 @@
 {
-   Curl well-known memory leaks
-   Memcheck:Leak
-   ...
-   fun:Curl_nss_init
-   fun:curl_global_init
-   ...
-}
-
-{
-   MHD
-   Memcheck:Leak
-   match-leak-kinds: reachable
-   fun:malloc
-   ...
-   obj:/usr/lib64/libgcrypt.so.11.8.2
-   fun:gcry_control
-   fun:MHD_init
-   fun:_dl_init
-   obj:/usr/lib64/ld-2.17.so
-}
-
-{
-   MHD
-   Memcheck:Leak
-   match-leak-kinds: reachable
-   fun:malloc
-   obj:/usr/lib/libgcrypt.so.20.1.6
-   ...
-   obj:/usr/lib/libmicrohttpd.so.12.42.0
-   obj:/lib/ld-musl-x86_64.so.1
-   ...
-}
-
-{
    MHD listen
    Memcheck:Param
    epoll_pwait(sigmask)
    fun:epoll_pwait
 }
-
 
 # My valgrind librdkafka suppressions
 {
@@ -98,13 +63,6 @@
 }
 
 # Valgrind suppression file for librdkafka
-{
-   allocate_tls_despite_detached_1
-   Memcheck:Leak
-   fun:calloc
-   fun:_dl_allocate_tls
-   fun:pthread_create@@GLIBC_2.2.5
-}
 
 {
    helgrind---_dl_allocate_tls
@@ -215,14 +173,6 @@
    fun:start_thread
    fun:clone
 }
-{
-   ssl_read
-   Memcheck:Cond
-   fun:ssl3_read_bytes
-   fun:ssl3_read_internal
-}
-
-
 
 {
    ssl_noterm_leak1
@@ -298,46 +248,6 @@
    ...
    fun:ERR_load_SSL_strings
 }
-{
-   thrd_tls_alloc_stack
-   Memcheck:Leak
-   match-leak-kinds: possible
-   fun:calloc
-   fun:allocate_dtv
-   fun:_dl_allocate_tls
-   fun:allocate_stack
-   fun:pthread_create@@GLIBC_2.2.5
-   fun:thrd_create
-}
-{
-   more_tls1
-   Memcheck:Leak
-   match-leak-kinds: possible
-   fun:calloc
-   fun:allocate_dtv
-   fun:_dl_allocate_tls
-   fun:allocate_stack
-}
-
-{
-   ssl_uninit1
-   Memcheck:Cond
-   fun:rd_kafka_metadata_handle
-   fun:rd_kafka_broker_metadata_reply
-}
-{
-   ssl_uninit2
-   Memcheck:Value8
-   fun:rd_kafka_metadata_handle
-   fun:rd_kafka_broker_metadata_reply
-}
-{
-   ssl_uninit3
-   Memcheck:Cond
-   fun:memcpy@@GLIBC_2.14
-   fun:rd_kafka_metadata_handle
-   fun:rd_kafka_broker_metadata_reply
-}
 
 {
    log_races0
@@ -359,49 +269,6 @@
    fun:thrd_detach
 }
 
-
-# cyrus libsasl2 global/once memory "leaks"
-{
-   leak_sasl_global_init1
-   Memcheck:Leak
-   match-leak-kinds: reachable
-   fun:malloc
-   ...
-   fun:sasl_client_init
-}
-{
-   leak_sasl_global_init6
-   Memcheck:Leak
-   match-leak-kinds: reachable
-   fun:calloc
-   ...
-   fun:sasl_client_init
-}
-
-{
-   leak_sasl_dlopen
-   Memcheck:Leak
-   match-leak-kinds: reachable
-   fun:?alloc
-   ...
-   fun:_dl_catch_error
-}
-{
-   debian_testing_ld_uninitialized
-   Memcheck:Cond
-   fun:index
-   fun:expand_dynamic_string_token
-   ...
-   fun:_dl_start
-   ...
-}
-{
-   glibc_internals_nss_race1
-   Helgrind:Race
-   ...
-   fun:getaddrinfo
-   ...
-}
 
 {
    librdkafka SSL
@@ -446,13 +313,7 @@
    fun:calloc
    ...
    fun:__dls3
-   obj:*
-   obj:*
-   obj:*
-   obj:*
-   obj:*
-   obj:*
-   obj:*
+   ...
 }
 
 {

@@ -54,12 +54,33 @@ ifneq ($(wildcard $(SUPPRESSIONS_FILE)),)
 SUPPRESSIONS_VALGRIND_ARG = --suppressions=$(SUPPRESSIONS_FILE)
 endif
 
+PYTEST ?= py.test
+PYTEST_JOBS ?= 0
+ifneq ($(PYTEST_JOBS), 0)
+pytest_jobs_arg := -n $(PYTEST_JOBS)
+endif
+
 .PHONY: tests checks memchecks drdchecks helchecks coverage check_coverage \
 	docker dev-docker .clang_complete
 
 run_tests = tests/run_tests.sh $(1) $(TESTS_CHECKS_XML:.xml=)
-run_valgrind = py.test --junitxml="$@" "./$<" -- $(VALGRIND) --tool=$(1) \
-	$(SUPPRESSIONS_VALGRIND_ARG) --xml=yes --xml-file=$(2) $(3) >/dev/null 2>&1
+
+# Macro for run valgrind.
+# Arguments:
+#  - Valgrind arguments
+#  - Output XML file
+#  - Python test file
+run_valgrind = echo "$(MKL_YELLOW) Generating $(2) $(MKL_CLR_RESET)" && \
+			$(PYTEST) \
+				$(pytest_jobs_arg) \
+				--child='valgrind \
+						 $(1) \
+			             $(SUPPRESSIONS_VALGRIND_ARG) \
+			             --gen-suppressions=all \
+			             --child-silent-after-fork=yes \
+			             --xml=yes \
+			             --xml-file=$(2)' \
+			    $(3)
 
 tests: $(TESTS_XML)
 	@$(call run_tests, -cvdh)
@@ -78,7 +99,8 @@ helchecks:
 
 $(TEST_REPORTS_DIR)/%.mem.xml: tests/%.py $(TESTS_PY_DEPS) $(BIN)
 	@echo -e '\033[0;33m Checking memory:\033[0m $<'
-	@$(call run_valgrind,memcheck,"$@",$(BIN))
+	$(call run_valgrind,$(strip --tool=memcheck --show-leak-kinds=all \
+		                                         --track-origins=yes),$@,"./$<")
 
 $(TEST_REPORTS_DIR)/%.helgrind.xml: tests/%.py $(TESTS_PY_DEPS) $(BIN)
 	@echo -e '\033[0;33m Testing concurrency [HELGRIND]:\033[0m $<'
@@ -88,14 +110,9 @@ $(TEST_REPORTS_DIR)/%.drd.xml: tests/%.py $(TESTS_PY_DEPS) $(BIN)
 	@echo -e '\033[0;33m Testing concurrency [DRD]:\033[0m $<'
 	-@$(call run_valgrind,drd,"$@",$(BIN))
 
-PYTEST_JOBS ?= 0
-ifneq ($(PYTEST_JOBS), 0)
-pytest_jobs_arg := -n $(PYTEST_JOBS)
-endif
-
 $(TEST_REPORTS_DIR)/%.xml: tests/%.py $(TESTS_PY_DEPS) $(BIN)
 	@echo -e '\033[0;33m Testing:\033[0m $<'
-	@py.test $(pytest_jobs_arg) --junitxml="$@" "./$<"
+	@$(PYTEST) $(pytest_jobs_arg) --junitxml="$@" "./$<"
 
 #
 # COVERAGE

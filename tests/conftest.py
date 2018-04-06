@@ -9,7 +9,7 @@ def pytest_addoption(parser):
                      help="Child to execute")
 
 
-@pytest.fixture
+@pytest.fixture(scope='session')
 def child(request):
     return request.config.getoption("--child")
 

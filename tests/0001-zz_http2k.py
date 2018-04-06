@@ -6,8 +6,15 @@ import requests
 import random
 import pytest
 import zlib
-from n2k_test import HTTPMessage, HTTPGetMessage, HTTPPostMessage, \
-                                                   TestN2kafka, FuzzyJSON, main
+from n2k_test import \
+                     FuzzyJSON, \
+                     HTTPGetMessage, \
+                     HTTPMessage, \
+                     HTTPPostMessage, \
+                     main, \
+                     TestN2kafka, \
+                     valgrind_handler
+
 
 @pytest.fixture(params=[None, 'deflate', 'unknown_content_encoding'])
 def content_encoding(request):
@@ -29,7 +36,8 @@ class TestHTTP2K(TestN2kafka):
     def _base_http2k_test(self,
                           child,
                           messages,
-                          kafka_handler):
+                          kafka_handler,
+                          valgrind_handler):
         ''' Base n2kafka test
 
         Arguments:
@@ -48,9 +56,11 @@ class TestHTTP2K(TestN2kafka):
         self.base_test(base_config=base_config,
                        child_argv_str=child,
                        **{key: t_locals[key]
-                          for key in ['messages', 'kafka_handler']})
+                          for key in ['messages',
+                                      'kafka_handler',
+                                      'valgrind_handler']})
 
-    def test_http2k_url(self, kafka_handler, child):
+    def test_http2k_url(self, kafka_handler, valgrind_handler, child):
         ''' Test URL behavior '''
         TEST_MESSAGE = '{"test":1}'
         used_topic = TestN2kafka.random_topic()
@@ -83,9 +93,10 @@ class TestHTTP2K(TestN2kafka):
 
         self._base_http2k_test(child=child,
                                messages=test_messages,
-                               kafka_handler=kafka_handler)
+                               kafka_handler=kafka_handler,
+                               valgrind_handler=valgrind_handler)
 
-    def test_http2k_client(self, kafka_handler, child):
+    def test_http2k_client(self, kafka_handler, valgrind_handler, child):
         ''' Test ZZ client behavior. http2k expect client as X-CONSUMER-ID http
         header, and it needs to forward messages to that client '''
         TEST_MESSAGE = '{"test":1}'
@@ -116,9 +127,13 @@ class TestHTTP2K(TestN2kafka):
 
         self._base_http2k_test(child=child,
                                messages=test_messages,
-                               kafka_handler=kafka_handler)
+                               kafka_handler=kafka_handler,
+                               valgrind_handler=valgrind_handler)
 
-    def test_http2k_invalid_request(self, kafka_handler, child):
+    def test_http2k_invalid_request(self,
+                                    kafka_handler,
+                                    valgrind_handler,
+                                    child):
         ''' Test ZZ client behavior. http2k expect client as X-CONSUMER-ID http
         header, and it needs to forward messages to that client '''
         test_messages = [
@@ -132,9 +147,13 @@ class TestHTTP2K(TestN2kafka):
 
         self._base_http2k_test(child=child,
                                messages=test_messages,
-                               kafka_handler=kafka_handler)
+                               kafka_handler=kafka_handler,
+                               valgrind_handler=valgrind_handler)
 
-    def test_http2k_unexpected_close(self, kafka_handler, child):
+    def test_http2k_unexpected_close(self,
+                                     kafka_handler,
+                                     valgrind_handler,
+                                     child):
         used_topic = TestN2kafka.random_topic()
         test_message = HTTPPostMessage(uri='/v1/data/' + used_topic,
                                        data=[{'chunk': '{"test":1}{"te',
@@ -147,9 +166,14 @@ class TestHTTP2K(TestN2kafka):
 
         self._base_http2k_test(child=child,
                                messages=[test_message],
-                               kafka_handler=kafka_handler)
+                               kafka_handler=kafka_handler,
+                               valgrind_handler=valgrind_handler)
 
-    def test_http2k_messages(self, kafka_handler, child, content_encoding):
+    def test_http2k_messages(self,
+                             kafka_handler,
+                             child,
+                             valgrind_handler,
+                             content_encoding):
         ''' Test http2k different messages behavior '''
         used_topic = TestN2kafka.random_topic()
         jsons = ({
@@ -309,7 +333,8 @@ class TestHTTP2K(TestN2kafka):
 
         self._base_http2k_test(child=child,
                                messages=test_messages,
-                               kafka_handler=kafka_handler)
+                               kafka_handler=kafka_handler,
+                               valgrind_handler=valgrind_handler)
 
     # TODO send compressed data, and cut the connection without sending
     # Z_FINISH

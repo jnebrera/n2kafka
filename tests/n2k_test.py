@@ -9,8 +9,10 @@ from subprocess import Popen, PIPE
 from concurrent.futures import ThreadPoolExecutor
 from itertools import repeat
 from queue import Queue
+from valgrind import ValgrindHandler
 import contextlib
 import os
+import shlex
 import signal
 import pytest
 import requests
@@ -131,6 +133,18 @@ class N2KafkaChild(TestChild):
     def _wait_child_ready(self):
         timeout_seconds = 60
         self.__wait_child_listener(timeout_seconds)
+
+
+@pytest.fixture(scope="session")
+def valgrind_handler(child):
+    # the returned fixture value will be shared for all tests needing it
+    if not shlex.split(child)[0] == "valgrind":
+        yield None
+        return
+
+    h = ValgrindHandler()
+    yield h
+    h.write_xml()
 
 
 class HTTPMessage(object):
@@ -359,25 +373,44 @@ class TestN2kafka(object):
             json.dump(t_test_config, f)
             return (t_file_name, t_test_config)
 
-    def base_test(self, base_config, child_argv_str, messages, kafka_handler):
+    def base_test(self,
+                  base_config,
+                  child_argv_str,
+                  messages,
+                  kafka_handler,
+                  valgrind_handler):
         ''' Base n2kafka test
 
         Arguments:
           - base_config: Base config file to use. Listener port(random) &
-            proto(http), number of threads (2), brokers (kafka) and some rdkafka
-            options will be added if not present.
+            proto(http), number of threads (2), brokers (kafka) and some
+            rdkafka options will be added if not present.
           - child_argv_str: Child string to execute
           - messages: Messages to test
           - kafka_handler: Kafka handler to use
+          - valgrind handler: Valgrind handler to use
         '''
         config_file, config = self._create_config_file(base_config)
 
         listener_port = config['listeners'][0]['port']
 
-        with N2KafkaChild(argv=child_argv_str,
-                          config_file=config_file,
-                          proto='HTTP',
-                          port=listener_port) as child:
+        with contextlib.ExitStack() as exit_stack:
+            child_cls = N2KafkaChild
+            child_kwargs = {
+                'proto': 'HTTP',
+                'port': listener_port,
+                'config_file': config_file
+            }
+            if valgrind_handler:
+                child = exit_stack.enter_context(valgrind_handler.run_child(
+                                                    child_cls=child_cls,
+                                                    child_args=child_argv_str,
+                                                    **child_kwargs
+                                                    ))
+            else:
+                child = exit_stack.enter_context(child_cls(
+                                                       argv=child_argv_str,
+                                                       **child_kwargs))
             for m in messages:
                 m.test(listener_port=listener_port,
                        kafka_handler=kafka_handler,

@@ -36,9 +36,14 @@ RUN apk add --no-cache \
 	yajl-dev \
 	zlib-dev
 
+# Only in edge testing repo
 RUN	apk add --no-cache \
 		--repository http://dl-cdn.alpinelinux.org/alpine/edge/testing/ \
-		lcov \
+		lcov
+
+# Version 3.13.0-r0 only in edge main repo
+RUN	apk add --no-cache \
+		--repository http://dl-cdn.alpinelinux.org/alpine/edge/main/ \
 		valgrind
 
 RUN	update-ca-certificates

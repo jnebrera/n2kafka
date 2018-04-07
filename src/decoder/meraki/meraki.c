@@ -108,13 +108,16 @@ static int new_meraki_session(void *zz_sess,
 			      struct meraki_listener_opaque *listener_opaque,
 			      const keyval_list_t *msg_vars) {
 	assert(zz_sess);
-	assert(listener_opaque);
 	assert(msg_vars);
 
 	static const char meraki_topic_prefix[] = "/v1/data/";
-	const char *meraki_topic =
-			listener_opaque->listener_topic
-					?: default_topic_name() ?: "";
+	const char *meraki_topic = "";
+
+	if (listener_opaque && listener_opaque->listener_topic) {
+		meraki_topic = listener_opaque->listener_topic;
+	} else if (default_topic_name()) {
+		meraki_topic = default_topic_name();
+	}
 
 	char meraki_uri[strlen(meraki_topic_prefix) + strlen(meraki_topic) + 1];
 	memcpy(meraki_uri, meraki_topic_prefix, strlen(meraki_topic_prefix));
@@ -140,7 +143,9 @@ static int vnew_meraki_session(void *zz_session,
 			       void *vlistener_opaque,
 			       const keyval_list_t *msg_vars) {
 	struct meraki_listener_opaque *listener_opaque =
-			meraki_listener_opaque_cast(vlistener_opaque);
+			vlistener_opaque ? meraki_listener_opaque_cast(
+							   vlistener_opaque)
+					 : vlistener_opaque;
 
 	return new_meraki_session(zz_session, listener_opaque, msg_vars);
 }

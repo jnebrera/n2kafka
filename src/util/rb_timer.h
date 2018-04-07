@@ -20,10 +20,10 @@
 
 #pragma once
 
+#include <pthread.h>
 #include <signal.h>
 #include <sys/queue.h>
 #include <time.h>
-#include <pthread.h>
 
 /// Internal - single timer
 struct rb_timer;
@@ -31,11 +31,11 @@ typedef struct rb_timer rb_timer_t;
 
 /// List of timers
 typedef struct rb_timers_list_s {
-  /* Internal */
-  pthread_mutex_t mutex;
+	/* Internal */
+	pthread_mutex_t mutex;
 
-  /// List of registered timers
-  LIST_HEAD(, rb_timer) list;
+	/// List of registered timers
+	LIST_HEAD(, rb_timer) list;
 } rb_timers_list_t;
 
 /** Sets a new interval to a timer
@@ -46,12 +46,12 @@ typedef struct rb_timers_list_s {
   @return 0 is success, !0 and errno if error
   */
 int rb_timer_set_interval0(rb_timer_t *timer,
-         int flags,
-         const struct itimerspec *ts);
+			   int flags,
+			   const struct itimerspec *ts);
 
 /** Convenience macro */
 #define rb_timer_set_interval(timer, timerspec)                                \
-  rb_timer_set_interval0(timer, 0, timerspec)
+	rb_timer_set_interval0(timer, 0, timerspec)
 
 /** Gets timer interval
   @param timer timer to get the interval
@@ -93,11 +93,11 @@ void rb_timers_run(rb_timers_list_t *list);
   @return new timer if successful
   */
 rb_timer_t *rb_timer_create(rb_timers_list_t *tlist,
-          const struct itimerspec *interval,
-          void (*cb)(void *),
-          void *cb_ctx,
-          char *err,
-          size_t errsize);
+			    const struct itimerspec *interval,
+			    void (*cb)(void *),
+			    void *cb_ctx,
+			    char *err,
+			    size_t errsize);
 
 /// Need to call this function if a registered timer calls SIGALRM
 void rb_timer_sigaction(int signum, siginfo_t *siginfo, void *ucontext);

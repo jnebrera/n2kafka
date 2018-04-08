@@ -51,6 +51,14 @@
 		p2 = aux;                                                      \
 	} while (0)
 
+/// Remove constness. Use with caution.
+static void *const_cast(const void *ptr) __attribute__((unused));
+static void *const_cast(const void *ptr) {
+	void *ret;
+	memcpy(&ret, &ptr, sizeof(ret));
+	return ret;
+}
+
 static __attribute__((unused)) const char *gnu_strerror_r(int t_errno) {
 	static __thread char buffer[512];
 #if !defined(_POSIX_C_SOURCE) || ((_POSIX_C_SOURCE >= 200112L) && !_GNU_SOURCE)

@@ -50,13 +50,6 @@ static int zz_parse_start_map(void *ctx) {
 	return YAJL_PARSER_OK;
 }
 
-/// Remove constness. Only for rdkafka produce api.
-static void *const_cast(const void *ptr) {
-	void *ret;
-	memcpy(&ret, &ptr, sizeof(ret));
-	return ret;
-}
-
 /** Generate kafka message.
     */
 static void zz_parse_generate_rdkafka_message(struct zz_session *sess,

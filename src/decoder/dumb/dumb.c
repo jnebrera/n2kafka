@@ -20,6 +20,7 @@
 #include "dumb.h"
 
 #include "util/kafka.h"
+#include "util/util.h"
 
 static void dumb_decode(const char *buffer,
 			size_t buf_size,
@@ -36,12 +37,8 @@ static void dumb_decode(const char *buffer,
 	rd_kafka_topic_t *rkt =
 			new_rkt_global_config(default_topic_name(), NULL);
 
-	// const casting
-	char *mutable_buffer;
-	memcpy(&mutable_buffer, &buffer, sizeof(mutable_buffer));
-
 	send_to_kafka(rkt,
-		      mutable_buffer,
+		      const_cast(buffer),
 		      buf_size,
 		      RD_KAFKA_MSG_F_COPY,
 		      listener_callback_opaque);

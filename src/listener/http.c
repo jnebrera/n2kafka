@@ -340,8 +340,7 @@ static size_t compressed_callback(struct http_listener *h_listener,
 	time_t last_zlib_warning_timestamp = 0;
 	size_t rc = 0;
 
-	/* Ugly hack, assignement discard const qualifier */
-	memcpy(&con_info->zlib.strm.next_in, &upload_data, sizeof(upload_data));
+	con_info->zlib.strm.next_in = const_cast(upload_data);
 	con_info->zlib.strm.avail_in = upload_data_size;
 
 	unsigned char *buffer = malloc(ZLIB_CHUNK);
@@ -539,12 +538,6 @@ static int handle_post(void *vhttp_listener,
 		 */
 		return send_http_ok(connection);
 	}
-}
-
-static void *const_cast(const void *arg) {
-	void *ret;
-	memcpy(&ret, &arg, sizeof(ret));
-	return ret;
 }
 
 static int handle_get(void *vhttp_listener,

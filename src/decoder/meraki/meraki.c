@@ -113,7 +113,8 @@ static int new_meraki_session(void *zz_sess,
 	static const char meraki_topic_prefix[] = "/v1/data/";
 	const char *meraki_topic = "";
 
-	if (listener_opaque && listener_opaque->listener_topic) {
+	if (listener_opaque) {
+		assert(listener_opaque->listener_topic);
 		meraki_topic = listener_opaque->listener_topic;
 	} else if (default_topic_name()) {
 		meraki_topic = default_topic_name();

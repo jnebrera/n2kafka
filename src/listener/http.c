@@ -115,7 +115,9 @@ static void request_completed(void *cls,
 			      struct MHD_Connection *connection HTTP_UNUSED,
 			      void **con_cls,
 			      enum MHD_RequestTerminationCode toe) {
-	if (NULL == con_cls || NULL == *con_cls) {
+
+	assert(con_cls);
+	if (NULL == *con_cls) {
 		return; /* This point should never reached? */
 	}
 
@@ -126,10 +128,6 @@ static void request_completed(void *cls,
 	struct conn_info *con_info = *con_cls;
 	struct http_listener *http_listener = http_listener_cast(cls);
 	const struct n2k_decoder *decoder = http_listener->listener.decoder;
-
-	if (NULL == con_info) {
-		return;
-	}
 
 	if (!decoder->new_session) {
 		/* No streaming processing -> need to process buffer */
@@ -160,11 +158,13 @@ static int connection_args_iterator(void *cls,
 	struct conn_info *con_info = cls;
 	const size_t i = con_info->decoder_opts_size++;
 
+	assert(key);
+
 	if (kind != MHD_HEADER_KIND) {
 		return MHD_YES; // Not interested in
 	}
 
-	if (key && value && 0 == strcmp("Content-Encoding", key) &&
+	if (value && 0 == strcmp("Content-Encoding", key) &&
 	    0 == strcmp("deflate", value)) {
 		con_info->zlib.enable = 1;
 	}
@@ -455,9 +455,7 @@ static int handle_post(void *vhttp_listener,
 	struct http_listener *http_listener =
 			http_listener_cast(vhttp_listener);
 
-	if (NULL == ptr) {
-		return MHD_NO;
-	}
+	assert(ptr);
 
 	if (NULL == *ptr) {
 		char client_buf[BUFSIZ];

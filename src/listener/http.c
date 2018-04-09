@@ -129,16 +129,7 @@ static void request_completed(void *cls,
 	struct http_listener *http_listener = http_listener_cast(cls);
 	const struct n2k_decoder *decoder = http_listener->listener.decoder;
 
-	if (!decoder->new_session) {
-		/* No streaming processing -> need to process buffer */
-		listener_decode(&http_listener->listener,
-				con_info->str.buf,
-				con_info->str.size,
-				&con_info->decoder_params,
-				NULL,
-				NULL,
-				NULL);
-	} else if (decoder->delete_session) {
+	if (decoder->delete_session) {
 		/* Streaming processing -> need to free session pointer */
 		decoder->delete_session(con_info->decoder_sess);
 	}
@@ -534,6 +525,34 @@ static int handle_http_post_chunk(struct http_listener *http_listener,
 	return (*upload_data_size != 0) ? MHD_NO : MHD_YES;
 }
 
+/** Handle connection close
+  @param http_listener Listener
+  @param connection HTTP Connection
+  @param ptr Request opaque pointer
+  @return MHD information
+  */
+static int handle_post_end(const struct http_listener *http_listener,
+			   struct MHD_Connection *connection,
+			   void **ptr) {
+	const n2k_decoder *decoder = http_listener->listener.decoder;
+	struct conn_info *con_info = *ptr;
+
+	if (!decoder->new_session) {
+		// No streaming processing -> process entire buffer at this
+		// moment
+		listener_decode(&http_listener->listener,
+				con_info->str.buf,
+				con_info->str.size,
+				&con_info->decoder_params,
+				NULL,
+				NULL,
+				NULL);
+	}
+
+	send_http_ok(connection);
+	return MHD_YES;
+}
+
 /** Entrypoint for HTTP POST messages
   @param vhttp_listener n2kafka HTTP listener
   @param connection HTTP Connection
@@ -567,7 +586,7 @@ static int handle_post(void *vhttp_listener,
 					      upload_data_size,
 					      ptr);
 	} else {
-		return send_http_ok(connection);
+		return handle_post_end(http_listener, connection, ptr);
 	}
 }
 

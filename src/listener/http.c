@@ -443,6 +443,108 @@ static size_t compressed_callback(struct http_listener *h_listener,
 	return upload_data_size - con_info->zlib.strm.avail_in;
 }
 
+/** Initialize an HTTP connection and decoder session
+  @param http_listener Used listener
+  @param connection MHD connection
+  @param url Request URL
+  @param method Request method
+  @param ptr Request library opaque
+  @return MHD daemon return code
+  */
+static int handle_http_post_init(struct http_listener *http_listener,
+				 struct MHD_Connection *connection,
+				 const char *url,
+				 const char *method,
+				 void **ptr) {
+	char client_buf[BUFSIZ];
+	const char *client =
+			client_addr(client_buf, sizeof(client_buf), connection);
+	if (unlikely(NULL == client)) {
+		return MHD_NO;
+	}
+
+	const n2k_decoder *decoder = http_listener->listener.decoder;
+	const size_t decoder_session_size =
+			decoder->session_size ? decoder->session_size() : 0;
+
+	*ptr = create_connection_info(
+			method, url, client, decoder_session_size, connection);
+	if (unlikely(NULL == *ptr)) {
+		return MHD_NO;
+	}
+
+	if (decoder->new_session) {
+		struct conn_info *con_info = *ptr;
+		const int session_rc = decoder->new_session(
+				con_info->decoder_sess,
+				http_listener->listener.decoder_opaque,
+				&con_info->decoder_params);
+		if (0 != session_rc) {
+			// Not valid decoder session!
+			free_con_info(con_info);
+			*ptr = NULL;
+		}
+	}
+
+	return (NULL == *ptr) ? MHD_NO : MHD_YES;
+}
+
+/** Handle a sent chunk
+  @param http_listener n2k HTTP listener
+  @param upload_data Request chunk
+  @param upload_data_size upload_data size
+  @param ptr Connection library opaque
+  @return MHD library response
+  */
+static int handle_http_post_chunk(struct http_listener *http_listener,
+				  const char *upload_data,
+				  size_t *upload_data_size,
+				  void **ptr) {
+	const struct n2k_decoder *decoder = http_listener->listener.decoder;
+	struct conn_info *con_info = *ptr;
+	size_t rc;
+	if (!decoder->new_session) {
+		// Does not support stream, we need to allocate a big buffer
+		// and send all the data together
+		const int append_rc = string_append(
+				&con_info->str, upload_data, *upload_data_size);
+		rc = (0 == append_rc) ? *upload_data_size : 0;
+	} else if (con_info->zlib.enable) {
+		// Does support streaming, we will decompress & process until
+		// end of received chunk
+		rc = compressed_callback(http_listener,
+					 con_info,
+					 upload_data,
+					 *upload_data_size);
+	} else {
+		// Does support streaming processing, sending the chunk
+		listener_decode(&http_listener->listener,
+				upload_data,
+				*upload_data_size,
+				&con_info->decoder_params,
+				NULL,
+				NULL,
+				con_info->decoder_sess);
+		/// @TODO fix it
+		if (0 /* ERROR */) {
+		}
+		rc = *upload_data_size;
+	}
+	(*upload_data_size) -= rc;
+	return (*upload_data_size != 0) ? MHD_NO : MHD_YES;
+}
+
+/** Entrypoint for HTTP POST messages
+  @param vhttp_listener n2kafka HTTP listener
+  @param connection HTTP Connection
+  @param url POST URL
+  @param method Always "POST"
+  @param version Used HTTP version
+  @param upload_data Chunk upload data
+  @param upload_data_size Size of upload_data
+  @param ptr Request mhd opaque pointer
+  @return MHD_YES or MHD_NO to indicate MHD library how to handle connection
+  */
 static int handle_post(void *vhttp_listener,
 		       struct MHD_Connection *connection,
 		       const char *url,
@@ -457,85 +559,14 @@ static int handle_post(void *vhttp_listener,
 	assert(ptr);
 
 	if (NULL == *ptr) {
-		char client_buf[BUFSIZ];
-		const char *client = client_addr(
-				client_buf, sizeof(client_buf), connection);
-		if (unlikely(NULL == client)) {
-			return MHD_NO;
-		}
-
-		const n2k_decoder *decoder = http_listener->listener.decoder;
-		const size_t decoder_session_size =
-				decoder->session_size ? decoder->session_size()
-						      : 0;
-
-		*ptr = create_connection_info(method,
-					      url,
-					      client,
-					      decoder_session_size,
-					      connection);
-		if (unlikely(NULL == *ptr)) {
-			return MHD_NO;
-		}
-
-		if (decoder->new_session) {
-			struct conn_info *con_info = *ptr;
-			const int session_rc = decoder->new_session(
-					con_info->decoder_sess,
-					http_listener->listener.decoder_opaque,
-					&con_info->decoder_params);
-			if (0 != session_rc) {
-				// Not valid decoder session!
-				free_con_info(con_info);
-				*ptr = NULL;
-			}
-		}
-
-		return (NULL == *ptr) ? MHD_NO : MHD_YES;
+		return handle_http_post_init(
+				http_listener, connection, url, method, ptr);
 	} else if (*upload_data_size > 0) {
-		/* middle calls, process string sent */
-		const struct n2k_decoder *decoder =
-				http_listener->listener.decoder;
-		struct conn_info *con_info = *ptr;
-		size_t rc;
-		if (!decoder->new_session) {
-			// Does not support stream, we need to allocate
-			// a big buffer and send all the data together
-			const int append_rc = string_append(&con_info->str,
-							    upload_data,
-							    *upload_data_size);
-			rc = (0 == append_rc) ? *upload_data_size : 0;
-		} else if (con_info->zlib.enable) {
-			/* Does support streaming, we will decompress &
-			 * process
-			 * until */
-			/* end of received chunk */
-			rc = compressed_callback(http_listener,
-						 con_info,
-						 upload_data,
-						 *upload_data_size);
-		} else {
-			/* Does support streaming processing, sending
-			 * the chunk
-			 */
-			listener_decode(&http_listener->listener,
-					upload_data,
-					*upload_data_size,
-					&con_info->decoder_params,
-					NULL,
-					NULL,
-					con_info->decoder_sess);
-			/// @TODO fix it
-			if (0 /* ERROR */) {
-			}
-			rc = *upload_data_size;
-		}
-		(*upload_data_size) -= rc;
-		return (*upload_data_size != 0) ? MHD_NO : MHD_YES;
-
+		return handle_http_post_chunk(http_listener,
+					      upload_data,
+					      upload_data_size,
+					      ptr);
 	} else {
-		/* Send OK. Resources will be freed in request_completed
-		 */
 		return send_http_ok(connection);
 	}
 }

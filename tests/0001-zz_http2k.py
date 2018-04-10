@@ -198,20 +198,19 @@ class TestHTTP2K(TestN2kafka):
             'expected_response_code': 200,
         }
 
-        send_garbage_expected_exception = None
-        send_garbage_expected_response_code = 200
+        send_garbage_expected_response_code = 200  # Decoder errors are not
+                                                   # currently returned
         send_garbage_expected_stdout_regex = None
         if content_encoding:
             base_args['headers'] = {'Content-Encoding': content_encoding}
             if content_encoding == 'deflate':
                 base_args['deflate_request'] = True
                 # TODO n2kafka should return proper HTTP error in this case
-                send_garbage_expected_exception = \
-                    requests.exceptions.ConnectionError
-                send_garbage_expected_response_code = None
+                send_garbage_expected_response_code = 400
                 send_garbage_expected_stdout_regex = [
-                 'Application reported internal error, closing connection.',
-                 'Error in compressed input from ip localhost:{listener_port}']
+                 'from client localhost:{listener_port}: '
+                 '{{"error":"deflated input is not conforming to the '
+                 'zlib format"}}']
 
         test_messages = [
             # POST with no messages
@@ -297,23 +296,20 @@ class TestHTTP2K(TestN2kafka):
             ),
 
             # Pure garbage!
-            # TODO return proper error message
-            HTTPPostMessage(**{**base_args,
-                'deflate_request': False,  # Send zlib garbage
-                'expected_response_code':send_garbage_expected_response_code,
-                'expected_exception_type':send_garbage_expected_exception,
-                'expected_stdout_regex':send_garbage_expected_stdout_regex,
-                'data': bytearray(random.getrandbits(8) for _ in range(20)),
-            }),
-
-            #  TODO More zlib garbage should not raise another error to
-            # console
             HTTPPostMessage(**{
                 **base_args,
                 'deflate_request': False,  # Send zlib garbage
-                'expected_response_code':send_garbage_expected_response_code,
-                'expected_exception_type':send_garbage_expected_exception,
-                'expected_stdout_regex':None,
+                'expected_response_code': send_garbage_expected_response_code,
+                'expected_stdout_regex': send_garbage_expected_stdout_regex,
+                'data': bytearray(random.getrandbits(8) for _ in range(20)),
+            }),
+
+            #  More zlib garbage does not raise another error to console
+            HTTPPostMessage(**{
+                **base_args,
+                'deflate_request': False,  # Send zlib garbage
+                'expected_response_code': send_garbage_expected_response_code,
+                'expected_stdout_regex': None,
                 'data': bytearray(random.getrandbits(8) for _ in range(20)),
             }),
 
@@ -324,9 +320,9 @@ class TestHTTP2K(TestN2kafka):
                 'headers': {'Content-Encoding': 'deflate'},  # Already deflated
                 'data':
                     zlib.compressobj(zdict=b'hello').compress(b'{"test":1}'),
+                'expected_response_code': 400,
                 'expected_stdout_regex': [
-                  'Need unkown dict in input stream from ip '
-                  'localhost:{listener_port}'
+                  'libz deflate error: a dictionary is need'
                 ]
             }),
         ]

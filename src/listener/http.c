@@ -98,12 +98,46 @@ struct conn_info {
 	/// pre-allocated session pointer.
 	void *decoder_sess;
 
+	/// HTTP error
+	struct {
+		unsigned int code; ///< HTTP error code. If !0, further request
+				   ///< chunks will not be processed.
+		const char *str;   ///< Error string to return. Can be NULL.
+	} http_error;
+
 	/// Number of decoder options
 	size_t decoder_opts_size;
 
 	/// Memory pool for decoder_params
 	struct pair decoder_opts[];
 };
+
+/**
+ * @brief      Queue a request response. If called processing post request,
+ *             decoder will not be called anymore
+ *
+ * @param      conn_info                 Connection
+ * @param[in]  http_error_code           Http error code to queue
+ * @param[in]  http_error_response       Http error response string, if any
+ * @param[in]  http_error_response_size  Http error response size
+ */
+static void conn_info_queue_response(struct conn_info *conn_info,
+				     unsigned int http_error_code,
+				     const char *http_error_response) {
+	conn_info->http_error.code = http_error_code;
+	conn_info->http_error.str = http_error_response;
+}
+
+/**
+ * @brief      Check if connection has a response queued.
+ *
+ * @param[in]  conn_info  The connection information
+ *
+ * @return     True if affirmative
+ */
+static bool conn_info_has_queue_response(const struct conn_info *conn_info) {
+	return 0 != conn_info->http_error.code;
+}
 
 static void free_con_info(struct conn_info *con_info) {
 	free(con_info->str.buf);
@@ -166,24 +200,47 @@ static int connection_args_iterator(void *cls,
 	return MHD_YES; // keep iterating
 }
 
-static const char *zlib_error2str(const int z_status) {
+/**
+ * @brief      Translate a zlib error code to a static human readable string
+ *
+ * @param[in]  z_status  zlib error
+ *
+ * @return     Static allocated human readable description
+ */
+static const char *zlib_init_error2str(const int z_status) {
 	switch (z_status) {
-	case Z_OK:
-		return "success";
-		break;
 	case Z_MEM_ERROR:
-		return "there was not enough memory";
-		break;
-	case Z_VERSION_ERROR:
-		return "the zlib library version is incompatible with the"
-		       " version assumed by the caller";
-		break;
-	case Z_STREAM_ERROR:
-		return "the parameters are invalid";
-		break;
+		return "{\"error\":\"Out of memory on zlib init\"}";
 	default:
-		return "Unknown error";
-		break;
+		// case Z_VERSION_ERROR:
+		// case Z_OK:
+		//
+		assert(0);
+		return "{\"error\":\"Unknown error\"}";
+	};
+}
+
+static const char *zlib_deflate_error2str(const int z_status) {
+	switch (z_status) {
+	// case Z_STREAM_ERROR:
+	//	return "Stream structure was inconsistent"
+	// case Z_OK:
+	// case Z_STREAM_END:
+	//	return "No error"
+	case Z_NEED_DICT:
+		return "{\"error\":\"libz deflate error: a dictionary is "
+		       "need\"}";
+	case Z_DATA_ERROR:
+		return "{\"error\":\"deflated input is not conforming to the "
+		       "zlib format\"}";
+	case Z_MEM_ERROR:
+		return "{\"error\":\"Out of memory\"}";
+
+	case Z_BUF_ERROR:
+		return "{\"error\":\"Is not possible to progress in input "
+		       "stream\"}";
+	default:
+		return "{\"error\":\"Unknown error\"}";
 	};
 }
 
@@ -222,12 +279,25 @@ static size_t decoder_opts(struct MHD_Connection *connection,
 	return num_http_headers + RD_ARRAYSIZE(listener_options);
 }
 
+/**
+ * @brief      Creates a connection information.
+ *
+ * @param[in]  http_method           The http method
+ * @param[in]  uri                   The http uri
+ * @param[in]  client                The http client
+ * @param[in]  decoder_session_size  The decoder session size
+ * @param      connection            The MHD connection
+ * @param      error                 The error if return is NULL
+ *
+ * @return     connection information
+ */
 static struct conn_info *
 create_connection_info(const char *http_method,
 		       const char *uri,
 		       const char *client,
 		       const size_t decoder_session_size,
-		       struct MHD_Connection *connection) {
+		       struct MHD_Connection *connection,
+		       const char **error) {
 
 	/* First call, creating all needed structs */
 	const size_t num_decoder_opts = decoder_opts(
@@ -246,8 +316,8 @@ create_connection_info(const char *http_method,
 			 RD_MEM_END_TOKEN);
 
 	if (unlikely(NULL == con_info)) {
-		rdlog(LOG_ERR,
-		      "Can't allocate conection context (out of memory?)");
+		*error = "Can't allocate conection context (out of memory?)";
+		rdlog(LOG_ERR, "%s", *error);
 		return NULL; /* Doesn't have resources */
 	}
 
@@ -269,10 +339,11 @@ create_connection_info(const char *http_method,
 
 		const int rc = inflateInit(&con_info->zlib.strm);
 		if (rc != Z_OK) {
+			*error = zlib_init_error2str(rc);
 			rdlog(LOG_ERR,
 			      "Couldn't init inflate. Error was %d: %s",
 			      rc,
-			      zlib_error2str(rc));
+			      *error);
 		}
 	}
 
@@ -322,14 +393,26 @@ client_addr(char *buf, size_t buf_size, struct MHD_Connection *con_info) {
 	return sockaddr2str(buf, buf_size, cinfo->client_addr);
 }
 
-static size_t compressed_callback(struct http_listener *h_listener,
-				  struct conn_info *con_info,
-				  const char *upload_data,
-				  size_t upload_data_size) {
+/**
+ * @brief      Process compressed POST message
+ *
+ * @param      h_listener        The http listener
+ * @param      con_info          The connection information
+ * @param[in]  upload_data       The upload data
+ * @param[in]  upload_data_size  The upload data size
+ * @param      error_code        The error code if return code was MHD_NO
+ * @param      compressed_error  The compressed error if return code was MHD_NO
+ *
+ * @return     MHD_YES if all information was processed.
+ */
+static int compressed_callback(struct http_listener *h_listener,
+			       struct conn_info *con_info,
+			       const char *upload_data,
+			       size_t upload_data_size) {
 	static pthread_mutex_t last_zlib_warning_timestamp_mutex =
 			PTHREAD_MUTEX_INITIALIZER;
 	time_t last_zlib_warning_timestamp = 0;
-	size_t rc = 0;
+	int rc = MHD_YES;
 
 	con_info->zlib.strm.next_in = const_cast(upload_data);
 	con_info->zlib.strm.avail_in = upload_data_size;
@@ -345,8 +428,25 @@ static size_t compressed_callback(struct http_listener *h_listener,
 		const int ret = inflate(
 				&con_info->zlib.strm,
 				Z_NO_FLUSH /* TODO compare different flush */);
-		if (ret != Z_OK && ret != Z_STREAM_END) {
+		if (unlikely(ret != Z_OK && ret != Z_STREAM_END)) {
 			static const time_t threshold_s = 5 * 60;
+			unsigned int http_error_code = 0;
+			switch (ret) {
+			case Z_NEED_DICT:
+			case Z_DATA_ERROR:
+				http_error_code = MHD_HTTP_BAD_REQUEST;
+				break;
+			default:
+				http_error_code =
+						MHD_HTTP_INTERNAL_SERVER_ERROR;
+				break;
+			}
+			const char *compressed_error =
+					zlib_deflate_error2str(ret);
+
+			conn_info_queue_response(con_info,
+						 http_error_code,
+						 compressed_error);
 
 			pthread_mutex_lock(&last_zlib_warning_timestamp_mutex);
 			const time_t now = time(NULL);
@@ -359,64 +459,22 @@ static size_t compressed_callback(struct http_listener *h_listener,
 			if (warn) {
 				const char *client_ip =
 						con_info->decoder_opts[0].value;
-				switch (ret) {
-				case Z_STREAM_ERROR:
-					rdlog(LOG_ERR,
-					      "Input from ip %s is not "
-					      "a valid "
-					      "zlib stream",
-					      client_ip);
-					break;
-
-				case Z_NEED_DICT:
-					rdlog(LOG_ERR,
-					      "Need unkown dict in "
-					      "input "
-					      "stream from ip %s",
-					      client_ip);
-					break;
-
-				case Z_DATA_ERROR:
-					rdlog(LOG_ERR,
-					      "Error in compressed "
-					      "input from "
-					      "ip %s",
-					      client_ip);
-					break;
-
-				case Z_MEM_ERROR:
-					rdlog(LOG_ERR,
-					      "Memory error, couldn't "
-					      "allocate "
-					      "memory for ip %s",
-					      client_ip);
-					break;
-
-				case Z_OK:
-				case Z_STREAM_END:
-					/* All ok, keep working */
-					break;
-
-				default:
-					rdlog(LOG_ERR,
-					      "Unknown error: inflate "
-					      "returned "
-					      "%d for %s ip",
-					      ret,
-					      client_ip);
-					break;
-				};
+				rdlog(LOG_ERR,
+				      "Compressed error %d from client %s: %s",
+				      ret,
+				      client_ip,
+				      compressed_error);
 			}
 
-			inflateEnd(&con_info->zlib.strm);
-			break; // @TODO send HTTP error!
+			rc = MHD_NO;
+			break;
 		}
 
 		const size_t zprocessed =
 				ZLIB_CHUNK - con_info->zlib.strm.avail_out;
-		rc += zprocessed; // @TODO this should be returned by
-				  // callback call
-		if (zprocessed > 0) {
+
+		/// @TODO this should only in case of session decoder!
+		if (zprocessed) {
 			listener_decode(&h_listener->listener,
 					(char *)buffer,
 					zprocessed,
@@ -431,7 +489,7 @@ static size_t compressed_callback(struct http_listener *h_listener,
 	free(buffer);
 	con_info->zlib.strm.next_out = NULL;
 
-	return upload_data_size - con_info->zlib.strm.avail_in;
+	return rc;
 }
 
 /** Initialize an HTTP connection and decoder session
@@ -458,10 +516,19 @@ static int handle_http_post_init(struct http_listener *http_listener,
 	const size_t decoder_session_size =
 			decoder->session_size ? decoder->session_size() : 0;
 
-	*ptr = create_connection_info(
-			method, url, client, decoder_session_size, connection);
+	const char *create_error = NULL;
+	*ptr = create_connection_info(method,
+				      url,
+				      client,
+				      decoder_session_size,
+				      connection,
+				      &create_error);
 	if (unlikely(NULL == *ptr)) {
-		return MHD_NO;
+		return send_buffered_response(connection,
+					      strlen(create_error),
+					      const_cast(create_error),
+					      MHD_RESPMEM_PERSISTENT,
+					      MHD_HTTP_INTERNAL_SERVER_ERROR);
 	}
 
 	if (decoder->new_session) {
@@ -493,20 +560,27 @@ static int handle_http_post_chunk(struct http_listener *http_listener,
 				  void **ptr) {
 	const struct n2k_decoder *decoder = http_listener->listener.decoder;
 	struct conn_info *con_info = *ptr;
-	size_t rc;
+	int rc = MHD_YES;
+	if (unlikely(conn_info_has_queue_response(con_info))) {
+		goto err;
+	}
+
 	if (!decoder->new_session) {
 		// Does not support stream, we need to allocate a big buffer
 		// and send all the data together
 		const int append_rc = string_append(
 				&con_info->str, upload_data, *upload_data_size);
-		rc = (0 == append_rc) ? *upload_data_size : 0;
+		rc = (0 == append_rc) ? MHD_YES : MHD_NO;
 	} else if (con_info->zlib.enable) {
 		// Does support streaming, we will decompress & process until
 		// end of received chunk
-		rc = compressed_callback(http_listener,
-					 con_info,
-					 upload_data,
-					 *upload_data_size);
+		compressed_callback(http_listener,
+				    con_info,
+				    upload_data,
+				    *upload_data_size);
+
+		rc = MHD_YES; // Errors are signaled via http_error.code &
+			      // string
 	} else {
 		// Does support streaming processing, sending the chunk
 		listener_decode(&http_listener->listener,
@@ -519,10 +593,14 @@ static int handle_http_post_chunk(struct http_listener *http_listener,
 		/// @TODO fix it
 		if (0 /* ERROR */) {
 		}
-		rc = *upload_data_size;
+		rc = MHD_YES;
 	}
-	(*upload_data_size) -= rc;
-	return (*upload_data_size != 0) ? MHD_NO : MHD_YES;
+
+err:
+	if (likely(MHD_YES == rc)) {
+		*upload_data_size = 0;
+	}
+	return rc;
 }
 
 /** Handle connection close
@@ -536,6 +614,21 @@ static int handle_post_end(const struct http_listener *http_listener,
 			   void **ptr) {
 	const n2k_decoder *decoder = http_listener->listener.decoder;
 	struct conn_info *con_info = *ptr;
+
+	if (unlikely(0 != con_info->http_error.code)) {
+		// Previously detected error
+		const size_t effective_len =
+				con_info->http_error.str
+						? strlen(con_info->http_error
+									 .str)
+						: 0;
+		return send_buffered_response(
+				connection,
+				effective_len,
+				const_cast(con_info->http_error.str),
+				MHD_RESPMEM_PERSISTENT,
+				con_info->http_error.code);
+	}
 
 	if (!decoder->new_session) {
 		// No streaming processing -> process entire buffer at this

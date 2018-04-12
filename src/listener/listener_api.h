@@ -44,27 +44,28 @@ typedef struct listener {
 } listener;
 
 /// @todo return 0 to say OK!
-static void listener_decode(const struct listener *this,
-			    const char *buffer,
-			    size_t buf_size,
-			    const keyval_list_t *props,
-			    const char **response,
-			    size_t *response_size,
-			    void *session) __attribute__((unused));
-static void listener_decode(const struct listener *this,
-			    const char *buffer,
-			    size_t buf_size,
-			    const keyval_list_t *props,
-			    const char **response,
-			    size_t *response_size,
-			    void *session) {
-	this->decoder->callback(buffer,
-				buf_size,
-				props,
-				this->decoder_opaque,
-				response,
-				response_size,
-				session);
+static enum decoder_callback_err
+listener_decode(const struct listener *this,
+		const char *buffer,
+		size_t buf_size,
+		const keyval_list_t *props,
+		const char **response,
+		size_t *response_size,
+		void *session) __attribute__((unused));
+static enum decoder_callback_err listener_decode(const struct listener *this,
+						 const char *buffer,
+						 size_t buf_size,
+						 const keyval_list_t *props,
+						 const char **response,
+						 size_t *response_size,
+						 void *session) {
+	return this->decoder->callback(buffer,
+				       buf_size,
+				       props,
+				       this->decoder_opaque,
+				       response,
+				       response_size,
+				       session);
 }
 
 int listener_reload(struct listener *listener, struct json_t *new_config);

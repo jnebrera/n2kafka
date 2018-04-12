@@ -37,19 +37,25 @@ class TestHTTP2K(TestN2kafka):
                           child,
                           messages,
                           kafka_handler,
-                          valgrind_handler):
+                          valgrind_handler,
+                          base_config_add={}):
         ''' Base n2kafka test
 
         Arguments:
           - child: Child string to execute
           - messages: Messages to test
           - kafka_handler: Kafka handler to use
+          - valgrind_handler: Valgrind handler if any
+          - base_config_add: Config to add (override).
         '''
         base_config = {
-            "listeners": [{
-                'proto': 'http',
-                'decode_as': 'zz_http2k'
-            }]
+            **{
+              "listeners": [{
+                  'proto': 'http',
+                  'decode_as': 'zz_http2k'
+              }]
+            },
+            **base_config_add,
         }
 
         t_locals = locals()
@@ -169,6 +175,28 @@ class TestHTTP2K(TestN2kafka):
                                kafka_handler=kafka_handler,
                                valgrind_handler=valgrind_handler)
 
+    @staticmethod
+    def __http2k_decoder_response(
+                                queued_messages, json_error, right_here_text):
+        '''
+         @brief      Creates a http2k decoder response
+
+         @param      self             The object
+         @param      queued_messages  The kafka success queued messages
+         @param      right_here_text  The YAJL "right here" error string
+
+         @return     Text response
+        '''
+        ret = '{{"messages_queued":{},"json_decoder_error":'.format(
+                                                           queued_messages) + \
+            '''"{json_error}
+                               {right_here_text}
+                     (right here) ------^\n"}}'''.replace("\n", "\\n").format(
+                                               json_error=json_error,
+                                               right_here_text=right_here_text)
+
+        return ret
+
     def test_http2k_messages(self,
                              kafka_handler,
                              child,
@@ -196,17 +224,15 @@ class TestHTTP2K(TestN2kafka):
         base_args = {
             'uri': '/v1/data/' + used_topic,
             'expected_response_code': 200,
+            'expected_response': '',
         }
 
-        send_garbage_expected_response_code = 200  # Decoder errors are not
-                                                   # currently returned
         send_garbage_expected_stdout_regex = None
         if content_encoding:
             base_args['headers'] = {'Content-Encoding': content_encoding}
             if content_encoding == 'deflate':
                 base_args['deflate_request'] = True
                 # TODO n2kafka should return proper HTTP error in this case
-                send_garbage_expected_response_code = 400
                 send_garbage_expected_stdout_regex = [
                  'from client localhost:{listener_port}: '
                  '{{"error":"deflated input is not conforming to the '
@@ -273,11 +299,29 @@ class TestHTTP2K(TestN2kafka):
                             ),
 
             # Kafka invalid message:
-            HTTPPostMessage(**{**base_args, 'data': '{"test":invalid}', }),
+            HTTPPostMessage(**{
+              **base_args,
+              'data': '{"test":invalid}',
+              'expected_response_code': 400,
+              'expected_response':
+              TestHTTP2K._TestHTTP2K__http2k_decoder_response(
+                queued_messages=0,
+                json_error='lexical error: invalid char in json text.',
+                right_here_text='{\\"test\\":invalid}'),
+            }),
         ] + [
             # Close JSON message earlier
-            HTTPPostMessage(**{**base_args, 'data': '}' * \
-                               i + '{"test":"i"}', })
+            HTTPPostMessage(**{
+                **base_args,
+                'data': '}' * i + '{"test":"i"}',
+                'expected_response_code': 400,
+                'expected_response':
+                TestHTTP2K._TestHTTP2K__http2k_decoder_response(
+                  queued_messages=0,
+                  json_error='parse error: unallowed token at this point in'
+                        ' JSON text',
+                  right_here_text=8*' ' + '}'*i + '{\\"test\\":\\"i\\"}'),
+                  })
             for i in range(1, 4)
         ] + [
             # Fuzzy data
@@ -289,9 +333,9 @@ class TestHTTP2K(TestN2kafka):
 
             # Chunked fuzzy data
             HTTPPostMessage(**{**base_args, 'data': [{'chunk': i}
-                                                     for i in strip_apart(fuzzy_jsons_str)],
-                               'expected_kafka_messages': [
-                {'topic': used_topic, 'messages': fuzzy_jsons}
+                                                    for i in strip_apart(fuzzy_jsons_str)],
+                              'expected_kafka_messages': [
+               {'topic': used_topic, 'messages': fuzzy_jsons}
             ]}
             ),
 
@@ -299,16 +343,19 @@ class TestHTTP2K(TestN2kafka):
             HTTPPostMessage(**{
                 **base_args,
                 'deflate_request': False,  # Send zlib garbage
-                'expected_response_code': send_garbage_expected_response_code,
+                'expected_response_code': 400,
+                # TODO 'expected_response': 'abc',
                 'expected_stdout_regex': send_garbage_expected_stdout_regex,
                 'data': bytearray(random.getrandbits(8) for _ in range(20)),
             }),
 
-            #  More zlib garbage does not raise another error to console
+            # More zlib garbage does not raise another error to console, but it
+            # should return error in console.
             HTTPPostMessage(**{
                 **base_args,
                 'deflate_request': False,  # Send zlib garbage
-                'expected_response_code': send_garbage_expected_response_code,
+                'expected_response_code': 400,
+                # TODO 'expected_response': 'abc',
                 'expected_stdout_regex': None,
                 'data': bytearray(random.getrandbits(8) for _ in range(20)),
             }),
@@ -331,6 +378,28 @@ class TestHTTP2K(TestN2kafka):
                                messages=test_messages,
                                kafka_handler=kafka_handler,
                                valgrind_handler=valgrind_handler)
+
+    def test_http2k_full_queue(self,
+                               kafka_handler,
+                               valgrind_handler,
+                               child):
+        used_topic = TestN2kafka.random_topic()
+        test_message = HTTPPostMessage(
+            uri='/v1/data/' + used_topic,
+            data=[{'chunk': '{"test":1}'*1000,
+                   'kafka_messages': {'topic': used_topic,
+                                      'messages': ['{"test":1}']}},
+                  {'raise': TestN2kafka.CloseConnectionException},
+                  ],
+                expected_exception_type=TestN2kafka.CloseConnectionException,
+
+                                       )
+        self._base_http2k_test(child=child,
+                               messages=[test_message],
+                               kafka_handler=kafka_handler,
+                               valgrind_handler=valgrind_handler,
+                               base_config_add={
+                                'rdkafka.queue.buffering.max.messages': '3'})
 
     # TODO send compressed data, and cut the connection without sending
     # Z_FINISH

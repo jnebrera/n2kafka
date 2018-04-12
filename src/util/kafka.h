@@ -29,11 +29,6 @@
 struct rd_kafka_message_s;
 
 void init_rdkafka();
-void send_to_kafka(rd_kafka_topic_t *rkt,
-		   char *buffer,
-		   const size_t bufsize,
-		   int flags,
-		   void *opaque);
 
 /// @TODO join with zz_http2k_decoder mac partitioner
 int32_t rb_client_mac_partitioner(const rd_kafka_topic_t *_rkt,

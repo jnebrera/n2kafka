@@ -155,13 +155,14 @@ typedef struct kafka_message_array_last_warning_state {
   delivered
   @param rdkafka_flags Flags to send to librdkafka.
   @param state
-  @warning this function consumes all the array.
+  @return Number of messages effectively queued
+  @warning this function consumes all the array, queued or not.
   */
-void kafka_message_array_produce(rd_kafka_topic_t *topic,
-				 kafka_message_array *array,
-				 char *payload_buffer,
-				 int rdkafka_flags,
-				 kafka_message_array_produce_state *state);
+size_t kafka_message_array_produce(rd_kafka_topic_t *topic,
+				   kafka_message_array *array,
+				   char *payload_buffer,
+				   int rdkafka_flags,
+				   kafka_message_array_produce_state *state);
 
 /** Init a message queue
 	@param q Queue */

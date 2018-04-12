@@ -51,7 +51,7 @@ static int zz_parse_start_map(void *ctx) {
 }
 
 /** Generate kafka message.
-    */
+ */
 static void zz_parse_generate_rdkafka_message(struct zz_session *sess,
 					      rd_kafka_message_t *msg) {
 	assert(sess);

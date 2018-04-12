@@ -158,13 +158,13 @@ static const char *url_validator(const char *url) {
 			       : url + sizeof(meraki_prefix);
 }
 
-static void meraki_decode(const char *buffer,
-			  size_t buf_size,
-			  const keyval_list_t *attrs,
-			  void *_listener_callback_opaque,
-			  const char **response,
-			  size_t *response_size,
-			  void *sessionp) {
+static enum decoder_callback_err meraki_decode(const char *buffer,
+					       size_t buf_size,
+					       const keyval_list_t *attrs,
+					       void *_listener_callback_opaque,
+					       const char **response,
+					       size_t *response_size,
+					       void *sessionp) {
 	const char *http_method = valueof(attrs, "D-HTTP-method");
 
 	if (0 == strcmp(http_method, "GET")) {
@@ -172,18 +172,19 @@ static void meraki_decode(const char *buffer,
 		*response = url_validator(uri);
 		if (NULL == *response) {
 			rdlog(LOG_ERR, "Invalid URI %s", uri);
-			return;
+			return DECODER_CALLBACK_RESOURCE_NOT_FOUND;
 		}
 
 		*response_size = strlen(*response);
+		return DECODER_CALLBACK_OK;
 	} else {
-		zz_decoder.callback(buffer,
-				    buf_size,
-				    attrs,
-				    _listener_callback_opaque,
-				    response,
-				    response_size,
-				    sessionp);
+		return zz_decoder.callback(buffer,
+					   buf_size,
+					   attrs,
+					   _listener_callback_opaque,
+					   response,
+					   response_size,
+					   sessionp);
 	}
 }
 

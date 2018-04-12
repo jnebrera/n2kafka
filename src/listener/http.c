@@ -103,6 +103,8 @@ struct conn_info {
 		unsigned int code; ///< HTTP error code. If !0, further request
 				   ///< chunks will not be processed.
 		const char *str;   ///< Error string to return. Can be NULL.
+		size_t str_size;   ///< String size. If NULL, it will be
+				   ///< calculated via strlen(str)
 	} http_error;
 
 	/// Number of decoder options
@@ -123,9 +125,11 @@ struct conn_info {
  */
 static void conn_info_queue_response(struct conn_info *conn_info,
 				     unsigned int http_error_code,
-				     const char *http_error_response) {
+				     const char *http_error_response,
+				     size_t http_error_response_size) {
 	conn_info->http_error.code = http_error_code;
 	conn_info->http_error.str = http_error_response;
+	conn_info->http_error.str_size = http_error_response_size;
 }
 
 /**
@@ -400,19 +404,22 @@ client_addr(char *buf, size_t buf_size, struct MHD_Connection *con_info) {
  * @param      con_info          The connection information
  * @param[in]  upload_data       The upload data
  * @param[in]  upload_data_size  The upload data size
- * @param      error_code        The error code if return code was MHD_NO
- * @param      compressed_error  The compressed error if return code was MHD_NO
+ * @param      response          The HTTP response
+ * @param      response_size     The HTTP response size
  *
  * @return     MHD_YES if all information was processed.
  */
-static int compressed_callback(struct http_listener *h_listener,
-			       struct conn_info *con_info,
-			       const char *upload_data,
-			       size_t upload_data_size) {
+static enum decoder_callback_err
+compressed_callback(struct http_listener *h_listener,
+		    struct conn_info *con_info,
+		    const char *upload_data,
+		    size_t upload_data_size,
+		    const char **response,
+		    size_t *response_size) {
 	static pthread_mutex_t last_zlib_warning_timestamp_mutex =
 			PTHREAD_MUTEX_INITIALIZER;
 	time_t last_zlib_warning_timestamp = 0;
-	int rc = MHD_YES;
+	enum decoder_callback_err rc = DECODER_CALLBACK_OK;
 
 	con_info->zlib.strm.next_in = const_cast(upload_data);
 	con_info->zlib.strm.avail_in = upload_data_size;
@@ -425,28 +432,22 @@ static int compressed_callback(struct http_listener *h_listener,
 		con_info->zlib.strm.next_out = buffer;
 		con_info->zlib.strm.avail_out = ZLIB_CHUNK;
 
-		const int ret = inflate(
+		const int zret = inflate(
 				&con_info->zlib.strm,
 				Z_NO_FLUSH /* TODO compare different flush */);
-		if (unlikely(ret != Z_OK && ret != Z_STREAM_END)) {
+		if (unlikely(zret != Z_OK && zret != Z_STREAM_END)) {
 			static const time_t threshold_s = 5 * 60;
-			unsigned int http_error_code = 0;
-			switch (ret) {
+			// Simulate decoder error
+			switch (zret) {
 			case Z_NEED_DICT:
 			case Z_DATA_ERROR:
-				http_error_code = MHD_HTTP_BAD_REQUEST;
+				rc = DECODER_CALLBACK_INVALID_REQUEST;
 				break;
 			default:
-				http_error_code =
-						MHD_HTTP_INTERNAL_SERVER_ERROR;
+				rc = DECODER_CALLBACK_GENERIC_ERROR;
 				break;
 			}
-			const char *compressed_error =
-					zlib_deflate_error2str(ret);
-
-			conn_info_queue_response(con_info,
-						 http_error_code,
-						 compressed_error);
+			*response = zlib_deflate_error2str(zret);
 
 			pthread_mutex_lock(&last_zlib_warning_timestamp_mutex);
 			const time_t now = time(NULL);
@@ -461,12 +462,11 @@ static int compressed_callback(struct http_listener *h_listener,
 						con_info->decoder_opts[0].value;
 				rdlog(LOG_ERR,
 				      "Compressed error %d from client %s: %s",
-				      ret,
+				      zret,
 				      client_ip,
-				      compressed_error);
+				      *response);
 			}
 
-			rc = MHD_NO;
 			break;
 		}
 
@@ -475,14 +475,19 @@ static int compressed_callback(struct http_listener *h_listener,
 
 		/// @TODO this should only in case of session decoder!
 		if (zprocessed) {
-			listener_decode(&h_listener->listener,
-					(char *)buffer,
-					zprocessed,
-					&con_info->decoder_params,
-					NULL,
-					NULL,
-					con_info->decoder_sess);
+			rc = listener_decode(&h_listener->listener,
+					     (char *)buffer,
+					     zprocessed,
+					     &con_info->decoder_params,
+					     response,
+					     response_size,
+					     con_info->decoder_sess);
+
+			if (unlikely(rc != DECODER_CALLBACK_OK)) {
+				break;
+			}
 		}
+
 	} while (con_info->zlib.strm.avail_out == 0);
 
 	/* Do not want to waste memory */
@@ -547,60 +552,98 @@ static int handle_http_post_init(struct http_listener *http_listener,
 	return (NULL == *ptr) ? MHD_NO : MHD_YES;
 }
 
+/**
+ * @brief      Transform decoder error code to http code.
+ *
+ * @param[in]  decode_rc  The decoder return code
+ *
+ * @return     HTTP response code
+ */
+static unsigned int decoder_err2http(enum decoder_callback_err decode_rc) {
+	switch (decode_rc) {
+	case DECODER_CALLBACK_OK:
+		return MHD_HTTP_OK;
+	case DECODER_CALLBACK_BUFFER_FULL:
+		return MHD_HTTP_SERVICE_UNAVAILABLE;
+
+	// Client side errors
+	case DECODER_CALLBACK_INVALID_REQUEST:
+	case DECODER_CALLBACK_UNKNOWN_TOPIC:
+	case DECODER_CALLBACK_UNKNOWN_PARTITION:
+		return MHD_HTTP_BAD_REQUEST;
+
+	// Kafka errors - Client side
+	case DECODER_CALLBACK_MSG_TOO_LARGE:
+		return MHD_HTTP_PAYLOAD_TOO_LARGE;
+
+	// HTTP errors
+	case DECODER_CALLBACK_RESOURCE_NOT_FOUND:
+		return MHD_HTTP_NOT_FOUND;
+	case DECODER_CALLBACK_MEMORY_ERROR:
+	case DECODER_CALLBACK_GENERIC_ERROR:
+	default:
+		return MHD_HTTP_INTERNAL_SERVER_ERROR;
+	};
+}
+
 /** Handle a sent chunk
-  @param http_listener n2k HTTP listener
-  @param upload_data Request chunk
-  @param upload_data_size upload_data size
-  @param ptr Connection library opaque
-  @return MHD library response
-  */
+
+ @param      http_listener     n2k HTTP listener
+ @param      upload_data       Request chunk
+ @param      upload_data_size  upload_data size
+ @param      ptr               Connection library opaque
+
+ @return     MHD library response
+*/
 static int handle_http_post_chunk(struct http_listener *http_listener,
 				  const char *upload_data,
 				  size_t *upload_data_size,
 				  void **ptr) {
 	const struct n2k_decoder *decoder = http_listener->listener.decoder;
 	struct conn_info *con_info = *ptr;
-	int rc = MHD_YES;
+	const char *response = NULL;
+	size_t response_size = 0;
+	enum decoder_callback_err decode_rc = 0;
 	if (unlikely(conn_info_has_queue_response(con_info))) {
 		goto err;
 	}
 
 	if (!decoder->new_session) {
-		// Does not support stream, we need to allocate a big buffer
-		// and send all the data together
+		// Does not support stream, we need to allocate
+		// a big buffer and send all the data together
 		const int append_rc = string_append(
 				&con_info->str, upload_data, *upload_data_size);
-		rc = (0 == append_rc) ? MHD_YES : MHD_NO;
+		decode_rc = (0 == append_rc) ? DECODER_CALLBACK_OK
+					     : DECODER_CALLBACK_MEMORY_ERROR;
 	} else if (con_info->zlib.enable) {
-		// Does support streaming, we will decompress & process until
+		// Does support streaming, we will decompress &  process until
 		// end of received chunk
-		compressed_callback(http_listener,
-				    con_info,
-				    upload_data,
-				    *upload_data_size);
-
-		rc = MHD_YES; // Errors are signaled via http_error.code &
-			      // string
+		decode_rc = compressed_callback(http_listener,
+						con_info,
+						upload_data,
+						*upload_data_size,
+						&response,
+						&response_size);
 	} else {
 		// Does support streaming processing, sending the chunk
-		listener_decode(&http_listener->listener,
-				upload_data,
-				*upload_data_size,
-				&con_info->decoder_params,
-				NULL,
-				NULL,
-				con_info->decoder_sess);
-		/// @TODO fix it
-		if (0 /* ERROR */) {
-		}
-		rc = MHD_YES;
+		decode_rc = listener_decode(&http_listener->listener,
+					    upload_data,
+					    *upload_data_size,
+					    &con_info->decoder_params,
+					    &response,
+					    &response_size,
+					    con_info->decoder_sess);
+	}
+
+	if (unlikely(decode_rc != 0)) {
+		const unsigned int http_code = decoder_err2http(decode_rc);
+		conn_info_queue_response(
+				con_info, http_code, response, response_size);
 	}
 
 err:
-	if (likely(MHD_YES == rc)) {
-		*upload_data_size = 0;
-	}
-	return rc;
+	*upload_data_size = 0;
+	return MHD_YES;
 }
 
 /** Handle connection close
@@ -619,8 +662,9 @@ static int handle_post_end(const struct http_listener *http_listener,
 		// Previously detected error
 		const size_t effective_len =
 				con_info->http_error.str
-						? strlen(con_info->http_error
-									 .str)
+						? con_info->http_error.str_size
+								  ?: strlen(con_info->http_error
+											    .str)
 						: 0;
 		return send_buffered_response(
 				connection,
@@ -633,6 +677,7 @@ static int handle_post_end(const struct http_listener *http_listener,
 	if (!decoder->new_session) {
 		// No streaming processing -> process entire buffer at this
 		// moment
+		// @TODO return error
 		listener_decode(&http_listener->listener,
 				con_info->str.buf,
 				con_info->str.size,

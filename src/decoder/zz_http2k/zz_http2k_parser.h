@@ -55,6 +55,12 @@ struct zz_session {
 		string last_object;
 	} http_prev_chunk;
 
+	/// Messages sent in this session
+	size_t session_messages_sent;
+
+	/// HTTP response
+	string http_response;
+
 	/// Per chunk information
 	struct {
 		kafka_message_array kafka_msgs; ///< Kafka output messages

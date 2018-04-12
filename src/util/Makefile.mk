@@ -3,6 +3,7 @@ THIS_SRCS := \
 	kafka.c \
 	kafka_message_array.c \
 	pair.c \
+	string.c \
 	rb_json.c \
 	rb_mac.c \
 	topic_database.c \

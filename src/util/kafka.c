@@ -72,10 +72,10 @@ const char *default_topic_name() {
 }
 
 /**
-* Message delivery report callback.
-* Called once for each message.
-* See rdkafka.h for more information.
-*/
+ * Message delivery report callback.
+ * Called once for each message.
+ * See rdkafka.h for more information.
+ */
 static void msg_delivered(rd_kafka_t *rk RD_UNUSED,
 			  const rd_kafka_message_t *rkmessage,
 			  void *opaque RD_UNUSED) {
@@ -157,49 +157,6 @@ void init_rdkafka() {
 
 static void flush_kafka0(int timeout_ms) {
 	rd_kafka_poll(global_config.rk, timeout_ms);
-}
-
-void send_to_kafka(rd_kafka_topic_t *rkt,
-		   char *buf,
-		   const size_t bufsize,
-		   int flags,
-		   void *opaque) {
-	int retried = 0;
-
-	do {
-		if (NULL == rkt) {
-			rdlog(LOG_ERR,
-			      "Can't produce message, no topic specified");
-			if (flags & RD_KAFKA_MSG_F_FREE) {
-				free(buf);
-			}
-		}
-
-		const int produce_ret = rd_kafka_produce(rkt,
-							 RD_KAFKA_PARTITION_UA,
-							 flags,
-							 buf,
-							 bufsize,
-							 NULL,
-							 0,
-							 opaque);
-
-		if (produce_ret == 0)
-			break;
-
-		if (ENOBUFS == errno && !(retried++)) {
-			rd_kafka_poll(global_config.rk, 5); // backpressure
-		} else {
-			// rdbg(LOG_ERR, "Failed to produce message:
-			// %s",rd_kafka_errno2err(errno));
-			rblog(LOG_ERR,
-			      "Failed to produce message: %s",
-			      gnu_strerror_r(errno));
-			if (flags & RD_KAFKA_MSG_F_FREE)
-				free(buf);
-			break;
-		}
-	} while (1);
 }
 
 void flush_kafka() {

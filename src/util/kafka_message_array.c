@@ -37,13 +37,14 @@ kafka_error_to_warning_time_pos(rd_kafka_resp_err_t err) {
 	};
 }
 
-void kafka_message_array_produce(rd_kafka_topic_t *rkt,
-				 kafka_message_array *array,
-				 char *payload_buffer,
-				 int rdkafka_flags,
-				 kafka_message_array_produce_state *state) {
+size_t kafka_message_array_produce(rd_kafka_topic_t *rkt,
+				   kafka_message_array *array,
+				   char *payload_buffer,
+				   int rdkafka_flags,
+				   kafka_message_array_produce_state *state) {
 	assert(rkt);
 	assert(array);
+	size_t rc = 0;
 	static const time_t alert_threshold = 5 * 60;
 
 	if (0 == kafka_message_array_size(array)) {
@@ -66,16 +67,17 @@ void kafka_message_array_produce(rd_kafka_topic_t *rkt,
 		karray->payload_buffer = payload_buffer;
 	}
 
-	size_t msgs_ok = (size_t)rd_kafka_produce_batch(rkt,
-							RD_KAFKA_PARTITION_UA,
-							rdkafka_flags,
-							karray->msgs,
-							karray->count);
-	if (likely(msgs_ok == karray->count)) {
+	rc = (size_t)rd_kafka_produce_batch(rkt,
+					    RD_KAFKA_PARTITION_UA,
+					    rdkafka_flags,
+					    karray->msgs,
+					    karray->count);
+	if (likely(rc == karray->count)) {
 		// all OK!
 		goto end;
 	}
 
+	size_t msgs_ok = (size_t)rc;
 	size_t i;
 	for (i = 0; i < karray->count && msgs_ok < karray->count; ++i) {
 		int warn = 1;
@@ -114,4 +116,5 @@ void kafka_message_array_produce(rd_kafka_topic_t *rkt,
 
 end:
 	kafka_msg_array_done(array);
+	return rc;
 }

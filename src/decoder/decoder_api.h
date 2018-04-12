@@ -24,6 +24,26 @@
 
 #include <jansson.h>
 
+/// Possible decoders errors return code.
+enum decoder_callback_err {
+	DECODER_CALLBACK_OK = 0,
+	// Kafka errors - Server side
+	DECODER_CALLBACK_BUFFER_FULL,
+
+	// Client side errors
+	DECODER_CALLBACK_INVALID_REQUEST,
+
+	// Kafka errors - Client side
+	DECODER_CALLBACK_UNKNOWN_TOPIC,
+	DECODER_CALLBACK_UNKNOWN_PARTITION,
+	DECODER_CALLBACK_MSG_TOO_LARGE,
+
+	// HTTP errors
+	DECODER_CALLBACK_RESOURCE_NOT_FOUND /* Just return 404 */,
+	DECODER_CALLBACK_MEMORY_ERROR,
+	DECODER_CALLBACK_GENERIC_ERROR,
+};
+
 /** Decoder API
   All functions are thread-safe except init & done, and call callback() with
   the same opaque from two different threads
@@ -32,14 +52,21 @@ typedef struct n2k_decoder {
 	const char *(*name)();		   ///< Registered decoder name.
 	const char *(*config_parameter)(); ///< Name of config parameter
 
-	/// Callback that the listener needs to call for each data received
-	void (*callback)(const char *buffer,
-			 size_t buf_size,
-			 const keyval_list_t *props,
-			 void *listener_callback_opaque,
-			 const char **response,
-			 size_t *response_size,
-			 void *sessionp);
+	/** Callback that the listener needs to call for each data received.
+	    @param buffer JSON chunk buffer
+	    @param buf_size JSON chunk buffer size
+	    @param props HTTP properties
+	    @param t_decoder_opaque Decoder opaque - unused
+	    @param t_session Decoder session
+	    @return Proper decoder error
+	    */
+	enum decoder_callback_err (*callback)(const char *buffer,
+					      size_t buf_size,
+					      const keyval_list_t *props,
+					      void *listener_callback_opaque,
+					      const char **response,
+					      size_t *response_size,
+					      void *sessionp);
 
 	int (*init)();			     ///< Init decoder global config
 	int (*reload)(const json_t *config); ///< Reload decoder.

@@ -40,8 +40,6 @@ class TestChild(Popen):
         super().__init__(args,
                          stdout=PIPE,
                          stderr=PIPE,
-                         universal_newlines=True,
-                         bufsize=1,  # line buffered
                          *popen_args,
                          **popen_kwargs)
 
@@ -66,8 +64,10 @@ class TestChild(Popen):
         This way we have a reliable and non-blocking way to read a descriptor.
         '''
         for line in stream:
-            print('DEBUG: Out message: {}'.format(line))
-            queue.put(line)
+            try:
+                queue.put(line.decode())  # Only interested if it's a clear
+            except UnicodeDecodeError:
+                pass
 
     def __enter__(self):
         # At this moment, subprocess is already launched

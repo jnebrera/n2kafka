@@ -1,6 +1,7 @@
 /*
 ** Copyright (C) 2014-2016, Eneo Tecnologia S.L.
 ** Copyright (C) 2017, Eugenio Perez <eupm90@gmail.com>
+** Copyright (C) 2018, Wizzie S.L.
 ** Author: Eugenio Perez <eupm90@gmail.com>
 **
 ** This program is free software; you can redistribute it and/or modify

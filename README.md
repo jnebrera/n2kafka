@@ -40,7 +40,6 @@ behavior:
   Recommended options are:
   * `"rdkafka.socket.max.fails":"3"`
   * `"rdkafka.socket.keepalive.enable":"true"`
-  * `"delivery.report.only.error":"true"`
 
 ## Decoders
 In order to treat received data, you can use one of the provided decoders. The

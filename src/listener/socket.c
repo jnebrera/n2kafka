@@ -21,7 +21,6 @@
 #include "socket.h"
 #include "engine/global_config.h"
 #include "engine/rb_addr.h"
-#include "util/rb_mac.h"
 #include "util/util.h"
 
 #include <jansson.h>

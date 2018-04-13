@@ -27,7 +27,6 @@
 
 #include "util/kafka.h"
 #include "util/kafka_message_array.h"
-#include "util/rb_time.h"
 #include "util/topic_database.h"
 #include "util/util.h"
 

@@ -102,6 +102,7 @@ jobs:
       - run: docker cp . dev-container:/app;
       # Actual commands run. Exit 255 will stop iteration
       - run: |
+             export PYTEST_JOBS;
              printf "%s\n" "${docker_cmds}" | tr '\n' '\0' | \
                xargs -I {} -0 -t -n 1 docker exec dev-container sh -c '{} || exit 255'
       # Collect results
@@ -121,19 +122,17 @@ jobs:
       - docker_cmds: |
           ./configure --bootstrap
           make
-          make checks
-          make memchecks
+          env PYTEST_JOBS=5 make checks
+          env PYTEST_JOBS=5 make memchecks
 
   # Test with assertions on
   assertions:
     <<: *T_dev_run
     environment:
-      - PYTEST_JOBS: 16
-      - PYTEST: py.test-3
       - docker_cmds: |
-          ./configure --bootstrap --enable-assertions
+          ./configure --bootstrap --disable-optimization --enable-assertions
           make
-          make checks
+          env PYTEST_JOBS=5 make checks
 
   coverage:
     <<: *T_dev_run
@@ -143,8 +142,8 @@ jobs:
       - docker_cmds: |
           ./configure --bootstrap --disable-optimization --enable-coverage
           make
-          make checks
-          make memchecks
+          env PYTEST_JOBS=5 make checks
+          env PYTEST_JOBS=5 make memchecks
           make coverage
 
 #

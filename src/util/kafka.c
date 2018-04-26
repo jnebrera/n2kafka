@@ -155,16 +155,12 @@ void init_rdkafka() {
 	}
 }
 
-static void flush_kafka0(int timeout_ms) {
+void kafka_poll(int timeout_ms) {
 	rd_kafka_poll(global_config.rk, timeout_ms);
 }
 
 void flush_kafka() {
-	flush_kafka0(1000);
-}
-
-void kafka_poll(int timeout_ms) {
-	rd_kafka_poll(global_config.rk, timeout_ms);
+	kafka_poll(1000);
 }
 
 void stop_rdkafka() {

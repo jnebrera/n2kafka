@@ -25,7 +25,7 @@ mkl_mkvar_append CPPFLAGS CPPFLAGS "-I. -I./src"
 mkl_toggle_option "Feature" WITH_HTTP           "--enable-http"           "HTTP support using libmicrohttpd" "y"
 mkl_toggle_option "Debug"   ENABLE_ASSERTIONS   "--enable-assertions"     "Enable C code assertions" "n"
 mkl_toggle_option "Debug"   WITH_COVERAGE       "--enable-coverage"       "Coverage build" "n"
-mkl_toggle_option "Debug"   WITH_TEST_FRAMEWORK "--enable-test-framework" "Cmocka+valgrind+xml-coreutils" "n"
+mkl_toggle_option "Debug"   WITH_TEST_FRAMEWORK "--enable-test-framework" "Pytest+valgrind+xml-coreutils" "n"
 
 LIBRD_COMMIT=bb4ec7e65c8d3d411837e506e8d02f293b9a0a20
 function bootstrap_librd {
@@ -86,36 +86,6 @@ function checks_tommyds {
        "#include <tommyds/tommyhashtbl.h>
        void f();
        void f() {tommy_hashtable_init(NULL, 16);}"
-}
-
-function bootstrap_cmocka {
-  if [[ ! -d cmocka ]]; then
-    mv cmocka-1.1.1 cmocka
-  fi
-
-  mkdir -p cmocka/build
-
-  if [[ ! -f "cmocka/build/Makefile" ]]; then
-    (cd cmocka/build; cmake -DWITH_STATIC_LIB=yes ..)
-  fi
-
-  if [[ ! -f "cmocka/build/src/libcmocka.a" ]]; then
-    (cd cmocka/build; make)
-  fi
-}
-
-function checks_cmocka {
-  mkl_meta_set "cmocka" "desc" "Elegant unit testing framework for C with support for mock objects"
-  mkl_meta_set "cmocka" "bootstrap_url" "https://cmocka.org/files/1.1/cmocka-1.1.1.tar.xz"
-  mkl_meta_set "cmocka" "bootstrap_cppflags" "-I./vendor/cmocka/cmocka/include/"
-  mkl_meta_set "cmocka" "bootstrap_static_lib" "vendor/cmocka/cmocka/build/src/libcmocka.a"
-  mkl_meta_set "cmocka" "bootstrap_makefn" "bootstrap_cmocka"
-
-  mkl_lib_check --static=-lcmocka "cmocka" "" fail CC "-lcmocka" \
-       "#include <stddef.h>
-        #include <setjmp.h>
-        #include <stdarg.h>
-        #include <cmocka.h>"
 }
 
 function xml_coreutils_bootstrap0 {
@@ -203,7 +173,6 @@ function checks {
 
     if [ "x$WITH_TEST_FRAMEWORK" == "xy" ]; then
       mkl_command_check valgrind HAVE_VALGRIND fail "valgrind --version"
-      checks_cmocka
       checks_xml_coreutils
     fi
 }

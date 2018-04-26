@@ -21,7 +21,6 @@ RUN apk add --no-cache \
 	build-base \
 	ca-certificates \
 	cgdb \
-	cmake \
 	expat-dev \
 	git \
 	jansson-dev \

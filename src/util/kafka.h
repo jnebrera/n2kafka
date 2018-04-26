@@ -30,14 +30,6 @@ struct rd_kafka_message_s;
 
 void init_rdkafka();
 
-/// @TODO join with zz_http2k_decoder mac partitioner
-int32_t rb_client_mac_partitioner(const rd_kafka_topic_t *_rkt,
-				  const void *key,
-				  size_t keylen,
-				  int32_t partition_cnt,
-				  void *rkt_opaque,
-				  void *msg_opaque);
-
 void kafka_poll();
 
 typedef int32_t (*rb_rd_kafka_partitioner_t)(const rd_kafka_topic_t *rkt,

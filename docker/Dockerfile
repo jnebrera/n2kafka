@@ -1,7 +1,7 @@
 FROM alpine:3.7 as n2k-base
 
 # Common C runtime libraries
-RUN apk add --no-cache librdkafka jansson zlib
+RUN apk add --no-cache jansson zlib
 
 # n2k libraries
 RUN apk add --no-cache yajl libmicrohttpd libev
@@ -27,7 +27,6 @@ RUN apk add --no-cache \
 	libarchive-tools \
 	libev-dev \
 	libmicrohttpd-dev \
-	librdkafka-dev \
 	ncurses-dev \
 	openssl \
 	python3-dev \

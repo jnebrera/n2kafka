@@ -88,6 +88,42 @@ function checks_tommyds {
        void f() {tommy_hashtable_init(NULL, 16);}"
 }
 
+readonly librdkafka_version=0.11.4
+bootstrap_librdkafka () {
+  mkdir librdkafka_opt
+  cd librdkafka-${librdkafka_version}
+  # Do not generate anything but static library
+  sed -i 's/^all:.*/all: libs/' Makefile
+  sed -i 's/^all:.*/all: librdkafka.a/' src/Makefile
+  sed -i 's/^all:.*/all: librdkafka++.a/' src-cpp/Makefile
+
+  if [[ $HAVE_LTO = 'y' ]]; then
+    # Duplicated functions
+    sed -i '/^void rd_hexdump (/,/^}/d' src/rdlog.c
+    local -r cflag_lto='-flto'
+  fi
+  AR=gcc-ar LDFLAGS=-flto CPPFLAGS="$cflag_lto" ./configure --prefix "../librdkafka_opt"
+  AR=gcc-ar RANLIB=gcc-ranlib make
+  make install
+}
+
+checks_librdkafka () {
+  readonly vendor_path="vendor/librdkafa/librdkafa-${librdkafka_version}"
+  mkl_meta_set "librdkafka" "deb" "librdkafka-dev"
+  mkl_meta_set "librdkafka" "desc" \
+      "Magnus Edenhill's librdkafka is available at http://github.com/edenhill/librdkafka"
+  mkl_meta_set "librdkafka" "bootstrap_url" "https://github.com/edenhill/librdkafka/archive/v${librdkafka_version}.tar.gz"
+  mkl_meta_set "librdkafka" "bootstrap_cppflags" "-I./vendor/librdkafka/librdkafka_opt/include/"
+  mkl_meta_set "librdkafka" "bootstrap_static_lib" "vendor/librdkafka/librdkafka_opt/lib/librdkafka.a"
+  mkl_meta_set "librdkafka" "bootstrap_makefn" "bootstrap_librdkafka"
+
+  mkl_lib_check --static=-lrdkafka "librdkafka" "" fail CC "-lrdkafka -lpthread -lz" \
+       "#include <librdkafka/rdkafka.h>
+       #if RD_KAFKA_VERSION < 0x00090100
+       #error Need librdkafka version >0.9.1
+       #endif"
+}
+
 function xml_coreutils_bootstrap0 {
   cd xml-coreutils-master
   if [[ ! -f Makefile ]]; then
@@ -129,16 +165,7 @@ function checks_libmicrohttpd {
 function checks {
     checks_librd
     checks_tommyds
-
-    # Check that librdkafka is available, and allow to link it statically.
-    mkl_meta_set "librdkafka" "desc" \
-      "Magnus Edenhill's librdkafka is available at http://github.com/edenhill/librdkafka"
-    mkl_meta_set "librdkafka" "deb" "librdkafka-dev"
-    mkl_lib_check --static=-lrdkafka "librdkafka" "" fail CC "-lrdkafka -lpthread -lz" \
-       "#include <librdkafka/rdkafka.h>
-       #if RD_KAFKA_VERSION < 0x00090100
-       #error Need librdkafka version >0.9.1
-       #endif"
+    checks_librdkafka
 
     mkl_meta_set "libev" "desc" "A high performance full-featured event loop written in C"
     mkl_meta_set "libev" "deb" "libev-dev"

@@ -187,6 +187,19 @@ function mkl_mkvar_set {
 }
 
 
+# Prepends to a make variable (Makefile.config)
+# Arguments:
+#  config name
+#  variable name
+#  value
+function mkl_mkvar_prepend {
+    if [[ ! -z $2 ]]; then
+        mkl_env_prepend "$2" "$3"
+        mkl_in_list "$MKL_MKVARS" "$2"|| mkl_env_append MKL_MKVARS $2
+    fi
+}
+
+
 # Appends to a make variable (Makefile.config)
 # Arguments:
 #  config name
@@ -910,7 +923,7 @@ function mkl_check_done {
 #  [--ldflags="..." ]  (appended after "compiler arguments" below)
 #  config name
 #  define name
-#  action (fail|disable|cont)
+#  action (fail|disable)
 #  compiler (CC|CXX)
 #  compiler arguments (optional "", example: "-lzookeeper")
 #  source snippet
@@ -1004,23 +1017,35 @@ $output"
 
 # Tries to figure out if we can use a static library or not.
 # Arguments:
+#  [--libname=<lib>] (Static library variable)
 #  library name   (e.g. -lrdkafka)
 #  compiler flags (optional "", e.g: "-lyajl")
 # Returns/outputs:
 #  New list of compiler flags
 function mkl_lib_check_static {
-    local libname=$1
+    local libname
+    if [[ $1 == --libname=* ]]; then
+        libname=${1#--libname=-l}
+        shift
+    fi
+
+    local staticname=$1
     local libs=$2
-    local arfile_var=STATIC_LIB_${libname#-l}
+    local arfile_var=STATIC_LIB_${libname:-${staticname#-l}}
+
+    mkl_dbg "Check $staticname for static library (libs $libs, arfile variable $arfile_var=${!arfile_var})"
 
     # If STATIC_LIB_<libname_without_-l> specifies an existing .a file we
     # use that instead.
     if [[ -f ${!arfile_var} ]]; then
-	libs=$(echo $libs | sed -e "s|$libname|${!arfile_var}|g")
+    libs=$(echo $libs | sed -e "s|$staticname|${!arfile_var}|g")
+    elif [[ $HAS_LDFLAGS_STATIC == y ]]; then
+        libs=$(echo $libs | sed -e "s|$staticname|${LDFLAGS_STATIC} $staticname ${LDFLAGS_DYNAMIC}|g")
     else
-        libs=$(echo $libs | sed -e "s|$libname|${LDFLAGS_STATIC} $libname ${LDFLAGS_DYNAMIC}|g")
+        mkl_dbg "$staticname: Neither $arfile_var specified or static linker flags supported: static linking probably won't work"
     fi
 
+    mkl_dbg "Using libs $libs"
     echo $libs
 }
 
@@ -1067,22 +1092,18 @@ function mkl_lib_bootstrap {
     else
         mkl_info "Using previously downloaded $1 from [$bootstrap_url]"
         pushd $dep_path &> /dev/null
+        mkl_dbg "$libname: Neither $arfile_var specified or static linker flags supported: static linking probably won't work"
     fi
 
     mkl_info "Creating dep $1 in [$dep_path]"
 
     if mkl_func_exists $(mkl_meta_get $1 bootstrap_makefn); then
-        local readonly CPPFLAGS_BAK="$(mkl_mkvar_get CPPFLAGS)"
-        mkl_mkvar_set CPPFLAGS CPPFLAGS "$CPPFLAGS_BAK $(mkl_meta_get $1 bootstrap_cppflags)"
-
         # filter vendor-specific libraries
         local makefn_output=$(CPPFLAGS="" LIBS="" $(mkl_meta_get $1 bootstrap_makefn))
         local make_rc=$?
 
         if [[ $make_rc != 0 ]]; then
-            # Fail and restore CPPFLAGS
             mkl_check_failed "$1" "$2" "$3" "couldn't make source: makefn_output"
-            mkl_mkvar_set CPPFLAGS CPPFLAGS "$CPPFLAGS_BAK"
             return $make_rc
         fi
     fi
@@ -1101,6 +1122,8 @@ function mkl_lib_bootstrap {
 # Arguments:
 #  [--static=<lib>]  (allows static linking (--enable-static) for the
 #                     library provided, e.g.: --static=-lrdkafka "librdkafka"..)
+#  [--libname=<lib>] (library name if different from config name, such as
+#                     when the libname includes a dash)
 #  config name (library name (for pkg-config))
 #  define name
 #  action (fail|disable|cont)
@@ -1109,27 +1132,42 @@ function mkl_lib_bootstrap {
 #  source snippet
 function mkl_lib_check {
 
-    local staticopt=
     local is_static=0
+    local staticopt=
     if [[ $1 == --static* ]]; then
         staticopt=$1
         shift
     fi
 
+    local libnameopt=
+    local libname=$1
+    if [[ $1 == --libname* ]]; then
+        libnameopt=$1
+        libname="${libnameopt#*=}"
+        shift
+    fi
+
+    # pkg-config result (0=ok)
+    local pkg_conf_failed=1
     if [[ $WITH_PKGCONFIG == "y" ]]; then
-        if mkl_pkg_config_check $staticopt "$1" "$2" cont; then
-            return 0
+        # Let pkg-config populate CFLAGS, et.al.
+        mkl_pkg_config_check $staticopt $libnameopt "$1" "" cont
+        pkg_conf_failed=$?
+    fi
+
+    local libs=""
+    if [[ $pkg_conf_failed ]]; then
+        libs="$5"
+        if [[ $WITH_STATIC_LINKING == y && ! -z $staticopt ]]; then
+            libs=$(mkl_lib_check_static $libnameopt "${staticopt#*=}" "$libs")
+            is_static=1
         fi
     fi
 
-    local libs="$5"
-    if [[ $WITH_STATIC_LINKING == y && ! -z $staticopt ]]; then
-	libs=$(mkl_lib_check_static "${staticopt#*=}" "$libs")
-	is_static=1
-    fi
-
-    local do_bootstrap=n
-    if ([[ "x$MKL_BOOTSTRAP" == "xy" ]] && mkl_meta_exists "$1" bootstrap_url) ; then
+    declare do_bootstrap=n
+    if ([[ "x$MKL_BOOTSTRAP" == "xy" ]] && \
+                (mkl_meta_exists "$1" bootstrap_url || \
+                 mkl_meta_exists "$1" bootstrap_makefn)); then
         do_bootstrap=y
     fi
 
@@ -1142,17 +1180,32 @@ function mkl_lib_check {
     if ! mkl_compile_check "$1" "$2" "$action" "$4" "$libs" "$6"; then
         # Compile did not succeed. Try automatic dependency download
         if [[ "x$do_bootstrap" == "xy" ]]; then
+            # Backup variables
             MKL_BOOTSTRAP=n # Avoid infinite recursion
-            local readonly WITH_STATIC_LINKING_BAK="$WITH_STATIC_LINKING"
+            local WITH_STATIC_LINKING_BAK="$WITH_STATIC_LINKING"
+            local CPPFLAGS_BAK="$(mkl_mkvar_get CPPFLAGS)"
+            mkl_mkvar_append CPPFLAGS CPPFLAGS \
+                "$(mkl_meta_get $1 bootstrap_cppflags)"
+
+            # Prepare static linking
             if mkl_meta_exists $1 bootstrap_static_lib; then
                 WITH_STATIC_LINKING=y
-                eval "STATIC_LIB_${staticopt#--static=-l}"=$(mkl_meta_get $1 bootstrap_static_lib)
+                printf -v "STATIC_LIB_${libname#-l}" '%s' \
+                                    "$(mkl_meta_get "$1" bootstrap_static_lib)"
             fi
 
+            # Test bootstrap
             mkl_lib_bootstrap "$1" "$2" "$3"
-            mkl_lib_check $staticopt "$1" "$2" "$3" "$4" "$5" "$6"
+            mkl_lib_check \
+                $staticopt \
+                $libnameopt \
+                "$1" "$2" "$3" "$4" "$5" "$6"
             local rc=$?
 
+            # Recover original variables values
+            if [[ rc -ne 0 ]]; then
+                mkl_mkvar_set CPPFLAGS CPPFLAGS "$CPPFLAGS_BAK"
+            fi
             WITH_STATIC_LINKING="$WITH_STATIC_LINKING_BAK"
             MKL_BOOTSTRAP=y
 
@@ -1165,10 +1218,12 @@ function mkl_lib_check {
         return 1
     fi
 
-    if [[ $is_static == 1 ]]; then
-	mkl_mkvar_prepend "$1" LIBS "$libs"
-    else
-	mkl_mkvar_append "$1" LIBS "$libs"
+    if [[ $pkg_conf_failed == 1 ]]; then
+        if [[ $is_static == 1 ]]; then
+            mkl_mkvar_prepend "$1" LIBS "$libs"
+        else
+            mkl_mkvar_append "$1" LIBS "$libs"
+        fi
     fi
 
     return 0
@@ -1180,46 +1235,56 @@ function mkl_lib_check {
 # Arguments:
 #  [--static=<lib>]  (allows static linking (--enable-static) for the
 #                     library provided, e.g.: --static=-lrdkafka "librdkafka"..)
+#  [--libname=<lib>] (library name if different from config name, such as
+#                     when the libname includes a dash)
 #  config name
 #  define name
 #  action (fail|disable|ignore)
 function mkl_pkg_config_check {
-    local staticopt=
 
+    local staticopt=
     if [[ $1 == --static* ]]; then
         staticopt=$1
         shift
     fi
 
-    mkl_check_begin "$1" "$2" "no-cache" "$1 (by pkg-config)" && return $?
+    local libname=$1
+    if [[ $1 == --libname* ]]; then
+        libname="${libnameopt#*=}"
+        shift
+    fi
+
+    local cname="${1}_PKGCONFIG"
+    mkl_check_begin "$cname" "$2" "no-cache" "$1 (by pkg-config)" && return $?
 
     local cflags=
-    local cmd="${PKG_CONFIG} --short-errors --cflags $1"
-    mkl_dbg "pkg-config check $1 ($2): $cmd"
+    local cmd="${PKG_CONFIG} --short-errors --cflags $libname"
+    mkl_dbg "pkg-config check $libname ($2): $cmd"
 
     cflags=$($cmd 2>&1)
     if [[ $? != 0 ]]; then
         mkl_dbg "'$cmd' failed: $cflags"
-        mkl_check_failed "$1" "$2" "$3" "'$cmd' failed:
+        mkl_check_failed "$cname" "$2" "$3" "'$cmd' failed:
 $cflags"
         return 1
     fi
 
     local libs=
-    libs=$(${PKG_CONFIG} --short-errors --libs $1 2>&1)
+    libs=$(${PKG_CONFIG} --short-errors --libs $libname 2>&1)
     if [[ $? != 0 ]]; then
-        mkl_dbg "${PKG_CONFIG} --libs $1 failed: $libs"
-        mkl_check_failed "$1" "$2" "$3" "pkg-config --libs failed"
+        mkl_dbg "${PKG_CONFIG} --libs $libname failed: $libs"
+        mkl_check_failed "$cname" "$2" "$3" "pkg-config --libs failed"
         return 1
     fi
 
     mkl_mkvar_append $1 "CFLAGS" "$cflags"
 
     if [[ $WITH_STATIC_LINKING == y && ! -z $staticopt ]]; then
-	libs=$(mkl_lib_check_static "${staticopt#*=}" "$libs")
+        libs=$(mkl_lib_check_static "${staticopt#*=}" "$libs")
+        mkl_mkvar_prepend "$1" LIBS "$libs"
+    else
+        mkl_mkvar_append "$1" LIBS "$libs"
     fi
-
-    mkl_mkvar_append "$1" LIBS "$libs"
 
     mkl_check_done "$1" "$2" "$3" "ok"
 

@@ -15,7 +15,7 @@ mkl_mkvar_append CPPFLAGS CPPFLAGS "-DFORTIFY_SOURCE=2 -D_GNU_SOURCE"
 mkl_mkvar_append CPPFLAGS CPPFLAGS "-fno-strict-aliasing" # Needed by libev
 mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wunused -Wcast-qual -Wextra -Wsign-conversion -Wshadow"
 #mkl_mkvar_append CPPFLAGS CPPFLAGS "-ftrack-macro-expansion=2"
-mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wcast-align -Wdisabled-optimization -Winit-self -Wlogical-op"
+mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wdisabled-optimization -Winit-self -Wlogical-op"
 mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wmissing-include-dirs -Wstrict-overflow=5 -Wundef -Wswitch-default"
 mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wmissing-declarations -Wdisabled-optimization"
 
@@ -52,7 +52,7 @@ function checks_librd {
   mkl_meta_set "librd" "bootstrap_static_lib" "vendor/librd/librd/librd.a"
   mkl_meta_set "librd" "bootstrap_makefn" "bootstrap_librd"
 
-  mkl_lib_check --static=-lrd "librd" "" fail CC "-lrd -lpthread -lz -lrt" \
+  mkl_lib_check --static=-lrd --libname=-lrd "librd" "" fail CC "-lrd -lpthread -lz -lrt" \
        "#include <librd/rd.h>"
 }
 
@@ -90,16 +90,16 @@ function checks_tommyds {
 
 readonly librdkafka_version=0.11.4
 bootstrap_librdkafka () {
-  mkdir librdkafka_opt
+  mkdir -p librdkafka_opt
   cd librdkafka-${librdkafka_version}
   # Do not generate anything but static library
-  sed -i 's/^all:.*/all: libs/' Makefile
-  sed -i 's/^all:.*/all: librdkafka.a/' src/Makefile
-  sed -i 's/^all:.*/all: librdkafka++.a/' src-cpp/Makefile
+  sed -i 's/^all:.*/all: libs/' -- Makefile
+  sed -i 's/^all:.*/all: librdkafka.a/' -- src/Makefile
+  sed -i 's/^all:.*/all: librdkafka++.a/' -- src-cpp/Makefile
 
   if [[ $HAVE_LTO = 'y' ]]; then
     # Duplicated functions
-    sed -i '/^void rd_hexdump (/,/^}/d' src/rdlog.c
+    sed -i '/^void rd_hexdump (/,/^}/d' -- src/rdlog.c
     local -r cflag_lto='-flto'
   fi
   AR=gcc-ar LDFLAGS=-flto CPPFLAGS="$cflag_lto" ./configure --prefix "../librdkafka_opt"
@@ -117,7 +117,7 @@ checks_librdkafka () {
   mkl_meta_set "librdkafka" "bootstrap_static_lib" "vendor/librdkafka/librdkafka_opt/lib/librdkafka.a"
   mkl_meta_set "librdkafka" "bootstrap_makefn" "bootstrap_librdkafka"
 
-  mkl_lib_check --static=-lrdkafka "librdkafka" "" fail CC "-lrdkafka -lpthread -lz" \
+  mkl_lib_check --static=-lrdkafka --libname=-lrdkafka "librdkafka" "" fail CC "-lrdkafka -lpthread -lz" \
        "#include <librdkafka/rdkafka.h>
        #if RD_KAFKA_VERSION < 0x00090100
        #error Need librdkafka version >0.9.1

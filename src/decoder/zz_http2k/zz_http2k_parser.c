@@ -238,6 +238,7 @@ topic_err:
 }
 
 void free_zz_session(struct zz_session *sess) {
+	string_done(&sess->http_response);
 	string_done(&sess->http_prev_chunk.last_object);
 	yajl_free(sess->handler);
 	topic_decref(sess->topic_handler);

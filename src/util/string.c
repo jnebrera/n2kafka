@@ -101,8 +101,11 @@ int string_printf(string *str, const char *fmt, ...) {
 		const size_t available =
 				string_allocated(str) - string_size(str);
 
-		const size_t printf_rc = (size_t)vsnprintf(
-				str->buf, available, fmt, args);
+		const size_t printf_rc =
+				(size_t)vsnprintf(str->buf + string_size(str),
+						  available,
+						  fmt,
+						  args);
 		if (likely(available > printf_rc + sizeof((char)'\0'))) {
 			str->size += printf_rc;
 			rc = printf_rc;

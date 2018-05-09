@@ -210,7 +210,6 @@ static enum decoder_callback_err zz_decode0(char *buffer,
 			*response_size = session->http_response.size;
 		}
 
-		string_append_string(&session->http_response, "}");
 		string_done(&yajl_err);
 
 		return rc;

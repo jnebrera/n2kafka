@@ -1,0 +1,25 @@
+version: '3.4'
+services:
+    kafka:
+        container_name: kafka
+        image: 'spotify/kafka'
+    kafka_noautocreatetopic:
+        container_name: kafka_noautocreatetopic
+        image: 'spotify/kafka'
+        command: ['/bin/bash', '-c',
+            'echo auto.create.topics.enable=false \
+                >> "$$KAFKA_HOME"/config/server.properties \
+            && supervisord -n']
+    dev-container:
+        container_name: dev-container
+        image: 'n2k-dev'
+        tty: true # Allow to run in background forever
+        build:
+            context: ..
+            dockerfile: docker/Dockerfile
+            target: n2k-dev
+        volumes:
+            - '../:/app'
+        depends_on:
+            - kafka
+            - kafka_noautocreatetopic

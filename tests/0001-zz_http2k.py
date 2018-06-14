@@ -401,6 +401,26 @@ class TestHTTP2K(TestN2kafka):
                                base_config_add={
                                 'rdkafka.queue.buffering.max.messages': '3'})
 
+    def test_http2k_noautocreate_topic(self,
+                                       kafka_handler,
+                                       valgrind_handler,
+                                       child):
+        used_topic = TestN2kafka.random_topic()
+        test_message = HTTPPostMessage(
+            uri='/v1/data/' + used_topic,
+            data=[{'chunk': '{"test":1}'}],
+            expected_stdout_regex=[
+                     'Broker: Unknown topic or partition'
+                   ],
+        )
+        self._base_http2k_test(child=child,
+                               messages=[test_message],
+                               kafka_handler=kafka_handler,
+                               valgrind_handler=valgrind_handler,
+                               base_config_add={
+                                'brokers': 'kafka_noautocreatetopic',
+                                'rdkafka.queue.buffering.max.messages': '3'})
+
     # TODO send compressed data, and cut the connection without sending
     # Z_FINISH
 

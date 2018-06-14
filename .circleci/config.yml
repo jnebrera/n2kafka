@@ -3,7 +3,7 @@ version: 2
 default_workspace: &default_workspace
   # Smallest circleci official image at 11/17. We don't need any tools here.
   docker:
-    - image: docker
+    - image: docker/compose:1.21.2
 
 save_cache:
   - &save_cache
@@ -94,12 +94,15 @@ jobs:
       - run: '[[ -f workspace.tgz ]] && tar xvzpf workspace.tgz || true'
       # sed: Don't want thread-safety test because musl bug
       - run: sed -i 's%\$(TESTS_\(DRD\|HELGRIND\)_XML)%%g' Makefile
-      # Launch test kafka
-      - run: docker run -d --hostname kafka --name kafka spotify/kafka;
-      # Launch test container
-      - run: docker run -dt --link kafka --name dev-container n2k-dev;
-      # Copy environment
-      - run: docker cp . dev-container:/app;
+      # Launch test compose
+      - run:
+          background: true
+          command:
+            docker-compose -f tests/docker-compose.yml up
+      # Wait container start & copy
+      - run: |
+          while ! docker cp . dev-container:/app; do :; done;
+
       # Actual commands run. Exit 255 will stop iteration
       - run: |
              export PYTEST_JOBS;

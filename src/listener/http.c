@@ -67,7 +67,8 @@ struct http_listener {
 
 static struct {
 	struct MHD_Response *empty_response;
-	struct MHD_Response *method_not_allowed;
+	struct MHD_Response *method_not_allowed_allow_get_post;
+	struct MHD_Response *method_not_allowed_allow_post;
 	int listeners_counter;
 } http_responses;
 
@@ -377,10 +378,24 @@ static int send_http_ok(struct MHD_Connection *connection) {
 			connection, MHD_HTTP_OK, http_responses.empty_response);
 }
 
-static int send_http_method_not_allowed(struct MHD_Connection *connection) {
-	return MHD_queue_response(connection,
-				  MHD_HTTP_METHOD_NOT_ALLOWED,
-				  http_responses.method_not_allowed);
+static int send_http_method_not_allowed(struct MHD_Connection *connection,
+					struct MHD_Response *response) {
+	return MHD_queue_response(
+			connection, MHD_HTTP_METHOD_NOT_ALLOWED, response);
+}
+
+static int
+send_http_method_not_allowed_allow_get_post(struct MHD_Connection *connection) {
+	return send_http_method_not_allowed(
+			connection,
+			http_responses.method_not_allowed_allow_get_post);
+}
+
+static int
+send_http_method_not_allowed_allow_post(struct MHD_Connection *connection) {
+	return send_http_method_not_allowed(
+			connection,
+			http_responses.method_not_allowed_allow_post);
 }
 
 static const char *
@@ -577,6 +592,8 @@ static unsigned int decoder_err2http(enum decoder_callback_err decode_rc) {
 		return MHD_HTTP_PAYLOAD_TOO_LARGE;
 
 	// HTTP errors
+	case DECODER_CALLBACK_HTTP_METHOD_NOT_ALLOWED:
+		return MHD_HTTP_METHOD_NOT_ALLOWED;
 	case DECODER_CALLBACK_RESOURCE_NOT_FOUND:
 		return MHD_HTTP_NOT_FOUND;
 	case DECODER_CALLBACK_MEMORY_ERROR:
@@ -743,6 +760,9 @@ static int handle_get(void *vhttp_listener,
 		return MHD_YES;
 	}
 
+	// Next call arrived, mark to finish
+	*ptr = NULL;
+
 	struct http_listener *http_listener =
 			http_listener_cast(vhttp_listener);
 	char client_buf[BUFSIZ];
@@ -764,21 +784,28 @@ static int handle_get(void *vhttp_listener,
 
 	const char *response = NULL;
 	size_t response_size = 0;
-	listener_decode(&http_listener->listener,
-			upload_data,
-			*upload_data_size,
-			&con_info->decoder_params,
-			&response,
-			&response_size,
-			con_info->decoder_sess);
+	const enum decoder_callback_err decode_rc =
+			listener_decode(&http_listener->listener,
+					upload_data,
+					*upload_data_size,
+					&con_info->decoder_params,
+					&response,
+					&response_size,
+					con_info->decoder_sess);
 
-	*ptr = NULL;
+	if (decode_rc == DECODER_CALLBACK_HTTP_METHOD_NOT_ALLOWED) {
+		// TODO make this more flexible. Currently, the decoder only
+		// must accept POST methods, and we only can reach this point
+		// via GET
+		return send_http_method_not_allowed_allow_post(connection);
+	}
+	const unsigned int http_code = decoder_err2http(decode_rc);
 
 	return send_buffered_response(connection,
 				      response_size,
 				      const_cast(response),
 				      MHD_RESPMEM_PERSISTENT,
-				      MHD_HTTP_OK);
+				      http_code);
 }
 
 static int handle_request(void *vhttp_listener,
@@ -812,7 +839,7 @@ static int handle_request(void *vhttp_listener,
 		      "Received invalid method %s. "
 		      "Returning METHOD NOT ALLOWED.",
 		      method);
-		return send_http_method_not_allowed(connection);
+		return send_http_method_not_allowed_allow_get_post(connection);
 	}
 }
 
@@ -829,7 +856,10 @@ static void break_http_loop(struct listener *vhttp_listener) {
 
 	if (0 == --http_responses.listeners_counter) {
 		MHD_destroy_response(http_responses.empty_response);
-		MHD_destroy_response(http_responses.method_not_allowed);
+		MHD_destroy_response(
+				http_responses.method_not_allowed_allow_get_post);
+		MHD_destroy_response(
+				http_responses.method_not_allowed_allow_post);
 	}
 }
 
@@ -971,14 +1001,25 @@ create_http_listener(const struct json_t *t_config,
 	if (0 == http_responses.listeners_counter++) {
 		http_responses.empty_response = MHD_create_response_from_buffer(
 				0, NULL, MHD_RESPMEM_PERSISTENT);
-		http_responses.method_not_allowed =
+		http_responses.method_not_allowed_allow_get_post =
 				MHD_create_response_from_buffer(
 						0,
 						NULL,
 						MHD_RESPMEM_PERSISTENT);
-		MHD_add_response_header(http_responses.method_not_allowed,
-					"Allow",
-					"GET, POST");
+		MHD_add_response_header(
+				http_responses.method_not_allowed_allow_get_post,
+				"Allow",
+				"GET, POST");
+
+		http_responses.method_not_allowed_allow_post =
+				MHD_create_response_from_buffer(
+						0,
+						NULL,
+						MHD_RESPMEM_PERSISTENT);
+		MHD_add_response_header(
+				http_responses.method_not_allowed_allow_post,
+				"Allow",
+				"POST");
 	}
 
 	struct http_loop_args handler_args = {

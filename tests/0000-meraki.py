@@ -92,7 +92,7 @@ class TestMeraki(TestN2kafka):
         test_messages = [
             HTTPGetMessage(uri='/',
                            expected_response='',
-                           expected_response_code=200),
+                           expected_response_code=404),
         ]
         base_config = {
             'listeners': [{'decode_as': 'meraki', 'topic': 'unused'}]

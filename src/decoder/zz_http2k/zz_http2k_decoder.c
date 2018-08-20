@@ -109,8 +109,13 @@ static enum decoder_callback_err zz_decode0(char *buffer,
 					    const char **response,
 					    size_t *response_size,
 					    void *t_session) {
-	(void)props;
 	(void)t_decoder_opaque;
+
+	const char *http_method = valueof(props, "D-HTTP-method");
+	if (unlikely(http_method && 0 != strcmp("POST", http_method))) {
+		return DECODER_CALLBACK_HTTP_METHOD_NOT_ALLOWED;
+	}
+
 	assert(buffer);
 
 	struct zz_session *session = zz_session_cast(t_session);
@@ -226,20 +231,25 @@ static enum decoder_callback_err zz_decode(const char *buffer,
 					   const char **response,
 					   size_t *response_size,
 					   void *t_session) {
-	char *buffer_copy = malloc(buf_size);
-	if (unlikely(NULL == buffer_copy)) {
-		rdlog(LOG_ERR, "Couldn't copy buffer (OOM?)");
-		return DECODER_CALLBACK_MEMORY_ERROR;
-	} else {
+	char *buffer_copy = NULL;
+	if (likely(buf_size)) {
+		buffer_copy = malloc(buf_size);
+
+		if (unlikely(NULL == buffer_copy)) {
+			rdlog(LOG_ERR, "Couldn't copy buffer (OOM?)");
+			return DECODER_CALLBACK_MEMORY_ERROR;
+		}
+
 		memcpy(buffer_copy, buffer, buf_size);
-		return zz_decode0(buffer_copy,
-				  buf_size,
-				  props,
-				  t_decoder_opaque,
-				  response,
-				  response_size,
-				  t_session);
 	}
+
+	return zz_decode0(buffer_copy,
+			  buf_size,
+			  props,
+			  t_decoder_opaque,
+			  response,
+			  response_size,
+			  t_session);
 }
 
 static void zz_decoder_done() {

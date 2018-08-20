@@ -143,13 +143,14 @@ class TestHTTP2K(TestN2kafka):
         ''' Test ZZ client behavior. http2k expect client as X-CONSUMER-ID http
         header, and it needs to forward messages to that client '''
         test_messages = [
-            # TODO test GET, sigsegv!
             HTTPMessage(http_method,
                         uri='/v1/data/unused_topic',
-                        # TODO return proper response
+                        data='',
                         expected_response_code=405,
+                        expected_response='',
                         )
-            for http_method in (requests.put, requests.delete)]
+            for http_method in (requests.get, requests.put, requests.delete)]
+        # TODO for data in ('', '{"test":1}')]
 
         self._base_http2k_test(child=child,
                                messages=test_messages,

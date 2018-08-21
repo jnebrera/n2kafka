@@ -67,4 +67,4 @@ COPY \
 	n2kafka \
 	/app/
 
-ENTRYPOINT /app/n2k_setup.sh
+ENTRYPOINT ["/app/n2k_setup.sh"]

@@ -61,7 +61,7 @@ pytest_jobs_arg := -n $(PYTEST_JOBS)
 endif
 
 .PHONY: tests checks memchecks drdchecks helchecks coverage check_coverage \
-	docker dev-docker .clang_complete
+	docker dev-docker gdb-docker valgrind-docker .clang_complete
 
 run_tests = tests/run_tests.sh $(1) $(TESTS_CHECKS_XML:.xml=)
 
@@ -156,11 +156,25 @@ coverage: check_coverage coverage.out
 DOCKER_OUTPUT_TAG?=gcr.io/wizzie-registry/n2kafka
 DOCKER_OUTPUT_VERSION?=1.99-2
 
+DOCKER?=docker
+
+docker_build_cb = $(strip $(DOCKER) build \
+	-t $(DOCKER_OUTPUT_TAG):$(DOCKER_OUTPUT_VERSION) --target $(1) \
+	$(2) -f docker/Dockerfile .)
+
 docker: $(BIN)
-	docker build -t $(DOCKER_OUTPUT_TAG):$(DOCKER_OUTPUT_VERSION) -f docker/Dockerfile
+	$(call docker_build_cb,release,)
+
+gdb-docker: $(BIN)
+	$(call docker_build_cb,bin_wrapper,--build-arg INSTALL_PKGS=cgdb \
+		--build-arg EXEC_WRAPPER='cgdb --args')
+
+valgrind-docker: $(BIN)
+	$(call docker_build_cb,bin_wrapper,--build-arg INSTALL_PKGS=valgrind  \
+		--build-arg EXEC_WRAPPER=valgrind)
 
 dev-docker:
-	@docker build $(DOCKER_BUILD_PARAMETERS) --target n2k-dev -f docker/Dockerfile .
+	$(call docker_build_cb,n2k-dev)
 
 -include $(DEPS)
 

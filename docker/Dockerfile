@@ -54,7 +54,7 @@ RUN	pip3 install \
 #
 # RELEASE
 #
-FROM n2k-base
+FROM n2k-base AS release
 
 # envsubst (gettext is very big! install only binary & dependency)
 RUN apk add --no-cache libintl gettext && \
@@ -68,3 +68,13 @@ COPY \
 	/app/
 
 ENTRYPOINT ["/app/n2k_setup.sh"]
+
+FROM release AS bin_wrapper
+ARG INSTALL_PKGS
+ARG EXEC_WRAPPER
+
+WORKDIR /app
+COPY src Makefile.config /app/
+
+RUN apk add --no-cache cgdb && \
+	sed -i 's%^exec \./n2kafka%exec ${EXEC_WRAPPER} ./n2kafka%' /app/n2k_setup.sh

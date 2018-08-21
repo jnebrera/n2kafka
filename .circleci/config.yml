@@ -50,6 +50,13 @@ load_docker_images:
         echo "NO DOCKER CACHE";
       fi
 
+# Save n2kafka binary in to be used in another job
+save_binary:
+  - &save_binary
+    run: |
+      mkdir -p "/tmp/${CIRCLE_JOB}"
+      cp n2kafka "/tmp/${CIRCLE_JOB}"
+
 jobs:
   # Check source format
   clang-format:
@@ -108,14 +115,25 @@ jobs:
              export PYTEST_JOBS;
              printf "%s\n" "${docker_cmds}" | tr '\n' '\0' | \
                xargs -I {} -0 -t -n 1 docker exec dev-container sh -c '{} || exit 255'
+
       # Collect results
+      - run:
+          name: Save n2kafka binary & Makefile config for container creation
+          command: |
+            mkdir -p /tmp/bin/"${CIRCLE_JOB}" /tmp/config/"${CIRCLE_JOB}" &&
+            docker cp dev-container:/app/n2kafka "/tmp/bin/${CIRCLE_JOB}" &&
+            docker cp dev-container:/app/Makefile.config "/tmp/config/${CIRCLE_JOB}"
       - run: docker cp dev-container:/app/tests/ /tmp
       - run: docker cp dev-container:/app/coverage.out.html . || mkdir -p coverage.out.html
       - store_test_results:
           path: /tmp/tests
       - store_artifacts:
           path: coverage.out.html
-
+      - persist_to_workspace:
+          root: /tmp
+          paths:
+            - bin
+            - config
 
   # Release build -> no asserts, optimizations on
   release:
@@ -149,6 +167,88 @@ jobs:
           env PYTEST_JOBS=5 make memchecks
           make coverage
 
+  containers:
+    docker:
+      - image: google/cloud-sdk:alpine
+    steps:
+      - run: |
+          apk add --no-cache git make binutils docker &&
+          curl -s -L \
+              "https://github.com/docker/compose/releases/download/1.21.2/docker-compose-$(uname -s)-$(uname -m)" \
+              -o /usr/bin/docker-compose
+      - setup_remote_docker
+      - checkout
+      - *restore_cache
+      - *load_docker_images
+      - attach_workspace:
+          at: /tmp/workspace
+      - run:
+          name: Gdb container
+          # Get coverage binary, it is supposed to not to have any optimization
+          # enabled
+          command: |
+            cp /tmp/workspace/bin/coverage/n2kafka \
+              /tmp/workspace/config/coverage/Makefile.config . &&
+
+            make -t gdb-docker && \
+            CIRCLE_TAG=${CIRCLE_TAG//+/.} && \
+            env DOCKER_OUTPUT_TAG=gcr.io/wizzie-registry/n2kafka \
+              DOCKER_OUTPUT_VERSION=${CIRCLE_TAG:-latest}.gdb \
+              make gdb-docker
+      - run:
+          name: Valgrind container
+          # Get release binary
+          command: |
+            cp /tmp/workspace/bin/coverage/n2kafka \
+              /tmp/workspace/config/coverage/Makefile.config . &&
+
+            make -t valgrind-docker && \
+            CIRCLE_TAG=${CIRCLE_TAG//+/.} && \
+            env DOCKER_OUTPUT_TAG=gcr.io/wizzie-registry/n2kafka \
+              DOCKER_OUTPUT_VERSION=${CIRCLE_TAG:-latest}.valgrind \
+              make valgrind-docker
+      - run:
+          name: Release container
+          # Get release binary
+          command: |
+            cp /tmp/workspace/bin/coverage/n2kafka . &&
+            strip ./n2kafka && \
+
+            make -t docker && \
+            CIRCLE_TAG=${CIRCLE_TAG//+/.} && \
+            env DOCKER_OUTPUT_TAG=gcr.io/wizzie-registry/n2kafka \
+              DOCKER_OUTPUT_VERSION=${CIRCLE_TAG:-latest} \
+              make docker
+      - run:
+          name: Upload images to gcr
+          command: |
+            # Do not print passwords!
+            printf '+ docker login...\n' >&2
+            docker login -u $DOCKER_USER -p $DOCKER_PASS
+
+            printf '+ docker gcloud login...\n' >&2
+            GCLOUD_KEY_JSON=$(printf '%s' "$GCLOUD_SERVICE_KEY" | base64 -d)
+            printf '%s' "$GCLOUD_KEY_JSON" \
+              | docker login -u _json_key --password-stdin https://gcr.io
+
+            printf '+ gcloud auth activate...\n' >&2
+            # docker login -u $DOCKER_USER -p $DOCKER_PASS
+            printf '%s' "$GCLOUD_KEY_JSON" | \
+              gcloud auth activate-service-account --key-file=/dev/stdin
+
+            set -x
+            CIRCLE_TAG=${CIRCLE_TAG//+/.}
+            gcloud config set project "$GCLOUD_PROJECT"
+            gcloud auth configure-docker --quiet
+
+            set -- '' '.gdb' '.valgrind'
+            for ext in "$@"; do
+              docker push -- gcr.io/wizzie-registry/n2kafka:${CIRCLE_TAG:-latest}"$ext"
+              docker tag gcr.io/wizzie-registry/n2kafka:${CIRCLE_TAG:-latest}"$ext" \
+                         wizzieio/n2kafka:${CIRCLE_TAG:-latest}"$ext"
+              docker push -- wizzieio/n2kafka:${CIRCLE_TAG:-latest}"$ext"
+            done
+
 #
 #  # Check source code
 #  static-analyzer:
@@ -179,6 +279,16 @@ jobs:
 #      - store_artifacts:
 #          path: /tmp/scan-build
 
+# Need to mark all jobs needed to build containers
+filter_version_tag: &filter_version_tag
+  # Start with version-like
+  filters: &version_tag_filter
+    tags:
+      only: /^[0-9]+\.[0-9]+\.[0-9]+.*/
+
+uses_build_dev_workspace: &uses_build_dev_workspace
+  requires:
+    - build_dev
 
 workflows:
   version: 2
@@ -187,19 +297,29 @@ workflows:
       - clang-format
 
       # Base docker for build and tests application
-      - build_dev
+      - build_dev:
+          <<: *filter_version_tag
 
       - assertions:
-          requires:
-            - build_dev
+          <<: *uses_build_dev_workspace
+
       - release:
-          requires:
-            - build_dev
+          <<: *uses_build_dev_workspace
+          <<: *filter_version_tag
+
       - coverage:
-          requires:
-            - build_dev
+          <<: *uses_build_dev_workspace
+          <<: *filter_version_tag
+
       #- checks:
       #    requires:
       #      - make
 
-      #
+      - containers:
+          requires:
+            - coverage
+            - release
+          filters:
+            <<: *version_tag_filter
+            branches:
+              only: master

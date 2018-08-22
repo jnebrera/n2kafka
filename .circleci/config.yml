@@ -27,7 +27,7 @@ save_docker_images:
     # Keep in sync the diff with load_docker_images
     run: |
       mkdir -p docker-cache
-      docker images  --filter "dangling=false" --format '{{.ID}} {{.Repository}} {{.Tag}}' > docker_images.newsum
+      docker images  --filter "dangling=false" --format '{{.ID}} {{.Repository}} {{.Tag}}' | sort > docker_images.newsum
       if ! diff docker_images.newsum docker-cache/built-images.sum; then
         mv docker_images.newsum docker-cache/built-images.sum
         docker_images=$(docker images --filter 'dangling=false' \
@@ -45,7 +45,7 @@ load_docker_images:
     run: |
       if [[ -f docker-cache/built-images.tgz ]]; then
         zcat docker-cache/built-images.tgz | docker load;
-        docker images  --filter "dangling=false" --format '{{.ID}} {{.Repository}} {{.Tag}}' > docker-cache/built-images.sum
+        docker images  --filter "dangling=false" --format '{{.ID}} {{.Repository}} {{.Tag}}' | sort > docker-cache/built-images.sum
       else
         echo "NO DOCKER CACHE";
       fi

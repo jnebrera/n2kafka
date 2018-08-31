@@ -13,6 +13,7 @@ def pytest_addoption(parser):
 def child(request):
     return request.config.getoption("--child")
 
+
 @pytest.fixture(scope='session')
 def kafka_handler():
     handler = KafkaHandler()

@@ -6,8 +6,8 @@ import requests
 import random
 import pytest
 import zlib
+from n2k_test_json import FuzzyJSON
 from n2k_test import \
-                     FuzzyJSON, \
                      HTTPMessage, \
                      HTTPPostMessage, \
                      main, \
@@ -18,6 +18,7 @@ from n2k_test import \
 @pytest.fixture(params=[None, 'deflate', 'unknown_content_encoding'])
 def content_encoding(request):
     return request.param
+
 
 def strip_apart(base, min_pieces=10, max_pieces=30):
     ''' Strip apart a string at random positions in random number of pieces

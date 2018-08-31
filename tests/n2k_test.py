@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
 
-from n2k_test_json import FuzzyJSON
-
 from tempfile import NamedTemporaryFile
 import zlib
-from socket import socket, AF_INET, SOCK_STREAM, SOCK_DGRAM
+from socket import socket, AF_INET, SOCK_STREAM
 from subprocess import Popen, PIPE
 from concurrent.futures import ThreadPoolExecutor
 from itertools import repeat

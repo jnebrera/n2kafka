@@ -6,8 +6,6 @@ from enum import Enum, auto
 from random import choice, randint
 from string import ascii_uppercase
 
-import json
-
 
 class FuzzyJSON(object):
     ''' Creation of random JSON object to fuzzy testing'''

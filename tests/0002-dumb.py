@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 from n2k_test import \
-    HTTPGetMessage, \
     HTTPPostMessage, \
     main, \
     TestN2kafka, \

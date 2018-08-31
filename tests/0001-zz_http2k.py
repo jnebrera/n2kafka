@@ -8,7 +8,6 @@ import pytest
 import zlib
 from n2k_test import \
                      FuzzyJSON, \
-                     HTTPGetMessage, \
                      HTTPMessage, \
                      HTTPPostMessage, \
                      main, \

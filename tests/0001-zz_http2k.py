@@ -91,9 +91,11 @@ class TestHTTP2K(TestN2kafka):
         ] + [
             # TODO connection should be answered properly, with a bad method
             # response
-            HTTPPostMessage(uri=t_uri, data=TEST_MESSAGE,
-                            expected_exception_type=requests.exceptions.ConnectionError
-                            )
+            HTTPPostMessage(
+              uri=t_uri,
+              data=TEST_MESSAGE,
+              expected_exception_type=requests.exceptions.ConnectionError
+              )
             for t_uri in invalid_uris
         ]
 
@@ -162,14 +164,15 @@ class TestHTTP2K(TestN2kafka):
                                      valgrind_handler,
                                      child):
         used_topic = TestN2kafka.random_topic()
-        test_message = HTTPPostMessage(uri='/v1/data/' + used_topic,
-                                       data=[{'chunk': '{"test":1}{"te',
-                                              'kafka_messages': {'topic': used_topic,
-                                                                 'messages': ['{"test":1}']}},
-                                             {'raise': TestN2kafka.CloseConnectionException},
-                                             ],
-                                       expected_exception_type=TestN2kafka.CloseConnectionException,
-                                       )
+        test_message = HTTPPostMessage(
+          uri='/v1/data/' + used_topic,
+          data=[{'chunk': '{"test":1}{"te',
+                 'kafka_messages': {'topic': used_topic,
+                                    'messages': ['{"test":1}']}},
+                {'raise': TestN2kafka.CloseConnectionException},
+                ],
+          expected_exception_type=TestN2kafka.CloseConnectionException,
+          )
 
         self._base_http2k_test(child=child,
                                messages=[test_message],
@@ -253,7 +256,8 @@ class TestHTTP2K(TestN2kafka):
             HTTPPostMessage(**{**base_args,
                                'data': ''.join(two_messages),
                                'expected_kafka_messages': [
-                                   {'topic': used_topic, 'messages': two_messages}
+                                   {'topic': used_topic,
+                                    'messages': two_messages}
                                ]}
                             ),
 
@@ -272,7 +276,8 @@ class TestHTTP2K(TestN2kafka):
                                 {
                                     'chunk': t_json.encode(),
                                     'kafka_messages': {
-                                        'messages': [t_json], 'topic':used_topic
+                                        'messages': [t_json],
+                                        'topic':used_topic
                                     }
                                 } for t_json in two_messages
                             ],
@@ -285,7 +290,8 @@ class TestHTTP2K(TestN2kafka):
                                    {
                                        'chunk': '{"test":1}{"te',
                                        'kafka_messages': {
-                                           'topic': used_topic, 'messages': ['{"test":1}']
+                                           'topic': used_topic,
+                                           'messages': ['{"test":1}']
                                        }
                                    }, {
                                        'chunk': 'st":2}{"test":3}',
@@ -328,17 +334,19 @@ class TestHTTP2K(TestN2kafka):
             # Fuzzy data
             HTTPPostMessage(**{**base_args, 'data': fuzzy_jsons_str,
                                'expected_kafka_messages': [
-                                   {'topic': used_topic, 'messages': fuzzy_jsons}
+                                   {'topic': used_topic,
+                                    'messages': fuzzy_jsons}
                                ]}
                             ),
 
             # Chunked fuzzy data
-            HTTPPostMessage(**{**base_args, 'data': [{'chunk': i}
-                                                    for i in strip_apart(fuzzy_jsons_str)],
-                              'expected_kafka_messages': [
-               {'topic': used_topic, 'messages': fuzzy_jsons}
-            ]}
-            ),
+            HTTPPostMessage(**{**base_args,
+                               'data': [{'chunk': i}
+                                        for i in strip_apart(fuzzy_jsons_str)],
+                               'expected_kafka_messages': [
+                                {'topic': used_topic, 'messages': fuzzy_jsons}]
+                               }
+                            ),
 
             # Pure garbage!
             HTTPPostMessage(**{

@@ -28,7 +28,8 @@ class TestMeraki(TestN2kafka):
                             data='{"test":1}',
                             expected_response_code=200,
                             expected_kafka_messages=[
-                                {'topic': kafka_topic_name, 'messages': [TEST_MESSAGE]}
+                                {'topic': kafka_topic_name,
+                                 'messages': [TEST_MESSAGE]}
                             ]),
             HTTPPostMessage(uri='/v1/meraki/mytestvalidator',
                             data='{"test":1}{"test":2}',

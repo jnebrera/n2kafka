@@ -38,7 +38,8 @@ class FuzzyJSON(object):
             self.value = {
                 FuzzyJSON._random_string(10): FuzzyJSON(
                     t_max_len - 1,
-                    FuzzyJSON.JsonTypes.RANDOM).value for _ in range(t_max_len)}
+                    FuzzyJSON.JsonTypes.RANDOM).value for _ in range(t_max_len)
+                }
         elif FuzzyJSON.JsonTypes.ARRAY == t_type:
             self.value = [FuzzyJSON(t_max_len - 1).value
                           for _ in range(t_max_len)]

@@ -246,9 +246,9 @@ class HTTPMessage(object):
 
         # 3rd: Prepare kafka checking if we are sending data in chunks
         if chunk_data and 'data' in method_args:
-            # If data is iterable, it will be sent as chunks, and kafka messages
-            # will be checked for each chunk. In other case, all POST message
-            # will be sent as a whole.
+            # If data is iterable, it will be sent as chunks, and kafka
+            # messages will be checked for each chunk. In other case, all POST
+            # message will be sent as a whole.
             method_args['data'] = HTTPMessage.test_chunks_kafka_generator(
                 kafka_handler,
                 method_args['data'])
@@ -324,7 +324,9 @@ class TestN2kafka(object):
 
     def _random_resource_file(t_resource_name):
         resource_name_prefix = 'n2k_' + t_resource_name + '_'
-        with NamedTemporaryFile(prefix=resource_name_prefix, delete=False, dir='.') as f:
+        with NamedTemporaryFile(prefix=resource_name_prefix,
+                                delete=False,
+                                dir='.') as f:
             return os.path.basename(f.name)
 
     def _random_resource(resource_name):

@@ -257,7 +257,7 @@ class HTTPMessage(object):
         expected_exception_type = self.params.get("expected_exception_type")
         try:
             response = self.http_method(uri, **method_args)
-            assert(None == expected_exception_type)
+            assert(expected_exception_type is None)
         except Exception as ex:
             if expected_exception_type and isinstance(
                     ex, expected_exception_type):

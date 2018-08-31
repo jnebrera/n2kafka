@@ -63,7 +63,7 @@ endif
 .PHONY: tests checks memchecks drdchecks helchecks coverage check_coverage \
 	docker dev-docker gdb-docker valgrind-docker .clang_complete
 
-run_tests = tests/run_tests.sh $(1) $(TESTS_CHECKS_XML:.xml=)
+show_test_result = tests/show_tests.py $(1) $(TESTS_CHECKS_XML:.xml=)
 
 # Macro for run valgrind.
 # Arguments:
@@ -83,19 +83,19 @@ run_valgrind = echo "$(MKL_YELLOW) Generating $(2) $(MKL_CLR_RESET)" && \
 			    $(3)
 
 tests: $(TESTS_XML)
-	@$(call run_tests, -cvdh)
+	@$(call show_test_result, -cmde)
 
 checks: $(TESTS_CHECKS_XML)
-	$(call run_tests,-c)
+	$(call show_test_result,-c)
 
 memchecks: $(TESTS_VALGRIND_XML)
-	@$(call run_tests,-v)
+	@$(call show_test_result,-m)
 
 drdchecks:
-	@$(call run_tests,-d)
+	@$(call show_test_result,-d)
 
 helchecks:
-	@$(call run_tests,-h)
+	@$(call show_test_result,-e)
 
 $(TEST_REPORTS_DIR)/%.mem.xml: tests/%.py $(TESTS_PY_DEPS) $(BIN)
 	@echo -e '\033[0;33m Checking memory:\033[0m $<'
@@ -154,7 +154,7 @@ coverage: check_coverage coverage.out
 #
 
 DOCKER_OUTPUT_TAG?=gcr.io/wizzie-registry/n2kafka
-DOCKER_OUTPUT_VERSION?=1.99-2
+DOCKER_OUTPUT_VERSION?=latest
 
 DOCKER?=docker
 

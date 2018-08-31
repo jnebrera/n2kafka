@@ -14,23 +14,20 @@ WORKDIR /app
 FROM n2k-base as n2k-dev
 
 # ca-certificates: for wget bootstrapping
-# {ncurses,slang,expat}-dev: deps for xml-coreutils
 RUN apk add --no-cache \
 	bash \
 	bsd-compat-headers \
 	build-base \
 	ca-certificates \
 	cgdb \
-	expat-dev \
 	git \
 	jansson-dev \
 	libarchive-tools \
 	libev-dev \
 	libmicrohttpd-dev \
-	ncurses-dev \
 	openssl \
+	py3-yaml \
 	python3-dev \
-	slang-dev \
 	yajl-dev \
 	zlib-dev
 
@@ -45,7 +42,8 @@ RUN	apk add --no-cache \
 		valgrind
 
 RUN	update-ca-certificates
-RUN	pip3 install \
+RUN	pip3 install --upgrade pip && pip3 install \
+		colorama \
 		pykafka \
 		pytest \
 		pytest-xdist \

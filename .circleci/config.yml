@@ -70,6 +70,12 @@ jobs:
             printf '%s' "$out"
             test -z "$out"
 
+  flake8:
+    docker:
+      - image: alpine/flake8:3.5.0
+    steps:
+      - checkout
+      - run: flake8 tests/show_tests.py
 
   # Build & prepare devel container
   build_dev:
@@ -84,7 +90,8 @@ jobs:
       - run: apk add --no-cache make
       - run:
           environment:
-            DOCKER_BUILD_PARAMETERS: -t n2k-dev
+            DOCKER_OUTPUT_TAG: n2k-dev
+            DOCKER_OUTPUT_VERSION: latest
           command: make dev-docker
       - *save_docker_images
       - *save_cache
@@ -295,6 +302,7 @@ workflows:
   binary:
     jobs:
       - clang-format
+      - flake8
 
       # Base docker for build and tests application
       - build_dev:

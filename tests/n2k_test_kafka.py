@@ -15,7 +15,7 @@ class KafkaHandler(object):
     def _consumer(self, topic_name):
         try:
             return self._kafka_consumers[topic_name]
-        except KeyError as e:
+        except KeyError:
             # Create topic consumer
             topic = self._kafka.topics[topic_name]
             offset_earliest = pykafka.common.OffsetType.EARLIEST

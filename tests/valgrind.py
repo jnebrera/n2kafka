@@ -78,7 +78,6 @@ class ValgrindHandler(object):
         ''' Run child under controlled environment, gathering xml output '''
         if isinstance(child_args, str):
             child_args = shlex.split(child_args)
-        opt = '--xml-file='
         with pipe() as (pipe_r, pipe_w):
             # Use file descriptor for xml output
             for idx, arg in enumerate(child_args):

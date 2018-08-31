@@ -75,7 +75,13 @@ jobs:
       - image: alpine/flake8:3.5.0
     steps:
       - checkout
-      - run: flake8 tests/conftest.py tests/n2k_test_json.py tests/show_tests.py
+      - run: |
+          flake8 \
+          tests/conftest.py \
+          tests/n2k_test_json.py \
+          tests/n2k_test_kafka.py \
+          tests/show_tests.py \
+          tests/valgrind.py
 
   # Build & prepare devel container
   build_dev:

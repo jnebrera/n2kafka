@@ -11,8 +11,9 @@ from n2k_test import \
                      HTTPMessage, \
                      HTTPPostMessage, \
                      main, \
-                     TestN2kafka, \
-                     valgrind_handler
+                     TestN2kafka
+
+from n2k_test import valgrind_handler  # noqa: F401
 
 
 @pytest.fixture(params=[None, 'deflate', 'unknown_content_encoding'])
@@ -33,7 +34,7 @@ def strip_apart(base, min_pieces=10, max_pieces=30):
 
 
 class TestHTTP2K(TestN2kafka):
-    def _base_http2k_test(self,
+    def _base_http2k_test(self,  # noqa: F811
                           child,
                           messages,
                           kafka_handler,
@@ -66,7 +67,10 @@ class TestHTTP2K(TestN2kafka):
                                       'kafka_handler',
                                       'valgrind_handler']})
 
-    def test_http2k_url(self, kafka_handler, valgrind_handler, child):
+    def test_http2k_url(self,  # noqa: F811
+                        kafka_handler,
+                        valgrind_handler,
+                        child):
         ''' Test URL behavior '''
         TEST_MESSAGE = '{"test":1}'
         used_topic = TestN2kafka.random_topic()
@@ -104,7 +108,10 @@ class TestHTTP2K(TestN2kafka):
                                kafka_handler=kafka_handler,
                                valgrind_handler=valgrind_handler)
 
-    def test_http2k_client(self, kafka_handler, valgrind_handler, child):
+    def test_http2k_client(self,  # noqa: F811
+                           kafka_handler,
+                           valgrind_handler,
+                           child):
         ''' Test ZZ client behavior. http2k expect client as X-CONSUMER-ID http
         header, and it needs to forward messages to that client '''
         TEST_MESSAGE = '{"test":1}'
@@ -138,7 +145,7 @@ class TestHTTP2K(TestN2kafka):
                                kafka_handler=kafka_handler,
                                valgrind_handler=valgrind_handler)
 
-    def test_http2k_invalid_request(self,
+    def test_http2k_invalid_request(self,  # noqa: F811
                                     kafka_handler,
                                     valgrind_handler,
                                     child):
@@ -159,7 +166,7 @@ class TestHTTP2K(TestN2kafka):
                                kafka_handler=kafka_handler,
                                valgrind_handler=valgrind_handler)
 
-    def test_http2k_unexpected_close(self,
+    def test_http2k_unexpected_close(self,  # noqa: F811
                                      kafka_handler,
                                      valgrind_handler,
                                      child):
@@ -201,7 +208,7 @@ class TestHTTP2K(TestN2kafka):
 
         return ret
 
-    def test_http2k_messages(self,
+    def test_http2k_messages(self,  # noqa: F811
                              kafka_handler,
                              child,
                              valgrind_handler,
@@ -388,7 +395,7 @@ class TestHTTP2K(TestN2kafka):
                                kafka_handler=kafka_handler,
                                valgrind_handler=valgrind_handler)
 
-    def test_http2k_full_queue(self,
+    def test_http2k_full_queue(self,  # noqa: F811
                                kafka_handler,
                                valgrind_handler,
                                child):
@@ -410,7 +417,7 @@ class TestHTTP2K(TestN2kafka):
                                base_config_add={
                                 'rdkafka.queue.buffering.max.messages': '3'})
 
-    def test_http2k_noautocreate_topic(self,
+    def test_http2k_noautocreate_topic(self,  # noqa: F811
                                        kafka_handler,
                                        valgrind_handler,
                                        child):

@@ -3,14 +3,16 @@
 from n2k_test import \
     HTTPPostMessage, \
     main, \
-    TestN2kafka, \
-    valgrind_handler
+    TestN2kafka
+
+# flake8 does not handle pytest fixtures
+from n2k_test import valgrind_handler  # noqa: F401
 
 
 class TestDumb(TestN2kafka):
     ''' Test dumb (default) decoder '''
 
-    def base_test_dumb(self,
+    def base_test_dumb(self,  # noqa: F811
                        kafka_topic_name,
                        child,
                        base_config,
@@ -41,7 +43,10 @@ class TestDumb(TestN2kafka):
                                                          'kafka_handler',
                                                          'valgrind_handler']})
 
-    def test_dumb_topic_general(self, kafka_handler, valgrind_handler, child):
+    def test_dumb_topic_general(self,  # noqa: F811
+                                kafka_handler,
+                                valgrind_handler,
+                                child):
         ''' Test dumb decoder with topic in general config'''
         used_topic = TestN2kafka.random_topic()
         base_config = {'listeners': [{}], 'topic': used_topic}
@@ -54,21 +59,21 @@ class TestDumb(TestN2kafka):
     # TODO (we can use fixtures with params, to use only one function)
     # TODO
     # def test_dumb_topic_listener(self, kafka_handler, child):
-        #''' Test dumb decoder with a per-listener based'''
-        #used_topic = TestN2kafka.random_topic()
-        #base_config = {'listeners':[{'topic':used_topic}]}
-        #self.base_test_dumb(used_topic, base_config, child)
+        # ''' Test dumb decoder with a per-listener based'''
+        # used_topic = TestN2kafka.random_topic()
+        # base_config = {'listeners':[{'topic':used_topic}]}
+        # self.base_test_dumb(used_topic, base_config, child)
 
     # TODO
     # def test_dumb_both_topics(self, kafka_handler, child):
-        #''' Test dumb decoder with both topics defined.'''
-        #used_topic = TestN2kafka.random_topic()
-        #unused_topic = TestN2kafka.random_topic()
-        # base_config = {
-        #'listeners':[{'topic':used_topic}],
-        #'topic':unused_topic
-        #}
-        #self.base_test_dumb(used_topic, base_config, child)
+        # ''' Test dumb decoder with both topics defined.'''
+        # used_topic = TestN2kafka.random_topic()
+        # unused_topic = TestN2kafka.random_topic()
+        #  base_config = {
+        # 'listeners':[{'topic':used_topic}],
+        # 'topic':unused_topic
+        # }
+        # self.base_test_dumb(used_topic, base_config, child)
 
 
 if __name__ == '__main__':

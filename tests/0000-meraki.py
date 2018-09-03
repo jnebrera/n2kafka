@@ -4,12 +4,13 @@ from n2k_test import \
                      HTTPGetMessage, \
                      HTTPPostMessage, \
                      main, \
-                     TestN2kafka, \
-                     valgrind_handler
+                     TestN2kafka
+
+from n2k_test import valgrind_handler  # noqa: F401
 
 
 class TestMeraki(TestN2kafka):
-    def base_test_meraki(self,
+    def base_test_meraki(self,  # noqa: F811
                          kafka_topic_name,
                          child,
                          base_config,
@@ -47,7 +48,7 @@ class TestMeraki(TestN2kafka):
                                                          'kafka_handler',
                                                          'valgrind_handler']})
 
-    def test_meraki_topic_general(self,
+    def test_meraki_topic_general(self,  # noqa: F811
                                   kafka_handler,
                                   valgrind_handler,
                                   child):
@@ -61,7 +62,7 @@ class TestMeraki(TestN2kafka):
                               kafka_handler=kafka_handler,
                               valgrind_handler=valgrind_handler)
 
-    def test_meraki_topic_listener(self,
+    def test_meraki_topic_listener(self,  # noqa: F811
                                    kafka_handler,
                                    valgrind_handler,
                                    child):
@@ -75,7 +76,10 @@ class TestMeraki(TestN2kafka):
                               kafka_handler=kafka_handler,
                               valgrind_handler=valgrind_handler)
 
-    def test_meraki_both_topics(self, kafka_handler, valgrind_handler, child):
+    def test_meraki_both_topics(self,  # noqa: F811
+                                kafka_handler,
+                                valgrind_handler,
+                                child):
         ''' Test meraki with both topics defined.'''
         used_topic = TestN2kafka.random_topic()
         unused_topic = TestN2kafka.random_topic()
@@ -89,7 +93,10 @@ class TestMeraki(TestN2kafka):
                               kafka_handler=kafka_handler,
                               valgrind_handler=valgrind_handler)
 
-    def test_meraki_invalid_url(self, kafka_handler, valgrind_handler, child):
+    def test_meraki_invalid_url(self,  # noqa: F811
+                                kafka_handler,
+                                valgrind_handler,
+                                child):
         test_messages = [
             HTTPGetMessage(uri='/',
                            expected_response='',

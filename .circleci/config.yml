@@ -76,13 +76,7 @@ jobs:
     steps:
       - checkout
       - run: |
-          flake8 \
-          tests/conftest.py \
-          tests/n2k_test_json.py \
-          tests/n2k_test_kafka.py \
-          tests/n2k_test.py \
-          tests/show_tests.py \
-          tests/valgrind.py
+          flake8 tests
 
   # Build & prepare devel container
   build_dev:

@@ -195,7 +195,7 @@ static int connection_args_iterator(void *cls,
 	}
 
 	if (value && 0 == strcmp("Content-Encoding", key) &&
-	    0 == strcmp("deflate", value)) {
+	    (0 == strcmp("deflate", value) || (0 == strcmp("gzip", value)))) {
 		con_info->zlib.enable = 1;
 	}
 
@@ -304,6 +304,9 @@ create_connection_info(const char *http_method,
 		       struct MHD_Connection *connection,
 		       const char **error) {
 
+	static const int WINDOW_BITS = 15;
+	static const int ENABLE_ZLIB_GZIP = 32;
+
 	/* First call, creating all needed structs */
 	const size_t num_decoder_opts = decoder_opts(
 			connection, http_method, uri, client, NULL);
@@ -342,7 +345,8 @@ create_connection_info(const char *http_method,
 		con_info->zlib.strm.avail_in = 0;
 		con_info->zlib.strm.next_in = Z_NULL;
 
-		const int rc = inflateInit(&con_info->zlib.strm);
+		const int rc = inflateInit2(&con_info->zlib.strm,
+					    WINDOW_BITS | ENABLE_ZLIB_GZIP);
 		if (rc != Z_OK) {
 			*error = zlib_init_error2str(rc);
 			rdlog(LOG_ERR,

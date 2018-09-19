@@ -16,7 +16,7 @@ from n2k_test import \
 from n2k_test import valgrind_handler  # noqa: F401
 
 
-@pytest.fixture(params=[None, 'deflate', 'unknown_content_encoding'])
+@pytest.fixture(params=[None, 'deflate', 'gzip', 'unknown_content_encoding'])
 def content_encoding(request):
     return request.param
 
@@ -241,9 +241,15 @@ class TestHTTP2K(TestN2kafka):
         send_garbage_expected_stdout_regex = None
         if content_encoding:
             base_args['headers'] = {'Content-Encoding': content_encoding}
-            if content_encoding == 'deflate':
-                base_args['deflate_request'] = True
-                # TODO n2kafka should return proper HTTP error in this case
+
+            wbits = zlib.MAX_WBITS  # default zlib library width bits
+            use_gzip_wbits = 0x10
+
+            if content_encoding == 'gzip':
+                wbits += use_gzip_wbits
+
+            if content_encoding in ('gzip', 'deflate'):
+                base_args['compressor'] = zlib.compressobj(wbits=wbits)
                 send_garbage_expected_stdout_regex = [
                  'from client localhost:{listener_port}: '
                  '{{"error":"deflated input is not conforming to the '
@@ -358,7 +364,7 @@ class TestHTTP2K(TestN2kafka):
             # Pure garbage!
             HTTPPostMessage(**{
                 **base_args,
-                'deflate_request': False,  # Send zlib garbage
+                'compressor': None,  # Send zlib garbage
                 'expected_response_code': 400,
                 # TODO 'expected_response': 'abc',
                 'expected_stdout_regex': send_garbage_expected_stdout_regex,
@@ -369,17 +375,19 @@ class TestHTTP2K(TestN2kafka):
             # should return error in console.
             HTTPPostMessage(**{
                 **base_args,
-                'deflate_request': False,  # Send zlib garbage
+                'compressor': None,  # Send zlib garbage
                 'expected_response_code': 400,
                 # TODO 'expected_response': 'abc',
                 'expected_stdout_regex': None,
                 'data': bytearray(random.getrandbits(8) for _ in range(20)),
             }),
+        ]
 
+        if content_encoding == 'deflate':
             # deflate data sent with no dict
-            HTTPPostMessage(**{
+            test_messages.append(HTTPPostMessage(**{
                 **base_args,
-                'deflate_request': False,  # Already deflated
+                'compressor': None,  # Already deflated
                 'headers': {'Content-Encoding': 'deflate'},  # Already deflated
                 'data':
                     zlib.compressobj(zdict=b'hello').compress(b'{"test":1}'),
@@ -387,8 +395,7 @@ class TestHTTP2K(TestN2kafka):
                 'expected_stdout_regex': [
                   'libz deflate error: a dictionary is need'
                 ]
-            }),
-        ]
+            }))
 
         self._base_http2k_test(child=child,
                                messages=test_messages,

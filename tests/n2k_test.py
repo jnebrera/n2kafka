@@ -148,26 +148,25 @@ def valgrind_handler(child):
 class HTTPMessage(object):
     ''' Base HTTP message for testing '''
 
-    def __init__(self, http_method, deflate_request=False, **kwargs):
+    def __init__(self, http_method, compressor=None, **kwargs):
         ''' Honored params: uri, 'message', 'expected_response',
         'expected_response_code', 'expected_kafka_messages'
         '''
-        self.deflate_request = deflate_request
         self.http_method = http_method
+        self.compressor = compressor
         self.params = kwargs
 
-    def deflate_dataset_chunks(http_chunks):
-        handler = zlib.compressobj()
-
+    def deflate_dataset_chunks(compressor, http_chunks):
         for http_chunk in http_chunks:
             if 'chunk' in http_chunk:
-                http_chunk['chunk'] = handler.compress(http_chunk['chunk']) + \
-                    handler.flush(zlib.Z_SYNC_FLUSH)
+                http_chunk['chunk'] = compressor.compress(
+                                                       http_chunk['chunk']) + \
+                    compressor.flush(zlib.Z_SYNC_FLUSH)
 
         # Add finish chunk in last valid one
         for http_hunk in reversed(http_chunks):
             if 'chunk' in http_chunk:
-                http_chunk['chunk'] += handler.flush(zlib.Z_FINISH)
+                http_chunk['chunk'] += compressor.flush(zlib.Z_FINISH)
                 break
 
         return http_chunks
@@ -201,7 +200,11 @@ class HTTPMessage(object):
         except KeyError:
             return None
 
-    def test(self, listener_port, kafka_handler, t_child):
+    def test(self,
+             listener_port,
+             kafka_handler,
+             t_child,
+             compres_handler=None):
         ''' Do the HTTP message test.
 
         Arguments:
@@ -236,13 +239,16 @@ class HTTPMessage(object):
                 pass
 
         # 2nd: Do we want to compress data?
-        if self.deflate_request:
+        if self.compressor:
+            compressor = self.compressor.copy()  # Maintain original untouched
             if chunk_data:
                 # Compress each chunk individually
                 method_args['data'] = HTTPMessage.deflate_dataset_chunks(
-                    method_args['data'])
+                                          compressor, method_args['data'])
             else:
-                method_args['data'] = zlib.compress(method_args['data'])
+                method_args['data'] = compressor.compress(
+                                                       method_args['data']) + \
+                    compressor.flush(zlib.Z_FINISH)
 
         # 3rd: Prepare kafka checking if we are sending data in chunks
         if chunk_data and 'data' in method_args:

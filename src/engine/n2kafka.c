@@ -24,6 +24,8 @@
 #include "util/kafka.h"
 
 #include <jansson.h>
+#include <librd/rd.h>
+
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>
@@ -78,17 +80,38 @@ static void sighup_proc(int signum __attribute__((unused))) {
 	do_reload = 1;
 }
 
+static sigset_t signal_setv(size_t n, const int *signals) {
+	sigset_t ret;
+	sigemptyset(&ret);
+
+	for (size_t i = 0; i < n; ++i) {
+		sigaddset(&ret, signals[i]);
+	}
+
+	return ret;
+}
+
 int main(int argc, char *argv[]) {
+	static const int SIGNALS[] = {SIGINT, SIGHUP};
+	const sigset_t sig_block = signal_setv(RD_ARRAYSIZE(SIGNALS), SIGNALS);
+	sigset_t old_sigset;
+
 	if (argc != 2 || is_asking_help(argv[1])) {
 		show_usage(argv[0]);
 		exit(1);
 	}
+
+	// Make signal handling only in main thread
+	sigprocmask(SIG_BLOCK, &sig_block, &old_sigset);
 
 	init_global_config();
 	parse_config(argv[1]);
 
 	signal(SIGINT, shutdown_process);
 	signal(SIGHUP, sighup_proc);
+
+	// Restore signal processing
+	sigprocmask(SIG_SETMASK, &old_sigset, NULL);
 
 	while (!do_shutdown) {
 		kafka_poll(1000 /* ms */);

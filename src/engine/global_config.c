@@ -49,7 +49,6 @@
 #define CONFIG_LISTENERS_ARRAY "listeners"
 #define CONFIG_TOPIC_KEY "topic"
 #define CONFIG_BROKERS_KEY "brokers"
-#define CONFIG_N2KAFKA_ID_KEY "n2kafka_id"
 #define CONFIG_DEBUG_KEY "debug"
 #define CONFIG_RESPONSE_KEY "response"
 #define CONFIG_BLACKLIST_KEY "blacklist"
@@ -281,8 +280,6 @@ static void parse_config_keyval(const char *key, const json_t *value) {
 		// Already parsed
 	} else if (!strcasecmp(key, CONFIG_BROKERS_KEY)) {
 		// Already parsed
-	} else if (!strcasecmp(key, CONFIG_N2KAFKA_ID_KEY)) {
-		// Already parsed
 	} else if (!strcasecmp(key, CONFIG_LISTENERS_ARRAY)) {
 		parse_listeners_array(key, value);
 	} else if (!strcasecmp(key, CONFIG_DEBUG_KEY)) {
@@ -323,9 +320,6 @@ static void parse_rdkafka_config_keyval(const char *key, const json_t *value) {
 		global_config.brokers = strdup(assert_json_string(key, value));
 		parse_rdkafka_keyval_config("rdkafka.metadata.broker.list",
 					    global_config.brokers);
-	} else if (!strcasecmp(key, CONFIG_N2KAFKA_ID_KEY)) {
-		global_config.n2kafka_id =
-				strdup(assert_json_string(key, value));
 	} else if (!strncasecmp(key,
 				CONFIG_RDKAFKA_KEY,
 				strlen(CONFIG_RDKAFKA_KEY))) {
@@ -595,6 +589,5 @@ void free_global_config() {
 	in_addr_list_done(global_config.blacklist);
 	free(global_config.topic);
 	free(global_config.brokers);
-	free(global_config.n2kafka_id);
 	free(global_config.response);
 }

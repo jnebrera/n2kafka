@@ -20,11 +20,12 @@ RUN apk add --no-cache \
 	build-base \
 	ca-certificates \
 	cgdb \
+	file \
 	git \
+	gnutls-dev \
 	jansson-dev \
 	libarchive-tools \
 	libev-dev \
-	libmicrohttpd-dev \
 	openssl \
 	py3-yaml \
 	python3-dev \

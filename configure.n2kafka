@@ -123,6 +123,22 @@ checks_librdkafka () {
        #endif"
 }
 
+readonly microhttpd_version=0.9.59
+bootstrap_microhttpd () {
+  cd libmicrohttpd-${microhttpd_version}
+
+  if [[ $HAVE_LTO = 'y' ]]; then
+    # Duplicated functions
+    local -r cflag_lto='-flto'
+  fi
+
+  ./configure AR=gcc-ar LDFLAGS=-flto CPPFLAGS="$cflag_lto" RANLIB=gcc-ranlib \
+    --disable-shared --disable-doc --disable-examples --disable-curl \
+    --enable-largefile --enable-https --enable-messages
+  make
+  #make install
+}
+
 function checks_libmicrohttpd {
     # quick hack to avoid bad formatted libmicrohttpd header. With this macro
     # defined, the header will know that we are using GCC at libmicrohttp
@@ -131,7 +147,15 @@ function checks_libmicrohttpd {
     mkl_meta_set "libmicrohttpd" "desc" \
         "library embedding HTTP server functionality"
     mkl_meta_set "libmicrohttpd" "deb" "libmicrohttpd-dev"
-    mkl_lib_check "libmicrohttpd" "" fail CC "-lmicrohttpd" \
+    mkl_meta_set "libmicrohttpd" "bootstrap_url" \
+      "https://ftp.gnu.org/gnu/libmicrohttpd/libmicrohttpd-${microhttpd_version}.tar.gz"
+    mkl_meta_set "libmicrohttpd" "bootstrap_cppflags" \
+      "-I./vendor/libmicrohttpd/libmicrohttpd-0.9.59/src/include/"
+    mkl_meta_set "libmicrohttpd" "bootstrap_static_lib" \
+      "vendor/libmicrohttpd/libmicrohttpd-0.9.59/src/microhttpd/.libs/libmicrohttpd.a"
+    mkl_meta_set "libmicrohttpd" "bootstrap_makefn" "bootstrap_microhttpd"
+
+    mkl_lib_check --static=-lmicrohttpd --libname=-lmicrohttpd "libmicrohttpd" "" fail CC "-lmicrohttpd -lgnutls" \
         "#include <microhttpd.h>"
     mkl_define_set "Have libmicrohttpd library" "HAVE_LIBMICROHTTPD" "1"
 }

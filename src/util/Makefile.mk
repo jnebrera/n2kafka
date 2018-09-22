@@ -1,4 +1,5 @@
 THIS_SRCS := \
+	file.c \
 	in_addr_list.c \
 	kafka.c \
 	kafka_message_array.c \

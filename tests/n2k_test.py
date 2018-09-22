@@ -148,12 +148,13 @@ def valgrind_handler(child):
 class HTTPMessage(object):
     ''' Base HTTP message for testing '''
 
-    def __init__(self, http_method, compressor=None, **kwargs):
+    def __init__(self, http_method, compressor=None, proto='http', **kwargs):
         ''' Honored params: uri, 'message', 'expected_response',
         'expected_response_code', 'expected_kafka_messages'
         '''
         self.http_method = http_method
         self.compressor = compressor
+        self.proto = proto
         self.params = kwargs
 
     def deflate_dataset_chunks(compressor, http_chunks):
@@ -211,12 +212,18 @@ class HTTPMessage(object):
           - listener_port: HTTP listener port
           - kafka handler:
         '''
-        uri = 'http://localhost:' + str(listener_port) + self.params['uri']
+        uri = self.proto + \
+            '://localhost:' + \
+            str(listener_port) + \
+            self.params['uri']
+
         method_args = {
             key: self.params[key] for key in (
                 'data',
+                'headers',
                 'params',
-                'headers') if key in self.params}
+                'verify',
+                ) if key in self.params}
 
         chunk_data = 'data' in method_args \
             and not isinstance(method_args['data'], str) \

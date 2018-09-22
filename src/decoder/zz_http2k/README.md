@@ -38,3 +38,16 @@ Output will be sent to topic `topic1`.
 
 You can send compressed messages to ZZ decoder using `Content-Encoding: deflate` in
 POST header. Messages has to be compressed with zlib library (http://zlib.net/).
+
+## HTTPS (HTTP over TLS)
+You can enable HTTPs with the proper key and cert file with the next
+parameters:
+
+https_key_filename
+: Private key to use. It can't be readable by "others" group.
+
+https_key_password
+: Password to decode private key (optional).
+
+https_cert_filename
+: Certificate to export.

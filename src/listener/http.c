@@ -31,6 +31,7 @@
 
 #include "engine/rb_addr.h"
 #include "http.h"
+#include "util/file.h"
 #include "util/string.h"
 #include "util/topic_database.h"
 
@@ -40,6 +41,9 @@
 #include <librd/rdmem.h>
 #include <microhttpd.h>
 #include <zlib.h>
+
+#include <sys/mman.h>
+#include <sys/stat.h>
 
 #include <arpa/inet.h>
 #include <assert.h>
@@ -62,8 +66,15 @@ struct http_listener {
 #define HTTP_PRIVATE_MAGIC 0xC0B345FE
 	uint64_t magic; ///< magic field
 #endif
+	size_t tls_data_size;
 	struct MHD_Daemon *d; ///< Associated daemon
+	char tls_data[];
 };
+
+static void http_listener_scrub_tls_data(struct http_listener *l) {
+	volatile void *r = memset(l->tls_data, 0, l->tls_data_size);
+	(void)r;
+}
 
 static struct {
 	struct MHD_Response *empty_response;
@@ -856,6 +867,10 @@ static void break_http_loop(struct listener *vhttp_listener) {
 #endif
 	MHD_stop_daemon(http_listener->d);
 	listener_join(&http_listener->listener);
+	if (http_listener->tls_data_size > 0) {
+		http_listener_scrub_tls_data(http_listener);
+		munlock(http_listener->tls_data, http_listener->tls_data_size);
+	}
 	free(http_listener);
 
 	if (0 == --http_responses.listeners_counter) {
@@ -876,13 +891,37 @@ struct http_loop_args {
 		int connection_limit;
 		int connection_timeout;
 		int per_ip_connection_limit;
+		const char *https_key_filename, *https_key_password,
+				*https_cert_filename;
 	} server_parameters;
 };
 
 static struct http_listener *start_http_loop(const struct http_loop_args *args,
 					     const struct n2k_decoder *decoder,
 					     const json_t *decoder_conf) {
+	struct http_listener *http_listener = NULL;
 	unsigned int flags = 0;
+	enum tls_files {
+		KEY_FILE,
+		CERT_FILE,
+	};
+
+	// clang-format off
+	struct {
+		const char *filename; ///< Filename to get certs from
+		FILE *file;           ///< File pointer for resource handling
+		size_t filesize;      ///< File size
+		char *mem;            ///< Raw memory
+	} tls_files[] = {
+		[KEY_FILE] = {
+			.filename = args->server_parameters.https_key_filename,
+		},
+		[CERT_FILE] = {
+			.filename = args->server_parameters.https_cert_filename,
+		},
+	};
+	// clang-format on
+
 	if (args->mode == NULL ||
 	    0 == strcmp(MODE_THREAD_PER_CONNECTION, args->mode)) {
 		flags |= MHD_USE_THREAD_PER_CONNECTION;
@@ -902,12 +941,135 @@ static struct http_listener *start_http_loop(const struct http_loop_args *args,
 
 	flags |= MHD_USE_DEBUG;
 
-	struct http_listener *http_listener = calloc(1, sizeof(*http_listener));
+	if (unlikely(!(args->server_parameters.https_key_filename) !=
+		     !(args->server_parameters.https_cert_filename))) {
+		// User set only one of the two
+		rdlog(LOG_ERR,
+		      "Only %s set in http listener options, you must also set "
+		      "%s ",
+		      args->server_parameters.https_key_filename
+				      ? "https_key_filename"
+				      : "https_cert_filename",
+		      args->server_parameters.https_key_filename
+				      ? "https_cert_filename"
+				      : "https_key_filename");
+		return NULL;
+	}
+
+	if (args->server_parameters.https_key_filename) {
+		flags |= MHD_USE_TLS;
+
+		for (size_t i = 0; i < RD_ARRAYSIZE(tls_files); ++i) {
+			if (i == KEY_FILE) {
+				struct stat private_key_stat;
+				const int stat_rc = stat(tls_files[i].filename,
+							 &private_key_stat);
+
+				if (unlikely(stat_rc != 0)) {
+					rdlog(LOG_ERR,
+					      "Can't get information of file "
+					      "\"%s\": %s",
+					      tls_files[i].filename,
+					      gnu_strerror_r(errno));
+					goto tls_err;
+				}
+
+				if (unlikely((private_key_stat.st_mode &
+					      (S_IWOTH | S_IROTH)))) {
+					rdlog(LOG_ERR,
+					      "\"Others\" can read Key file "
+					      "\"%s\" Please fix the file "
+					      "permissions before try to start "
+					      "this http server",
+					      tls_files[i].filename);
+					goto tls_err;
+				}
+			}
+
+			tls_files[i].file = fopen(tls_files[i].filename, "rb");
+
+			if (unlikely(tls_files[i].file == NULL)) {
+				rdlog(LOG_ERR,
+				      "Can't open %s file: %s",
+				      tls_files[i].filename,
+				      gnu_strerror_r(errno));
+
+				goto tls_err;
+			}
+
+			// MHD uses strlen directly, so we need to make room for
+			// the \0 terminator
+			const off64_t t_file_size =
+					file_size(tls_files[i].file);
+			if (unlikely(t_file_size == (off64_t)-1)) {
+				rdlog(LOG_ERR,
+				      "Couldn't get \"%s\" file size: %s",
+				      tls_files[i].filename,
+				      gnu_strerror_r(errno));
+				goto tls_err;
+			}
+
+			tls_files[i].filesize = (size_t)t_file_size;
+		}
+	}
+
+	const size_t tls_files_size = (flags & MHD_USE_TLS) ? ({
+		size_t s = 0;
+		for (size_t i = 0; i < RD_ARRAYSIZE(tls_files); ++i) {
+			// NULL terminator needed for MHD
+			s += tls_files[i].filesize + 1;
+		}
+		s;
+	})
+							    : 0;
+
+	http_listener = calloc(1,
+			       sizeof(*http_listener) + (size_t)tls_files_size);
 	if (!http_listener) {
 		rdlog(LOG_ERR,
 		      "Can't allocate LIBMICROHTTPD private"
 		      " (out of memory?)");
 		return NULL;
+	}
+
+	if (flags & MHD_USE_TLS) {
+		// Certificate and private key processing
+		// Try to avoid disk swapping of private key
+		http_listener->tls_data_size = tls_files_size;
+		char *cursor = http_listener->tls_data;
+		for (size_t i = 0; i < RD_ARRAYSIZE(tls_files); ++i) {
+			tls_files[i].mem = cursor;
+			if (i == KEY_FILE) {
+				const int mlock_rc =
+						mlock(tls_files[i].mem,
+						      tls_files[i].filesize);
+
+				if (unlikely(0 != mlock_rc)) {
+					rdlog(LOG_WARNING,
+					      "Can lock private key on RAM "
+					      "memory. It could be swapped on "
+					      "disk.");
+				}
+			}
+
+			const size_t readed = fread(cursor,
+						    1,
+						    tls_files[i].filesize,
+						    tls_files[i].file);
+
+			if (unlikely(readed < tls_files[i].filesize)) {
+				rdlog(LOG_ERR,
+				      "Can't read %s file",
+				      tls_files[i].filename);
+
+				goto tls_err;
+			}
+
+			cursor += (size_t)tls_files[i].filesize + 1;
+		}
+
+		assert(cursor ==
+		       http_listener->tls_data + http_listener->tls_data_size);
 	}
 
 	const int listener_init_rc = listener_init(&http_listener->listener,
@@ -956,6 +1118,19 @@ static struct http_listener *start_http_loop(const struct http_loop_args *args,
 			/* Thread pool size */
 			{MHD_OPTION_THREAD_POOL_SIZE, args->num_threads, NULL},
 
+			/* Finish options OR https tls options */
+			{flags & MHD_USE_TLS ? MHD_OPTION_HTTPS_MEM_KEY
+					     : MHD_OPTION_END,
+			 0,
+			 tls_files[KEY_FILE].mem},
+			{MHD_OPTION_HTTPS_MEM_CERT,
+			 0,
+			 tls_files[CERT_FILE].mem},
+			{MHD_OPTION_HTTPS_KEY_PASSWORD,
+			 0,
+			 const_cast(args->server_parameters
+						    .https_key_password)},
+
 			{MHD_OPTION_END, 0, NULL}};
 
 	http_listener->d = MHD_start_daemon(flags,
@@ -978,12 +1153,25 @@ static struct http_listener *start_http_loop(const struct http_loop_args *args,
 	}
 
 	http_listener->listener.join = break_http_loop;
+
+tls_err:
+	for (size_t i = 0; i < RD_ARRAYSIZE(tls_files); ++i) {
+		if (tls_files[i].file) {
+			fclose(tls_files[i].file);
+		}
+	}
+
 	return http_listener;
 
 start_daemon_err:
 	http_listener->listener.join(&http_listener->listener);
 
 listener_init_err:
+	// Volatile avoid write-before-free optimization!
+	if (http_listener->tls_data_size > 0) {
+		http_listener_scrub_tls_data(http_listener);
+		munlock(http_listener->tls_data, http_listener->tls_data_size);
+	}
 	free(http_listener);
 	return NULL;
 }
@@ -1049,6 +1237,9 @@ create_http_listener(const struct json_t *t_config,
 			"s?i," /* connection_limit */
 			"s?i," /* connection_timeout */
 			"s?i"  /* per_ip_connection_limit */
+			"s?s"  /* https_cert_filename */
+			"s?s"  /* https_key_filename */
+			"s?s"  /* https_key_password */
 			"}",
 			"port",
 			&handler_args.port,
@@ -1063,8 +1254,13 @@ create_http_listener(const struct json_t *t_config,
 			"connection_timeout",
 			&handler_args.server_parameters.connection_timeout,
 			"per_ip_connection_limit",
-			&handler_args.server_parameters
-					 .per_ip_connection_limit);
+			&handler_args.server_parameters.per_ip_connection_limit,
+			"https_key_filename",
+			&handler_args.server_parameters.https_key_filename,
+			"https_key_password",
+			&handler_args.server_parameters.https_key_password,
+			"https_cert_filename",
+			&handler_args.server_parameters.https_cert_filename);
 
 	if (unpack_rc != 0 /* Failure */) {
 		rdlog(LOG_ERR, "Can't parse HTTP options: %s", error.text);

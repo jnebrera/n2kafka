@@ -24,3 +24,14 @@
 # Use of tools
 - [ ] Check text changes against these tools:
   - [ ] Grammarly or similar (if available)
+
+# If you modify HTTP listener.
+
+This checks should be enforced by tests system, but currently it's not possible
+so you have to check it by hand in every commit.
+
+- [ ] Make sure that you have mlock'ed server private key memory in order to
+      avoid operative system to put it in disk swap
+- [ ] HTTPS listener checks key permission before use it. Users should not be
+      able to read or write it!
+- [ ] Memory data is deleted before release it.

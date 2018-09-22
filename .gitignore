@@ -43,6 +43,9 @@
 /tests/*.xml
 /tests/coverage.info
 /tests/out
+/tests/key.pem
+/tests/key.encrypted.pem
+/tests/certificate.pem
 __pycache__
 .pytest_cache/
 

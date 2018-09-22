@@ -1,0 +1,16 @@
+{
+  "listeners": [{
+    "proto": "http",
+    "port": 2057,
+    "mode": "epoll",
+    "num_threads": 20,
+    "decode_as": "zz_http2k",
+    "https_key_filename": "key.pem",
+    "https_key_password": "",
+    "https_cert_filename": "certificate.pem"
+  }],
+  "brokers": "kafka",
+  "rdkafka.socket.max.fails": "3",
+  "rdkafka.socket.keepalive.enable": "true",
+  "blacklist": ["192.168.101.3"]
+}

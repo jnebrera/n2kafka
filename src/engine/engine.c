@@ -18,16 +18,4 @@
 ** along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "config.h"
-#include "util/util.h"
-
-#include "engine.h"
-#include "global_config.h"
-#include "parse.h"
-#include "util/kafka.h"
-
-#ifdef HAVE_LIBMICROHTTPD
-#include "listener/http.h"
-#endif
-
 int do_shutdown = 0;

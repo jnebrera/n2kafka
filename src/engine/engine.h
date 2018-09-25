@@ -20,9 +20,4 @@
 
 #pragma once
 
-#include <pthread.h>
-#include <stdint.h>
-
 extern int do_shutdown;
-
-void main_loop();

@@ -21,9 +21,9 @@
 #include "global_config.h"
 #include "util/util.h"
 #ifdef HAVE_LIBMICROHTTPD
-#include "listener/http.h"
+#include "listener/http/http.h"
 #endif
-#include "listener/socket.h"
+#include "listener/socket/socket.h"
 
 #include "decoder/dumb/dumb.h"
 

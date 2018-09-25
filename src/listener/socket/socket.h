@@ -20,8 +20,7 @@
 
 #pragma once
 
-#ifdef HAVE_LIBMICROHTTPD
-#include "listener_api.h"
+#include "listener/listener_api.h"
 
-extern const n2k_listener_factory http_listener_factory;
-#endif
+extern const struct n2k_listener_factory tcp_listener_factory,
+		udp_listener_factory;

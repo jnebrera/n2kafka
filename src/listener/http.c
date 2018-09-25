@@ -53,9 +53,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-/// Initial string to start with
-#define STRING_INITIAL_SIZE 2048
-
 /// Chunk to store decompression flow
 #define ZLIB_CHUNK (512 * 1024)
 

@@ -336,7 +336,7 @@ class TestN2kafka(object):
         '''
         pass
 
-    def _random_resource_file(t_resource_name):
+    def random_resource_file(t_resource_name):
         resource_name_prefix = 'n2k_' + t_resource_name + '_'
         with NamedTemporaryFile(prefix=resource_name_prefix,
                                 delete=False,
@@ -344,7 +344,7 @@ class TestN2kafka(object):
             return os.path.basename(f.name)
 
     def _random_resource(resource_name):
-        return TestN2kafka._random_resource_file(
+        return TestN2kafka.random_resource_file(
             resource_name)[len('n2k__' + resource_name):]
 
     def random_port(family=AF_INET, type=SOCK_STREAM):
@@ -365,7 +365,7 @@ class TestN2kafka(object):
         return topic
 
     def _random_config_file():
-        return TestN2kafka._random_resource_file('config')
+        return TestN2kafka.random_resource_file('config')
 
     _BASE_LISTENER = {'proto': 'http', 'num_threads': 2}
     _BASE_CONFIG = {'brokers': 'kafka',

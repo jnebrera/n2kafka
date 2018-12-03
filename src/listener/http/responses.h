@@ -72,6 +72,16 @@ int send_http_method_not_allowed_allow_get_post(
 int send_http_method_not_allowed_allow_post(struct MHD_Connection *connection);
 
 /**
+ * @brief      Sends a http 401 unauthorized, and tell that basic authentication
+ *             is allowed
+ *
+ * @param      connection  The connection
+ *
+ * @return     Same as `send_buffered_response`
+ */
+int send_http_unauthorized_basic(struct MHD_Connection *connection);
+
+/**
  * @brief      Decrements the pre-allocated static responses reference counter
  */
 void responses_listener_counter_decref();

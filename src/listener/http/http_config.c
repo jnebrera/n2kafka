@@ -22,6 +22,7 @@
 
 #ifdef HAVE_LIBMICROHTTPD
 
+#include "http_auth.h"
 #include "http_config.h"
 #include "responses.h"
 
@@ -63,6 +64,7 @@ struct http_listener {
 #endif
 	size_t tls_data_size;
 	struct MHD_Daemon *d; ///< Associated daemon
+	char *htpasswd;
 	bool client_tls_cert;
 	char tls_data[];
 };
@@ -84,6 +86,46 @@ bool http_listener_config_client_tls_ca(const struct http_listener *l) {
 	return l->client_tls_cert;
 }
 
+const char *http_listener_htpasswd(const struct http_listener *l) {
+	return l->htpasswd;
+}
+
+/**
+ * @brief      Wrapper for htpassword database size
+ *
+ * @param      f     File to extract the data
+ *
+ * @return     The htpasswd database needed size
+ */
+static off64_t htpasswd_size(FILE *f) {
+	const ssize_t rc = http_auth_extract_data(NULL, 0, f);
+	if (rc < 0) {
+		return 0;
+	}
+	return (off64_t)rc;
+}
+
+/**
+ * @brief      Wrapper for htpasswd database data extraction
+ *
+ * @param      dst     The destination database
+ * @param[in]  size    The database size, in bytes
+ * @param[in]  count   The count of elements. Use 1 if you want coherency.
+ * @param      stream  The file to extract htpasswd.
+ *
+ * @return     Number of bytes size/count unities read from stream.
+ */
+static size_t
+htpasswd_fread(void *dst, size_t size, size_t count, FILE *stream) {
+	const ssize_t data_read =
+			http_auth_extract_data(dst, size * count, stream);
+	if (data_read < 0) {
+		return 0;
+	}
+
+	return (size_t)data_read / size;
+}
+
 /**
  * @brief      Delete the HTTP listener in-memory tls data
  *
@@ -97,7 +139,7 @@ static void http_listener_scrub_tls_data(struct http_listener *l) {
 /**
  * @brief      Return the same string
  *
- * @param[in]  a the argument and return string
+ * @param[in]  a        the argument and return string
  *
  * @return     Same pointer as a
  */
@@ -172,6 +214,14 @@ static const char *string_identity_function(const char *a) {
 	  https_clients_ca_filename,                                           \
 	  "HTTP_TLS_CLIENT_CA_FILE",                                           \
 	  string_identity_function,                                            \
+	  NULL)                                                                \
+	/* htpasswd file */                                                    \
+	X(const char *,                                                        \
+	  "?s",                                                                \
+	  htpasswd_filename,                                                   \
+	  htpasswd_filename,                                                   \
+	  "HTTP_HTPASSWD_FILE",                                                \
+	  string_identity_function,                                            \
 	  NULL)
 
 #define X_STRUCT_HTTP_CONFIG(                                                  \
@@ -225,29 +275,53 @@ start_http_loop(const struct http_loop_args *args,
 		const json_t *decoder_conf) {
 	struct http_listener *http_listener = NULL;
 	unsigned int flags = 0;
-	enum tls_files {
+	enum secret_files {
 		KEY_FILE,
 		CERT_FILE,
 		CLIENT_CA_TRUST,
+		HTPASSWD,
 	};
 
 	// clang-format off
 	struct {
 		const char *filename; ///< Filename to get certs from
+		const char *log_kind; ///< Kind of file for logging purposes
 		FILE *file;           ///< File pointer for resource handling
+		/// Callback to extract file size
+		off64_t (*file_size_callback)(FILE *stream);
+		/// File content reading callback. Fread signature
+		size_t (*file_read_callback)(void* ptr,
+			                     size_t size,
+		                             size_t count,
+		                             FILE *stream);
 		size_t filesize;      ///< File size
 		char *mem;            ///< Raw memory
-	} tls_files[] = {
+	} secret_files[] = {
 		[KEY_FILE] = {
+			.log_kind = "Private TLS key",
+			.file_size_callback = file_size,
+			.file_read_callback = fread,
 			.filename = args->https_key_filename,
 		},
 		[CERT_FILE] = {
+			.log_kind = "Exposed TLS certificate",
+			.file_size_callback = file_size,
+			.file_read_callback = fread,
 			.filename = args->https_cert_filename,
 		},
 		[CLIENT_CA_TRUST] = {
+			.log_kind = "Client TLS certificate Authority",
+			.file_size_callback = file_size,
+			.file_read_callback = fread,
 			.filename =
 			      args->https_clients_ca_filename,
 		},
+		[HTPASSWD] = {
+			.log_kind = "htpasswd file",
+			.file_size_callback = htpasswd_size,
+			.file_read_callback = htpasswd_fread,
+			.filename = args->htpasswd_filename,
+		}
 	};
 	// clang-format on
 
@@ -299,22 +373,23 @@ start_http_loop(const struct http_loop_args *args,
 		flags |= MHD_USE_TLS;
 	}
 
-	for (size_t i = 0; (flags & MHD_USE_TLS) && i < RD_ARRAYSIZE(tls_files);
+	for (size_t i = 0; (flags & MHD_USE_TLS || args->htpasswd_filename) &&
+			   i < RD_ARRAYSIZE(secret_files);
 	     ++i) {
-		if (!tls_files[i].filename) {
+		if (!secret_files[i].filename) {
 			continue;
 		}
 
 		if (i == KEY_FILE) {
 			struct stat private_key_stat;
-			const int stat_rc = stat(tls_files[i].filename,
+			const int stat_rc = stat(secret_files[i].filename,
 						 &private_key_stat);
 
 			if (unlikely(stat_rc != 0)) {
 				rdlog(LOG_ERR,
 				      "Can't get information of file "
 				      "\"%s\": %s",
-				      tls_files[i].filename,
+				      secret_files[i].filename,
 				      gnu_strerror_r(errno));
 				goto tls_err;
 			}
@@ -326,17 +401,17 @@ start_http_loop(const struct http_loop_args *args,
 				      "\"%s\" Please fix the file "
 				      "permissions before try to start "
 				      "this http server",
-				      tls_files[i].filename);
+				      secret_files[i].filename);
 				goto tls_err;
 			}
 		}
 
-		tls_files[i].file = fopen(tls_files[i].filename, "rb");
+		secret_files[i].file = fopen(secret_files[i].filename, "rb");
 
-		if (unlikely(tls_files[i].file == NULL)) {
+		if (unlikely(secret_files[i].file == NULL)) {
 			rdlog(LOG_ERR,
 			      "Can't open %s file: %s",
-			      tls_files[i].filename,
+			      secret_files[i].filename,
 			      gnu_strerror_r(errno));
 
 			goto tls_err;
@@ -344,30 +419,37 @@ start_http_loop(const struct http_loop_args *args,
 
 		// MHD uses strlen directly, so we need to make room for
 		// the \0 terminator
-		const off64_t t_file_size = file_size(tls_files[i].file);
+		const off64_t t_file_size = secret_files[i].file_size_callback(
+				secret_files[i].file);
 		if (unlikely(t_file_size == (off64_t)-1)) {
 			rdlog(LOG_ERR,
 			      "Couldn't get \"%s\" file size: %s",
-			      tls_files[i].filename,
+			      secret_files[i].filename,
 			      gnu_strerror_r(errno));
 			goto tls_err;
 		}
 
-		tls_files[i].filesize = (size_t)t_file_size;
+		secret_files[i].filesize = (size_t)t_file_size;
 	}
 
-	const size_t tls_files_size = (flags & MHD_USE_TLS) ? ({
-		size_t s = 0;
-		for (size_t i = 0; i < RD_ARRAYSIZE(tls_files); ++i) {
-			if (NULL == tls_files[i].filename) {
-				continue;
-			}
-			// NULL terminator needed for MHD
-			s += tls_files[i].filesize + 1;
-		}
-		s;
-	})
-							    : 0;
+	// clang-format off
+	const size_t tls_files_size =
+		(flags & MHD_USE_TLS ||
+			 args->htpasswd_filename)
+		? ({
+			size_t s = 0;
+			for (size_t i = 0; i < RD_ARRAYSIZE(secret_files);
+				                                          ++i) {
+				if (NULL == secret_files[i].filename) {
+					continue;
+				}
+				// NULL terminator needed for MHD
+				s += secret_files[i].filesize + 1;
+			  }
+			  s;
+		  })
+		: 0;
+	// clang-format on
 
 	http_listener = calloc(1,
 			       sizeof(*http_listener) + (size_t)tls_files_size);
@@ -378,7 +460,7 @@ start_http_loop(const struct http_loop_args *args,
 		return NULL;
 	}
 
-	if (flags & MHD_USE_TLS) {
+	if (flags & MHD_USE_TLS || args->htpasswd_filename) {
 		if (args->https_clients_ca_filename) {
 			http_listener->client_tls_cert = true;
 		}
@@ -386,17 +468,22 @@ start_http_loop(const struct http_loop_args *args,
 		// Certificates and private key processing
 		http_listener->tls_data_size = tls_files_size;
 		char *cursor = http_listener->tls_data;
-		for (size_t i = 0; i < RD_ARRAYSIZE(tls_files); ++i) {
-			if (NULL == tls_files[i].filename) {
+		for (size_t i = 0; i < RD_ARRAYSIZE(secret_files); ++i) {
+			if (NULL == secret_files[i].filename) {
 				continue;
 			}
 
-			tls_files[i].mem = cursor;
+			rdlog(LOG_INFO,
+			      "Reading file %s as %s",
+			      secret_files[i].filename,
+			      secret_files[i].log_kind);
+
+			secret_files[i].mem = cursor;
 			if (i == KEY_FILE) {
 				// Try to avoid disk swapping of private key
 				const int mlock_rc =
-						mlock(tls_files[i].mem,
-						      tls_files[i].filesize);
+						mlock(secret_files[i].mem,
+						      secret_files[i].filesize);
 
 				if (unlikely(0 != mlock_rc)) {
 					rdlog(LOG_WARNING,
@@ -406,24 +493,29 @@ start_http_loop(const struct http_loop_args *args,
 				}
 			}
 
-			const size_t readed = fread(cursor,
-						    1,
-						    tls_files[i].filesize,
-						    tls_files[i].file);
+			const size_t readed = secret_files[i].file_read_callback(
+					cursor,
+					1,
+					secret_files[i].filesize,
+					secret_files[i].file);
 
-			if (unlikely(readed < tls_files[i].filesize)) {
+			if (unlikely(readed < secret_files[i].filesize)) {
 				rdlog(LOG_ERR,
 				      "Can't read %s file",
-				      tls_files[i].filename);
+				      secret_files[i].filename);
 
 				goto tls_err;
 			}
 
-			cursor += (size_t)tls_files[i].filesize + 1;
+			cursor += (size_t)secret_files[i].filesize + 1;
 		}
 
 		assert(cursor ==
 		       http_listener->tls_data + http_listener->tls_data_size);
+	}
+
+	if (args->htpasswd_filename) {
+		http_listener->htpasswd = secret_files[HTPASSWD].mem;
 	}
 
 	const int listener_init_rc = listener_init(&http_listener->listener,
@@ -476,20 +568,20 @@ start_http_loop(const struct http_loop_args *args,
 			{flags & MHD_USE_TLS ? MHD_OPTION_HTTPS_MEM_KEY
 					     : MHD_OPTION_END,
 			 0,
-			 tls_files[KEY_FILE].mem},
+			 secret_files[KEY_FILE].mem},
 			{MHD_OPTION_HTTPS_MEM_CERT,
 			 0,
-			 tls_files[CERT_FILE].mem},
+			 secret_files[CERT_FILE].mem},
 			{MHD_OPTION_HTTPS_KEY_PASSWORD,
 			 0,
 			 const_cast(args->https_key_password)},
 
 			/* Finish options OR HTTPS client CA */
-			{tls_files[CLIENT_CA_TRUST].filename
+			{secret_files[CLIENT_CA_TRUST].filename
 					 ? MHD_OPTION_HTTPS_MEM_TRUST
 					 : MHD_OPTION_END,
 			 0,
-			 tls_files[CLIENT_CA_TRUST].mem},
+			 secret_files[CLIENT_CA_TRUST].mem},
 
 			{MHD_OPTION_END, 0, NULL}};
 
@@ -517,15 +609,16 @@ start_http_loop(const struct http_loop_args *args,
 	http_listener->listener.join = break_http_loop;
 
 tls_err:
-	for (size_t i = 0; i < RD_ARRAYSIZE(tls_files); ++i) {
-		if (tls_files[i].file) {
-			fclose(tls_files[i].file);
+	for (size_t i = 0; i < RD_ARRAYSIZE(secret_files); ++i) {
+		if (secret_files[i].file) {
+			fclose(secret_files[i].file);
 		}
 	}
 
 	return http_listener;
 
 start_daemon_err:
+	responses_listener_counter_decref();
 	http_listener->listener.join(&http_listener->listener);
 
 listener_init_err:

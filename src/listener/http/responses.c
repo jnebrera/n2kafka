@@ -29,6 +29,7 @@ static struct {
 	struct MHD_Response *empty_response;
 	struct MHD_Response *method_not_allowed_allow_get_post;
 	struct MHD_Response *method_not_allowed_allow_post;
+	struct MHD_Response *unauthorized;
 	int listeners_counter;
 } http_responses;
 
@@ -82,6 +83,12 @@ int send_http_method_not_allowed_allow_post(struct MHD_Connection *connection) {
 			http_responses.method_not_allowed_allow_post);
 }
 
+int send_http_unauthorized_basic(struct MHD_Connection *connection) {
+	return MHD_queue_response(connection,
+				  MHD_HTTP_UNAUTHORIZED,
+				  http_responses.unauthorized);
+}
+
 void responses_listener_counter_decref() {
 	if (0 == --http_responses.listeners_counter) {
 		MHD_destroy_response(http_responses.empty_response);
@@ -89,6 +96,7 @@ void responses_listener_counter_decref() {
 				http_responses.method_not_allowed_allow_get_post);
 		MHD_destroy_response(
 				http_responses.method_not_allowed_allow_post);
+		MHD_destroy_response(http_responses.unauthorized);
 	}
 }
 
@@ -115,6 +123,12 @@ int responses_listener_counter_incref() {
 				http_responses.method_not_allowed_allow_post,
 				"Allow",
 				"POST");
+
+		http_responses.unauthorized = MHD_create_response_from_buffer(
+				0, NULL, MHD_RESPMEM_PERSISTENT);
+		MHD_add_response_header(http_responses.unauthorized,
+					"WWW-Authenticate",
+					"Basic");
 	}
 
 	return 0;

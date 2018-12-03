@@ -23,6 +23,8 @@
 #ifdef HAVE_LIBMICROHTTPD
 
 #include "http.h"
+#include "http_auth.h"
+#include "responses.h"
 
 #include "http_config.h"
 #include "responses.h"
@@ -520,6 +522,27 @@ static int handle_http_post_init(struct http_listener *http_listener,
 		return MHD_YES;
 	}
 
+	const char *htpasswd = http_listener_htpasswd(http_listener);
+	if (htpasswd) {
+		char *password = NULL;
+		char *user = MHD_basic_auth_get_username_password(connection,
+								  &password);
+
+		if (unlikely(!user)) {
+			return send_http_unauthorized_basic(connection);
+		}
+
+		const bool basic_auth_ok =
+				http_authenticate(user, password, htpasswd);
+
+		free(user);
+		free(password);
+
+		if (unlikely(!basic_auth_ok)) {
+			return send_http_unauthorized_basic(connection);
+		}
+	}
+
 	const n2k_decoder *decoder =
 			http_listener_cast_listener(http_listener)->decoder;
 	const size_t decoder_session_size =
@@ -835,7 +858,6 @@ static int handle_request(void *vhttp_listener,
 		return send_http_method_not_allowed_allow_get_post(connection);
 	}
 }
-
 /*
   FACTORY
 */

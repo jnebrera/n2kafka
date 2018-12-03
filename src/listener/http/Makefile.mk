@@ -1,6 +1,7 @@
 THIS_SRCS := \
 	http.c \
 	http_config.c \
+	http_auth.c \
 	responses.c \
 	tls.c
 

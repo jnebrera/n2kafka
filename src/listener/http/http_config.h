@@ -56,6 +56,15 @@ http_listener_cast_listener(const struct http_listener *listener);
 struct http_listener *http_listener_cast(void *vhttp_listener);
 
 /**
+ * @brief      Return the htpasswd database from a listener
+ *
+ * @param[in]  listener  The listener
+ *
+ * @return     Htpasswd database
+ */
+const char *http_listener_htpasswd(const struct http_listener *listener);
+
+/**
  * @brief      Returns the http decoder name
  *
  * @return     HTTP decoder name

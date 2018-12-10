@@ -945,15 +945,18 @@ static struct http_listener *start_http_loop(const struct http_loop_args *args,
 	if (unlikely(!(args->server_parameters.https_key_filename) !=
 		     !(args->server_parameters.https_cert_filename))) {
 		// User set only one of the two
+		static const char *key_hint = "https_key_filename or "
+					      "HTTP_TLS_KEY_FILE environ";
+		static const char *cert_hint = "https_cert_filename or "
+					       "HTTP_TLS_CERT_FILE environ";
+
 		rdlog(LOG_ERR,
 		      "Only %s set in http listener options, you must also set "
 		      "%s ",
-		      args->server_parameters.https_key_filename
-				      ? "https_key_filename"
-				      : "https_cert_filename",
-		      args->server_parameters.https_key_filename
-				      ? "https_cert_filename"
-				      : "https_key_filename");
+		      args->server_parameters.https_key_filename ? key_hint
+								 : cert_hint,
+		      args->server_parameters.https_key_filename ? cert_hint
+								 : key_hint);
 		return NULL;
 	}
 
@@ -1228,6 +1231,26 @@ create_http_listener(const struct json_t *t_config,
 					.per_ip_connection_limit = 0,
 			}};
 
+	struct {
+		const char *env_var;
+		const char **dst;
+	} envs_config[] = {
+			{.env_var = "HTTP_TLS_KEY_FILE",
+			 .dst = &handler_args.server_parameters
+						 .https_key_filename},
+			{.env_var = "HTTP_TLS_CERT_FILE",
+			 .dst = &handler_args.server_parameters
+						 .https_cert_filename},
+			{.env_var = "HTTP_TLS_KEY_PASSWORD",
+			 .dst = &handler_args.server_parameters
+						 .https_key_password},
+
+	};
+
+	for (size_t i = 0; i < RD_ARRAYSIZE(envs_config); ++i) {
+		*envs_config[i].dst = getenv(envs_config[i].env_var);
+	}
+
 	const int unpack_rc = json_unpack_ex(
 			config,
 			&error,
@@ -1270,7 +1293,8 @@ create_http_listener(const struct json_t *t_config,
 		goto err;
 	}
 
-	if (handler_args.server_parameters.https_key_password[0] == '@') {
+	if (handler_args.server_parameters.https_key_password &&
+	    handler_args.server_parameters.https_key_password[0] == '@') {
 		// Key password is in a file
 		key_password = rd_file_read(
 				&handler_args.server_parameters

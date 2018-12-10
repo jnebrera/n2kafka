@@ -8,6 +8,7 @@ from n2k_test import \
                      TestN2kafka
 
 from n2k_test import valgrind_handler  # noqa: F401
+import os
 
 
 # TODO tests all combinations!
@@ -27,10 +28,12 @@ class TestHTTP2K(TestN2kafka):
         ('tests/certificate.pem', 'tests/key.encrypted.pem', '1234', False),
         ('tests/certificate.pem', 'tests/key.encrypted.pem', '1234', True),
     ])
+    @pytest.mark.parametrize("env_provided", [True, False])
     def test_tls_https(self,
                        child,
                        kafka_handler,
                        valgrind_handler,
+                       env_provided,
                        tls_cert,
                        tls_key,
                        tls_pass,
@@ -43,6 +46,8 @@ class TestHTTP2K(TestN2kafka):
           - messages: Messages to test
           - kafka_handler: Kafka handler to use
           - valgrind_handler: Valgrind handler if any
+          - tmpdir: The temporary dir used for cert-storage env-based search
+          - env_provided: Test if private key/cert are env-provided or not
           - tls_cert: HTTPs cert to export
           - tls_key: HTTPs private key to use in crypt
           - tls_pass: RSA password for Key. Can be NULL
@@ -54,14 +59,10 @@ class TestHTTP2K(TestN2kafka):
         used_topic = TestN2kafka.random_topic()
 
         base_config = {
-            **{
-              "listeners": [{
-                  'proto': 'http',
-                  'decode_as': 'zz_http2k',
-                  "https_key_filename": tls_key,
-                  "https_cert_filename": tls_cert,
-              }]
-            },
+          "listeners": [{
+              'proto': 'http',
+              'decode_as': 'zz_http2k',
+          }]
         }
 
         if tls_pass:
@@ -73,6 +74,17 @@ class TestHTTP2K(TestN2kafka):
                         '@' + str(path)
             else:
                 base_config["listeners"][0]["https_key_password"] = tls_pass
+
+        if env_provided:
+            os.environ['HTTP_TLS_KEY_FILE'] = str(tls_key)
+            os.environ['HTTP_TLS_CERT_FILE'] = str(tls_cert)
+            if tls_pass:
+                os.environ['HTTP_TLS_KEY_PASSWORD'] = \
+                    base_config["listeners"][0]["https_key_password"]
+                del base_config["listeners"][0]["https_key_password"]
+        else:
+            base_config['listeners'][0]['https_key_filename'] = tls_key
+            base_config['listeners'][0]['https_cert_filename'] = tls_cert
 
         messages = [
             # Try to connect with plain http -> bad

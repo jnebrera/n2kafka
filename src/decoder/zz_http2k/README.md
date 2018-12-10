@@ -52,3 +52,6 @@ file, you can use "@/file/path" format.
 
 https_cert_filename
 : Certificate to export.
+
+You can use `HTTP_TLS_KEY_FILE`, `HTTP_TLS_CERT_FILE` and
+`HTTP_TLS_KEY_PASSWORD` for configure these options too.

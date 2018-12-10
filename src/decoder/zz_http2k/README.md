@@ -47,7 +47,8 @@ https_key_filename
 : Private key to use. It can't be readable by "others" group.
 
 https_key_password
-: Password to decode private key (optional).
+: Password to decode private key (optional). If the password is contained in a
+file, you can use "@/file/path" format.
 
 https_cert_filename
 : Certificate to export.

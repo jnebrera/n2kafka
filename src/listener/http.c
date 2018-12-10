@@ -37,6 +37,7 @@
 
 #include "engine/global_config.h"
 
+#include <librd/rdfile.h>
 #include <librd/rdlog.h>
 #include <librd/rdmem.h>
 #include <microhttpd.h>
@@ -1183,6 +1184,8 @@ listener_init_err:
 static struct listener *
 create_http_listener(const struct json_t *t_config,
 		     const struct n2k_decoder *decoder) {
+	int key_password_len = 0;
+	char *key_password = NULL;
 	json_t *config = json_deep_copy(t_config);
 	if (NULL == config) {
 		rdlog(LOG_ERR, "Couldn't dup config (OOM?)");
@@ -1267,6 +1270,16 @@ create_http_listener(const struct json_t *t_config,
 		goto err;
 	}
 
+	if (handler_args.server_parameters.https_key_password[0] == '@') {
+		// Key password is in a file
+		key_password = rd_file_read(
+				&handler_args.server_parameters
+						 .https_key_password[1],
+				&key_password_len);
+		handler_args.server_parameters.https_key_password =
+				key_password;
+	}
+
 	struct http_listener *http_listener =
 			start_http_loop(&handler_args, decoder, config);
 	if (NULL == http_listener) {
@@ -1280,6 +1293,13 @@ create_http_listener(const struct json_t *t_config,
 
 err:
 	json_decref(config);
+	if (key_password) {
+		// scrub data
+		volatile void *r = memset(
+				key_password, 0, (size_t)key_password_len);
+		(void)r;
+		free(key_password);
+	}
 	return http_listener ? &http_listener->listener : NULL;
 }
 

@@ -21,9 +21,11 @@ from n2k_test import valgrind_handler  # noqa: F401
 
 
 class TestHTTP2K(TestN2kafka):
-    @pytest.mark.parametrize("tls_cert, tls_key, tls_pass", [  # noqa: F811
-        ('tests/certificate.pem', 'tests/key.pem', None),
-        ('tests/certificate.pem', 'tests/key.encrypted.pem', '1234'),
+    @pytest.mark.parametrize(  # noqa: F811
+        "tls_cert, tls_key, tls_pass, tls_pass_in_file", [
+        ('tests/certificate.pem', 'tests/key.pem', None, False),
+        ('tests/certificate.pem', 'tests/key.encrypted.pem', '1234', False),
+        ('tests/certificate.pem', 'tests/key.encrypted.pem', '1234', True),
     ])
     def test_tls_https(self,
                        child,
@@ -31,7 +33,9 @@ class TestHTTP2K(TestN2kafka):
                        valgrind_handler,
                        tls_cert,
                        tls_key,
-                       tls_pass):
+                       tls_pass,
+                       tls_pass_in_file,
+                       tmpdir):
         ''' Base n2kafka test
 
         Arguments:
@@ -42,6 +46,8 @@ class TestHTTP2K(TestN2kafka):
           - tls_cert: HTTPs cert to export
           - tls_key: HTTPs private key to use in crypt
           - tls_pass: RSA password for Key. Can be NULL
+          - password_in_file: tls key password is store in a file.
+          - tmpdir: Temporary directory (pytest fixture)
         '''
 
         TEST_MESSAGE = '{"test":1}'
@@ -59,7 +65,14 @@ class TestHTTP2K(TestN2kafka):
         }
 
         if tls_pass:
-            base_config["listeners"][0]["https_key_password"] = tls_pass
+            if tls_pass_in_file:
+                path = tmpdir / "password.pass"
+                with open(path, 'w') as f:
+                    f.write(tls_pass)
+                    base_config["listeners"][0]["https_key_password"] = \
+                        '@' + str(path)
+            else:
+                base_config["listeners"][0]["https_key_password"] = tls_pass
 
         messages = [
             # Try to connect with plain http -> bad

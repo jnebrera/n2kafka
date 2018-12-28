@@ -34,15 +34,6 @@
 #include <stdint.h>
 #include <sys/queue.h>
 
-enum {
-	/**
-	    Tells if the listener support straming API, instead of wait to all
-	   data
-	    to be available
-	*/
-	DECODER_F_SUPPORT_STREAMING = 0x01,
-};
-
 typedef LIST_HEAD(, listener) listener_list;
 
 struct n2kafka_config {

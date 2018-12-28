@@ -20,18 +20,10 @@
 
 #pragma once
 
-#include "config.h"
-
-#include "decoder/decoder_api.h"
-#include "decoder/meraki/meraki.h"
-#include "decoder/zz_http2k/zz_http2k_decoder.h"
 #include "util/in_addr_list.h"
-#include "util/kafka.h"
-#include "util/pair.h"
 
 #include <librdkafka/rdkafka.h>
 #include <stdbool.h>
-#include <stdint.h>
 #include <sys/queue.h>
 
 typedef LIST_HEAD(, listener) listener_list;

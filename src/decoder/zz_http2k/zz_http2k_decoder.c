@@ -20,25 +20,26 @@
 */
 
 #include "zz_http2k_decoder.h"
+
+#include "engine/global_config.h"
 #include "zz_database.h"
 #include "zz_http2k_parser.h"
 
-#include "engine/global_config.h"
-
-#include "util/kafka.h"
 #include "util/kafka_message_array.h"
+#include "util/pair.h"
+#include "util/string.h"
 #include "util/topic_database.h"
 #include "util/util.h"
 
-#include <assert.h>
-#include <errno.h>
 #include <jansson.h>
-#include <librd/rd.h>
 #include <librd/rdlog.h>
-#include <librd/rdmem.h>
 #include <librdkafka/rdkafka.h>
-#include <stdint.h>
+#include <yajl_parse.h>
+
+#include <assert.h>
+#include <stdlib.h>
 #include <string.h>
+#include <syslog.h>
 
 static struct zz_database zz_database = {NULL};
 

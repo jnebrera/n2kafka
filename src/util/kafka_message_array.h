@@ -24,13 +24,14 @@
 
 #include "config.h"
 
-#include "util/kafka.h"
 #include "util/string.h"
+#include "util/util.h"
 
 #include <librdkafka/rdkafka.h>
+#include <time.h>
 
 #include <assert.h>
-#include <sys/queue.h>
+#include <stdlib.h>
 
 /// Internal kafka message array definition
 struct kafka_message_array_internal {

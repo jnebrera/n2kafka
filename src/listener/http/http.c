@@ -29,31 +29,40 @@
 #define MODE_POLL "poll"
 #define MODE_EPOLL "epoll"
 
-#include "engine/rb_addr.h"
 #include "http.h"
+
+#include "decoder/decoder_api.h"
+#include "engine/rb_addr.h"
 #include "responses.h"
 
 #include "util/file.h"
+#include "util/pair.h"
 #include "util/string.h"
-#include "util/topic_database.h"
+#include "util/util.h"
 
-#include "engine/global_config.h"
-
+#include <jansson.h>
+#include <librd/rd.h>
 #include <librd/rdfile.h>
 #include <librd/rdlog.h>
 #include <librd/rdmem.h>
 #include <microhttpd.h>
-#include <zlib.h>
 
-#include <sys/mman.h>
-#include <sys/stat.h>
-
-#include <arpa/inet.h>
+#include <alloca.h>
 #include <assert.h>
-#include <jansson.h>
-#include <math.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <pthread.h>
+#include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <syslog.h>
+#include <time.h>
+#include <unistd.h>
+#include <zlib.h>
+struct MHD_Connection;
 
 /// Chunk to store decompression flow
 #define ZLIB_CHUNK (512 * 1024)

@@ -19,26 +19,36 @@
 */
 
 #include "socket.h"
+
 #include "engine/global_config.h"
 #include "engine/rb_addr.h"
+#include "util/in_addr_list.h"
+#include "util/pair.h"
 #include "util/util.h"
 
+#include <ev.h>
 #include <jansson.h>
 #include <librd/rdlog.h>
-#include <librd/rdqueue.h>
 #include <librd/rdthread.h>
-
-#include <ev.h>
 
 #include <arpa/inet.h>
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <netinet/in.h>
 #include <pthread.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
+#include <sys/select.h>
 #include <sys/socket.h>
-#include <sys/types.h>
+#include <syslog.h>
+#include <time.h>
 #include <unistd.h>
+
+struct n2k_decoder;
 
 #define MAX_NUM_THREADS 256
 
@@ -619,7 +629,9 @@ static void *main_consumer_loop_udp(void *_thread_info) {
 			int select_result = select_socket(thread_info->listenfd,
 							  &tv);
 			if (select_result == -1 &&
-			    errno != EINTR) { /* NOT INTERRUPTED */
+			    errno != EINTR) { /* NOT
+						 INTERRUPTED
+					       */
 				rdlog(LOG_ERR,
 				      "listen select error: %s",
 				      gnu_strerror_r(errno));

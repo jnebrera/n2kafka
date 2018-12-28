@@ -19,10 +19,10 @@
 */
 
 #pragma once
-#include "engine/parse.h"
-#include "util/pair.h"
+
 #include <librdkafka/rdkafka.h>
 
+#include <stdint.h>
 #include <string.h>
 
 /* Private data */

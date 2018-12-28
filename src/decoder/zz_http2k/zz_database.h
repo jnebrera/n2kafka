@@ -21,10 +21,7 @@
 
 #pragma once
 
-#include "util/topic_database.h"
-
-#include <jansson.h>
-#include <pthread.h>
+#include <time.h>
 
 struct zz_database {
 	struct topics_db *topics_db; ///< Topics db

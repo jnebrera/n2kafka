@@ -22,11 +22,13 @@
 
 #include "decoder/decoder_api.h"
 
-#include <util/pair.h>
+#include "util/pair.h"
 
 #include <jansson.h>
 
+#include <stddef.h>
 #include <stdint.h>
+#include <sys/queue.h>
 
 /// Listener
 typedef struct listener {

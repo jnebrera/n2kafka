@@ -20,6 +20,8 @@
 
 #pragma once
 
+#include "config.h"
+
 #ifdef HAVE_LIBMICROHTTPD
 #include "listener/listener_api.h"
 

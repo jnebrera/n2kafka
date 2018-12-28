@@ -21,15 +21,14 @@
 #include "config.h"
 #include "engine.h"
 #include "global_config.h"
+
 #include "util/kafka.h"
 
-#include <jansson.h>
 #include <librd/rd.h>
-
 #include <signal.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 
 static int do_reload = 0;
 
@@ -64,8 +63,9 @@ static void show_usage(const char *progname) {
 	fprintf(stdout, "\t\"blacklist\":[\"192.168.101.3\"]\n");
 	fprintf(stdout, "}\n\n");
 	fprintf(stdout, "(1) Modes can be:\n");
-	fprintf(stdout, "\tthread_per_connection: Creates a thread for each "
-			"connection.\n");
+	fprintf(stdout,
+		"\tthread_per_connection: Creates a thread for each "
+		"connection.\n");
 	fprintf(stdout, "\t\tThread argument will be ignored in this mode\n");
 	fprintf(stdout,
 		"\tselect,poll,epoll: Fixed number of threads (with threads "

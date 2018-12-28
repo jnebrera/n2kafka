@@ -20,9 +20,16 @@
 
 #include "string.h"
 
+#include "util/util.h"
+
+#include <librd/rdlog.h>
+
+#include <assert.h>
 #include <limits.h>
 #include <stdarg.h>
 #include <stdbool.h>
+#include <stdio.h>
+#include <syslog.h>
 
 #ifndef static_assert
 #define static_assert(...)

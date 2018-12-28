@@ -20,8 +20,7 @@
 
 #pragma once
 
-#include <netinet/in.h>
-#include <sys/queue.h>
+struct in_addr;
 
 typedef struct in_addr_list_s in_addr_list_t; /* FW DECLARATION */
 

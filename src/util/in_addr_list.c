@@ -24,7 +24,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/queue.h>
-#include <sys/socket.h>
 
 typedef struct in_addr_list_node_s {
 	struct in_addr addr;

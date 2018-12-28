@@ -25,6 +25,7 @@
 #include <librd/rdlog.h>
 
 #include <inttypes.h>
+#include <syslog.h>
 
 int listener_init(struct listener *this,
 		  uint16_t port,

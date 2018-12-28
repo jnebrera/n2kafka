@@ -20,11 +20,15 @@
 
 #include "rb_addr.h"
 
-#include <errno.h>
-#include <librd/rdlog.h>
-#include <stdio.h>
-
 #include "util/util.h"
+
+#include <librd/rdlog.h>
+
+#include <arpa/inet.h>
+#include <errno.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <syslog.h>
 
 const char *
 sockaddr2str(char *buf, size_t buf_size, struct sockaddr *sockaddr) {

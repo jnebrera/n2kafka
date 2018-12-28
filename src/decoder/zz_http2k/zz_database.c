@@ -20,16 +20,11 @@
 */
 
 #include "zz_database.h"
+
 #include "util/topic_database.h"
 
-#include <librd/rdlog.h>
-
 #include <assert.h>
-#include <errno.h>
-#include <jansson.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <stddef.h>
 
 int init_zz_database(struct zz_database *db) {
 	db->topics_db = topics_db_new();

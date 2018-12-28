@@ -22,6 +22,10 @@
 
 #include "kafka_message_array.h"
 
+#include <librd/rdlog.h>
+#include <librdkafka/rdkafka.h>
+
+#include <syslog.h>
 #include <time.h>
 
 static enum warning_times_pos

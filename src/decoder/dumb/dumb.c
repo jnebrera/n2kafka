@@ -20,7 +20,14 @@
 #include "dumb.h"
 
 #include "util/kafka.h"
+#include "util/pair.h"
 #include "util/util.h"
+
+#include <librd/rdlog.h>
+#include <librdkafka/rdkafka.h>
+
+#include <string.h>
+#include <syslog.h>
 
 static enum decoder_callback_err dumb_decode(const char *buffer,
 					     size_t buf_size,

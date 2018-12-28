@@ -24,6 +24,8 @@
 
 #include <librdkafka/rdkafka.h>
 
+#include <time.h>
+
 struct topic_s;
 
 void topic_decref(struct topic_s *topic);

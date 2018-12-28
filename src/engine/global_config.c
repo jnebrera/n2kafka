@@ -18,26 +18,40 @@
 ** along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include "config.h" // for HAVE_LIBMICROHTTPD
+
 #include "global_config.h"
-#include "util/util.h"
+
+#include "decoder/decoder_api.h"
+#include "decoder/dumb/dumb.h"
+#include "decoder/meraki/meraki.h"
+#include "decoder/zz_http2k/zz_http2k_decoder.h"
 #ifdef HAVE_LIBMICROHTTPD
 #include "listener/http/http.h"
 #endif
+#include "listener/listener_api.h"
 #include "listener/socket/socket.h"
 
-#include "decoder/dumb/dumb.h"
+#include "util/kafka.h"
+#include "util/util.h"
 
+#include <jansson.h>
 #include <librd/rd.h>
 #include <librd/rdfile.h>
+#include <librd/rdlog.h>
 #include <librd/rdsysqueue.h>
+#include <librdkafka/rdkafka.h>
 
 #include <arpa/inet.h>
 #include <assert.h>
 #include <errno.h>
-#include <jansson.h>
-#include <librd/rdlog.h>
-#include <signal.h>
+#include <netinet/in.h>
+#include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
+#include <strings.h>
+#include <sys/socket.h>
+#include <syslog.h>
 
 #ifndef LIST_FOREACH_SAFE
 #define LIST_FOREACH_SAFE(var, head, field, tvar)                              \

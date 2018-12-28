@@ -21,6 +21,9 @@
 #include "responses.h"
 
 #include <librd/rdlog.h>
+#include <microhttpd.h>
+
+#include <syslog.h>
 
 static struct {
 	struct MHD_Response *empty_response;

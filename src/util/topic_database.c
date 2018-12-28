@@ -20,18 +20,31 @@
 ** along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "topic_database.h"
 #include "config.h"
+
+#include "topic_database.h"
 
 #include "engine/global_config.h"
 
-#include "tommyds/tommyhashdyn.h"
-#include "tommyds/tommylist.h"
-
 #include "util/util.h"
+
+#include <librdkafka/rdkafka.h>
+#include <tommyds/tommyhash.h>
+#include <tommyds/tommyhashdyn.h>
+#include <tommyds/tommylist.h>
+#include <tommyds/tommytypes.h>
 
 #include <librd/rdlog.h>
 #include <librd/rdmem.h>
+
+#include <assert.h>
+#include <errno.h>
+#include <pthread.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+#include <syslog.h>
+#include <time.h>
 
 static const uint64_t hash_init = 0x0123456789abcdefL;
 static const double topic_live_time_s = 15 * 60;

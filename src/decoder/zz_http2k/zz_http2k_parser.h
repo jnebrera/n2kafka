@@ -21,13 +21,16 @@
 
 #pragma once
 
-#include "zz_database.h"
-
-#include <util/kafka_message_array.h>
-#include <util/pair.h>
+#include <librdkafka/rdkafka.h>
 #include <yajl/yajl_parse.h>
 
-#include <assert.h>
+#include "util/kafka_message_array.h"
+#include "util/pair.h"
+#include "util/string.h"
+
+#include <stddef.h>
+
+struct zz_database;
 
 /// @TODO many of the fields here could be a state machine
 /// @TODO separate parsing <-> not parsing fields

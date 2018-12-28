@@ -23,14 +23,19 @@
 
 #include "zz_database.h"
 
-#include <jansson.h>
+#include "util/kafka_message_array.h"
+#include "util/pair.h"
+#include "util/topic_database.h"
+#include "util/util.h"
+
 #include <librd/rdlog.h>
-#include <librd/rdmem.h>
-#include <yajl/yajl_gen.h>
+#include <librdkafka/rdkafka.h>
 #include <yajl/yajl_parse.h>
 
 #include <assert.h>
 #include <string.h>
+#include <syslog.h>
+#include <time.h>
 
 #define YAJL_PARSER_OK 1
 #define YAJL_PARSER_ABORT 0

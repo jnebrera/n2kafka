@@ -21,11 +21,18 @@
 
 #include "meraki.h"
 #include "decoder/zz_http2k/zz_http2k_decoder.h"
-#include "engine/global_config.h"
 
-#include <assert.h>
+#include "util/kafka.h"
+#include "util/pair.h"
+
+#include <jansson.h>
 #include <librd/rd.h>
 #include <librd/rdlog.h>
+
+#include <assert.h>
+#include <stdlib.h>
+#include <string.h>
+#include <syslog.h>
 
 static const char CONFIG_MERAKI_DECODER_NAME[] = "meraki";
 static const char CONFIG_MERAKI_TOPIC_KEY[] = "topic";

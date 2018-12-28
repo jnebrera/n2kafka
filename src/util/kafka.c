@@ -19,19 +19,19 @@
 ** along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "util.h"
 /// @TODO this should not have engine/ dependences
 #include "engine/global_config.h"
-#include "engine/parse.h"
+
+#include "util.h"
+#include "util/kafka.h"
 #include "util/kafka_message_array.h"
 
-#include <pthread.h>
+#include <librd/rdlog.h>
+#include <librdkafka/rdkafka.h>
 
 #include <assert.h>
 #include <errno.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
+#include <syslog.h>
 
 #define ERROR_BUFFER_SIZE 256
 #define RDKAFKA_ERRSTR_SIZE ERROR_BUFFER_SIZE

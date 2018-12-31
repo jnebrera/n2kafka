@@ -89,21 +89,86 @@ static void http_listener_scrub_tls_data(struct http_listener *l) {
 }
 
 /**
+ * @brief      Return the same string
+ *
+ * @param[in]  a the argument and return string
+ *
+ * @return     Same pointer as a
+ */
+static const char *string_identity_function(const char *a) {
+	return a;
+}
+
+// X(struct_type, json_unpack_type, json_name, struct_name, env_name,
+// str_to_value_function, default)
+#define X_HTTP_CONFIG(X)                                                       \
+	/* HTTP server port */                                                 \
+	X(int, ":i", port, port, NULL, atoi, 0)                                \
+	/* HTTP server number of polling threads */                            \
+	X(int, "?i", num_threads, num_threads, NULL, atoi, 1)                  \
+	/* Per connection memory limit */                                      \
+	X(int,                                                                 \
+	  "?i",                                                                \
+	  connection_memory_limit,                                             \
+	  connection_memory_limit,                                             \
+	  NULL,                                                                \
+	  atoi,                                                                \
+	  (128 * 1024))                                                        \
+	/* Connections limit */                                                \
+	X(int, "?i", connection_limit, connection_limit, NULL, atoi, 1024)     \
+	/* Timeout to drop a connection */                                     \
+	X(int, "?i", connection_timeout, connection_timeout, NULL, atoi, 30)   \
+	/* Per-ip connection limit */                                          \
+	X(int,                                                                 \
+	  "?i",                                                                \
+	  per_ip_connection_limit,                                             \
+	  per_ip_connection_limit,                                             \
+	  NULL,                                                                \
+	  atoi,                                                                \
+	  0)                                                                   \
+	/* Polling mode: thread_per_connection, select, poll (default), epoll  \
+	 */                                                                    \
+	X(const char *,                                                        \
+	  "?s",                                                                \
+	  mode,                                                                \
+	  mode,                                                                \
+	  NULL,                                                                \
+	  string_identity_function,                                            \
+	  "poll")                                                              \
+	/* Server TLS key filename */                                          \
+	X(const char *,                                                        \
+	  "?s",                                                                \
+	  https_key_filename,                                                  \
+	  https_key_filename,                                                  \
+	  "HTTP_TLS_KEY_FILE",                                                 \
+	  string_identity_function,                                            \
+	  NULL)                                                                \
+	/* Server TLS key file password */                                     \
+	X(const char *,                                                        \
+	  "?s",                                                                \
+	  https_cert_filename,                                                 \
+	  https_cert_filename,                                                 \
+	  "HTTP_TLS_CERT_FILE",                                                \
+	  string_identity_function,                                            \
+	  NULL)                                                                \
+	/* Server TLS key file password */                                     \
+	X(const char *,                                                        \
+	  "?s",                                                                \
+	  https_key_password,                                                  \
+	  https_key_password,                                                  \
+	  "HTTP_TLS_KEY_PASSWORD",                                             \
+	  string_identity_function,                                            \
+	  NULL)
+
+#define X_STRUCT_HTTP_CONFIG(                                                  \
+		struct_type, json_unpack_type, json_name, struct_name, ...)    \
+	struct_type struct_name;
+
+/**
  * @brief      HTTP listener loop arguments
  */
 struct http_loop_args {
-	const char *mode; ///< HTTP mode
-	int port;	 ///< Port to open http server
-	int num_threads;  ///< Number of processing threads
-	/// Server parameters
-	struct {
-		int connection_memory_limit;
-		int connection_limit;
-		int connection_timeout;
-		int per_ip_connection_limit;
-		const char *https_key_filename, *https_key_password,
-				*https_cert_filename;
-	} server_parameters;
+	X_HTTP_CONFIG(X_STRUCT_HTTP_CONFIG)
 };
 
 /**
@@ -159,10 +224,10 @@ start_http_loop(const struct http_loop_args *args,
 		char *mem;            ///< Raw memory
 	} tls_files[] = {
 		[KEY_FILE] = {
-			.filename = args->server_parameters.https_key_filename,
+			.filename = args->https_key_filename,
 		},
 		[CERT_FILE] = {
-			.filename = args->server_parameters.https_cert_filename,
+			.filename = args->https_cert_filename,
 		},
 	};
 	// clang-format on
@@ -186,8 +251,8 @@ start_http_loop(const struct http_loop_args *args,
 
 	flags |= MHD_USE_DEBUG;
 
-	if (unlikely(!(args->server_parameters.https_key_filename) !=
-		     !(args->server_parameters.https_cert_filename))) {
+	if (unlikely(!(args->https_key_filename) !=
+		     !(args->https_cert_filename))) {
 		// User set only one of the two
 		static const char *key_hint = "https_key_filename or "
 					      "HTTP_TLS_KEY_FILE environ";
@@ -197,14 +262,12 @@ start_http_loop(const struct http_loop_args *args,
 		rdlog(LOG_ERR,
 		      "Only %s set in http listener options, you must also set "
 		      "%s ",
-		      args->server_parameters.https_key_filename ? key_hint
-								 : cert_hint,
-		      args->server_parameters.https_key_filename ? cert_hint
-								 : key_hint);
+		      args->https_key_filename ? key_hint : cert_hint,
+		      args->https_key_filename ? cert_hint : key_hint);
 		return NULL;
 	}
 
-	if (args->server_parameters.https_key_filename) {
+	if (args->https_key_filename) {
 		flags |= MHD_USE_TLS;
 
 		for (size_t i = 0; i < RD_ARRAYSIZE(tls_files); ++i) {
@@ -345,22 +408,22 @@ start_http_loop(const struct http_loop_args *args,
 
 			/* Max number of concurrent onnections */
 			{MHD_OPTION_CONNECTION_LIMIT,
-			 args->server_parameters.connection_limit,
+			 args->connection_limit,
 			 NULL},
 
 			/* Max number of connections per IP */
 			{MHD_OPTION_PER_IP_CONNECTION_LIMIT,
-			 args->server_parameters.per_ip_connection_limit,
+			 args->per_ip_connection_limit,
 			 NULL},
 
 			/* Connection timeout */
 			{MHD_OPTION_CONNECTION_TIMEOUT,
-			 args->server_parameters.connection_timeout,
+			 args->connection_timeout,
 			 NULL},
 
 			/* Memory limit per connection */
 			{MHD_OPTION_CONNECTION_MEMORY_LIMIT,
-			 args->server_parameters.connection_memory_limit,
+			 args->connection_memory_limit,
 			 NULL},
 
 			/* Thread pool size */
@@ -376,8 +439,7 @@ start_http_loop(const struct http_loop_args *args,
 			 tls_files[CERT_FILE].mem},
 			{MHD_OPTION_HTTPS_KEY_PASSWORD,
 			 0,
-			 const_cast(args->server_parameters
-						    .https_key_password)},
+			 const_cast(args->https_key_password)},
 
 			{MHD_OPTION_END, 0, NULL}};
 
@@ -438,88 +500,64 @@ struct listener *create_http_listener0(const struct http_callbacks *callbacks,
 	}
 	json_error_t error;
 
-	struct http_loop_args handler_args = {
-			/* Default arguments */
-			.num_threads = 1,
-			.mode = MODE_SELECT,
-			.server_parameters = {
-					.connection_memory_limit = 128 * 1024,
-					.connection_limit = 1024,
-					.connection_timeout = 30,
-					.per_ip_connection_limit = 0,
-			}};
+#define X_DEFAULTS_HTTP_CONFIG(struct_type,                                    \
+			       json_unpack_type,                               \
+			       json_name,                                      \
+			       struct_name,                                    \
+			       env_name,                                       \
+			       str_to_value_function,                          \
+			       t_default)                                      \
+	.struct_name = t_default,
 
-	struct {
-		const char *env_var;
-		const char **dst;
-	} envs_config[] = {
-			{.env_var = "HTTP_TLS_KEY_FILE",
-			 .dst = &handler_args.server_parameters
-						 .https_key_filename},
-			{.env_var = "HTTP_TLS_CERT_FILE",
-			 .dst = &handler_args.server_parameters
-						 .https_cert_filename},
-			{.env_var = "HTTP_TLS_KEY_PASSWORD",
-			 .dst = &handler_args.server_parameters
-						 .https_key_password},
-
-	};
-
-	for (size_t i = 0; i < RD_ARRAYSIZE(envs_config); ++i) {
-		*envs_config[i].dst = getenv(envs_config[i].env_var);
+#define X_ENVIRON_HTTP_CONFIG(struct_type,                                     \
+			      json_unpack_type,                                \
+			      json_name,                                       \
+			      struct_name,                                     \
+			      env_name,                                        \
+			      str_to_value_function,                           \
+			      ...)                                             \
+	if (NULL != env_name) {                                                \
+		const char *env_val = getenv(env_name);                        \
+		if (env_val) {                                                 \
+			handler_args.struct_name =                             \
+					str_to_value_function(env_val);        \
+		}                                                              \
 	}
 
+#define X_JANSSON_UNPACK_FORMAT(struct_type, json_unpack_type, ...)            \
+	"s" json_unpack_type
+
+#define X_JANSSON_UNPACK_ARGS(                                                 \
+		struct_type, json_unpack_type, json_name, struct_name, ...)    \
+	/* */ #json_name, &handler_args.struct_name,
+
+	// Configured defaults
+	struct http_loop_args handler_args = {
+			X_HTTP_CONFIG(X_DEFAULTS_HTTP_CONFIG)};
+
+	// Override with envionment
+	X_HTTP_CONFIG(X_ENVIRON_HTTP_CONFIG)
+
+	// Override with config file
 	const int unpack_rc = json_unpack_ex(
 			config,
 			&error,
 			0,
-			"{"
-			"s:i," /* port */
-			"s?s," /* mode */
-			"s?i," /* num_threads */
-			"s?i," /* connection_memory_limit */
-			"s?i," /* connection_limit */
-			"s?i," /* connection_timeout */
-			"s?i"  /* per_ip_connection_limit */
-			"s?s"  /* https_cert_filename */
-			"s?s"  /* https_key_filename */
-			"s?s"  /* https_key_password */
-			"}",
-			"port",
-			&handler_args.port,
-			"mode",
-			&handler_args.mode,
-			"num_threads",
-			&handler_args.num_threads,
-			"connection_memory_limit",
-			&handler_args.server_parameters.connection_memory_limit,
-			"connection_limit",
-			&handler_args.server_parameters.connection_limit,
-			"connection_timeout",
-			&handler_args.server_parameters.connection_timeout,
-			"per_ip_connection_limit",
-			&handler_args.server_parameters.per_ip_connection_limit,
-			"https_key_filename",
-			&handler_args.server_parameters.https_key_filename,
-			"https_key_password",
-			&handler_args.server_parameters.https_key_password,
-			"https_cert_filename",
-			&handler_args.server_parameters.https_cert_filename);
+			"{" X_HTTP_CONFIG(X_JANSSON_UNPACK_FORMAT) "}",
+			X_HTTP_CONFIG(X_JANSSON_UNPACK_ARGS)
+			/* unused NULL, only to make C syntax happy*/ NULL);
 
 	if (unpack_rc != 0 /* Failure */) {
 		rdlog(LOG_ERR, "Can't parse HTTP options: %s", error.text);
 		goto err;
 	}
 
-	if (handler_args.server_parameters.https_key_password &&
-	    handler_args.server_parameters.https_key_password[0] == '@') {
+	if (handler_args.https_key_password &&
+	    handler_args.https_key_password[0] == '@') {
 		// Key password is in a file
-		key_password = rd_file_read(
-				&handler_args.server_parameters
-						 .https_key_password[1],
-				&key_password_len);
-		handler_args.server_parameters.https_key_password =
-				key_password;
+		key_password = rd_file_read(&handler_args.https_key_password[1],
+					    &key_password_len);
+		handler_args.https_key_password = key_password;
 	}
 
 	struct http_listener *http_listener = start_http_loop(

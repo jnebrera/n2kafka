@@ -80,6 +80,8 @@ HTTP listener admits the next configuration:
   to come with `https_cert_filename`. The file permissions must not include
   other's read/write (i.e., needs to be XX0).
 - https_key_password (string): Password to use to decrypt the private key.
+- https_clients_ca_filename (string): CA that the clients uses in the
+  client side certificate to autenticate themselves.
 
 For a deeper understanding of each value's implication, you can go to
 [libmicrohttpd reference manual](https://www.gnu.org/software/libmicrohttpd/manual/html_node/microhttpd_002dconst.html).
@@ -142,6 +144,20 @@ curl  -vd '{"test":1}' https://localhost:7980/v1/data/abc
 ...
 < HTTP/1.1 200 OK
 ```
+
+If you want to enable Client CA verification too, you can generate as many
+clients key/certificate pairs as you need changing `-keyout` and `-out`
+parameters of the openssl command. After that, use the previously specified
+configuration options or environments. Curl command can be used to test client
+certificate verification with:
+
+```bash
+curl -vk --key client-key.pem --cert client-certificate.pem -d '{"test":1}' https://localhost:7980/v1/data/abc
+...
+< HTTP/1.1 200 OK
+```
+
+Curl requests with no `--key` and `--cert` should be rejected by the servers.
 
 #### Content-encoding
 You can send 'gzipped' and 'deflated' data to n2kafka http listener as long as

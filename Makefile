@@ -12,7 +12,9 @@ TESTS_HELGRIND_XML = $(TESTS_PY:tests/%.py=$(TEST_REPORTS_DIR)/%.helgrind.xml)
 TESTS_DRD_XML = $(TESTS_PY:tests/%.py=$(TEST_REPORTS_DIR)/%.drd.xml)
 TESTS_VALGRIND_XML = $(TESTS_MEM_XML)
 TESTS_XML = $(TESTS_CHECKS_XML) $(TESTS_VALGRIND_XML)
-TLS_DEPS =  tests/key.pem tests/key.encrypted.pem tests/certificate.pem
+TLS_DEPS =  tests/key.pem tests/key.encrypted.pem tests/certificate.pem \
+                         tests/client-key-1.pem tests/client-certificate-1.pem \
+                         tests/client-key-2.pem tests/client-certificate-2.pem
 TESTS_PY_DEPS = $(wildcard tests/[!0]*.py) $(TLS_DEPS)
 
 all: $(BIN)
@@ -149,19 +151,31 @@ $(SRCS:.c=.gcda): $(TESTS_CHECKS_XML)
 
 coverage: check_coverage coverage.out
 
+# Generate the pair key + self signed certificate
+# Arguments:
+#  1 - output key name
+#  2 - output certificate name
+openssl_gen = $(strip openssl req \
+    -newkey rsa:2048 -nodes -keyout "$(1)" \
+            -x509 -days 3650 -subj '/CN=localhost/' -extensions SAN \
+            -config <(cat /etc/ssl/openssl.cnf \
+                        <(printf '\n[ SAN ]\nsubjectAltName=DNS:localhost\n')) \
+            -out "$(2)"; \
+       chmod 600 "$(1)" "$(2)")
+
 tests/key.pem tests/certificate.pem: SHELL=/bin/bash
 tests/key.pem tests/certificate.pem:
-	openssl req \
-	    -newkey rsa:2048 -nodes -keyout tests/key.pem \
-	    -x509 -days 3650 -subj '/CN=localhost/' -extensions SAN \
-	    -config <(cat /etc/ssl/openssl.cnf \
-	              <(printf '\n[ SAN ]\nsubjectAltName=DNS:localhost\n')) \
-	    -out tests/certificate.pem
-	chmod 600 tests/certificate.pem tests/key.pem
+	$(call openssl_gen,tests/key.pem,tests/certificate.pem)
 
 tests/key.encrypted.pem: tests/key.pem
 	openssl rsa -aes256 -passout 'pass:1234' -in "$<" -out "$@"
 	chmod 600 tests/key.encrypted.pem
+
+tests/client-key-%.pem tests/client-certificate-%.pem: SHELL=/bin/bash
+tests/client-key-%.pem tests/client-certificate-%.pem:
+	# We only see one of the two targets, so we need to make tricks to generate
+	# key/cert name
+	$(call openssl_gen,tests/client-key-$(lastword $(subst -, ,$@)),tests/client-certificate-$(lastword $(subst -, ,$@)))
 
 
 #

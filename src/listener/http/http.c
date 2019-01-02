@@ -26,6 +26,7 @@
 
 #include "http_config.h"
 #include "responses.h"
+#include "tls.h"
 
 #include "decoder/decoder_api.h"
 #include "engine/rb_addr.h"
@@ -34,6 +35,7 @@
 #include "util/string.h"
 #include "util/util.h"
 
+#include <gnutls/gnutls.h>
 #include <jansson.h>
 #include <librd/rd.h>
 #include <librd/rdlog.h>
@@ -53,6 +55,8 @@
 
 /// Chunk to store decompression flow
 #define ZLIB_CHUNK (512 * 1024)
+
+#define HTTP_UNUSED __attribute__((unused))
 
 /// Per connection information
 struct conn_info {
@@ -349,6 +353,47 @@ client_addr(char *buf, size_t buf_size, struct MHD_Connection *con_info) {
 }
 
 /**
+ * @brief      Checks validity for HTTP client certificate
+ *
+ * @param      connection   The HTTP connection
+ * @param[in]  client_addr  The client address, used for debug information.
+ *
+ * @return     True if the client has a valid certificate, false (and proper
+ * response sent to connection) otherwise
+ */
+static bool http_valid_client_certificate(struct MHD_Connection *connection,
+					  const char *client_addr) {
+	const char *client_cert_errstr;
+
+	const union MHD_ConnectionInfo *ci = MHD_get_connection_info(
+			connection, MHD_CONNECTION_INFO_GNUTLS_SESSION);
+	const gnutls_session_t tls_session = ci->tls_session;
+
+	const bool rc = tls_valid_client_certificate(
+			tls_session, &client_cert_errstr, client_addr);
+	if (likely(rc)) {
+		return rc;
+	}
+
+	const int send_rc =
+			send_buffered_response(connection,
+					       strlen(client_cert_errstr),
+					       const_cast(client_cert_errstr),
+					       MHD_RESPMEM_PERSISTENT,
+					       MHD_HTTP_FORBIDDEN);
+
+	if (unlikely(!send_rc)) {
+		rdlog(LOG_ERR,
+		      "Couldn't queue client \"%s\" 403 HTTP_FORBIDDEN \"%s\""
+		      "response (out of memory?)",
+		      client_addr,
+		      client_cert_errstr);
+	}
+
+	return rc;
+}
+
+/**
  * @brief      Process compressed POST message
  *
  * @param      h_listener        The http listener
@@ -467,6 +512,12 @@ static int handle_http_post_init(struct http_listener *http_listener,
 			client_addr(client_buf, sizeof(client_buf), connection);
 	if (unlikely(NULL == client)) {
 		return MHD_NO;
+	}
+
+	if (http_listener_config_client_tls_ca(http_listener) &&
+	    !http_valid_client_certificate(connection, client_buf)) {
+		// Log in valid_client_certificate
+		return MHD_YES;
 	}
 
 	const n2k_decoder *decoder =

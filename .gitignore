@@ -46,6 +46,8 @@
 /tests/key.pem
 /tests/key.encrypted.pem
 /tests/certificate.pem
+/tests/client-certificate-?.pem
+/tests/client-key-?.pem
 __pycache__
 .pytest_cache/
 

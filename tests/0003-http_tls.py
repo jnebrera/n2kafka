@@ -11,16 +11,6 @@ from n2k_test import valgrind_handler  # noqa: F401
 import os
 
 
-# TODO tests all combinations!
-# @pytest.fixture(params=[None, 'certificate.pem', 'pass_certificate.pem'])
-# def ca_verify(request):
-#     return request.param
-
-# @pytest.fixture(params=[None, '1234', 'wrong_password'])
-# def key_password(request):
-#     return request.param
-
-
 class TestHTTP2K(TestN2kafka):
     @pytest.mark.parametrize(  # noqa: F811
         "tls_cert, tls_key, tls_pass, tls_pass_in_file", [
@@ -29,6 +19,10 @@ class TestHTTP2K(TestN2kafka):
         ('tests/certificate.pem', 'tests/key.encrypted.pem', '1234', True),
     ])
     @pytest.mark.parametrize("env_provided", [True, False])
+    @pytest.mark.parametrize("tls_client_cert",
+                             [None,
+                              ('tests/client-certificate-1.pem',
+                               'tests/client-key-1.pem')])
     def test_tls_https(self,
                        child,
                        kafka_handler,
@@ -38,6 +32,7 @@ class TestHTTP2K(TestN2kafka):
                        tls_key,
                        tls_pass,
                        tls_pass_in_file,
+                       tls_client_cert,
                        tmpdir):
         ''' Base n2kafka test
 
@@ -51,7 +46,7 @@ class TestHTTP2K(TestN2kafka):
           - tls_cert: HTTPs cert to export
           - tls_key: HTTPs private key to use in crypt
           - tls_pass: RSA password for Key. Can be NULL
-          - password_in_file: tls key password is store in a file.
+          - tls_client_cert: client certificate / key tuple. Can be none.
           - tmpdir: Temporary directory (pytest fixture)
         '''
 
@@ -86,6 +81,13 @@ class TestHTTP2K(TestN2kafka):
             base_config['listeners'][0]['https_key_filename'] = tls_key
             base_config['listeners'][0]['https_cert_filename'] = tls_cert
 
+        if tls_client_cert:
+            base_config["listeners"][0]["https_clients_ca_filename"] = \
+                tls_client_cert[0]
+
+        unauthenticated_client_expected_exception = \
+            requests.exceptions.SSLError if tls_client_cert else None
+
         messages = [
             # Try to connect with plain http -> bad
             HTTPPostMessage(
@@ -102,17 +104,51 @@ class TestHTTP2K(TestN2kafka):
                    expected_exception_type=requests.exceptions.SSLError,
                    ),
 
-            # Success
+            # Non tls-authorized client
+            HTTPPostMessage(
+                uri='/v1/data/' + used_topic,
+                data=TEST_MESSAGE,
+                proto='https',
+                verify=tls_cert,
+                expected_response_code=403,
+                expected_response="Unknown error checking certificate, do you "
+                "have one?",
+                )
+            if tls_client_cert else
+            # Regular https request
             HTTPPostMessage(uri='/v1/data/' + used_topic,
                             data=TEST_MESSAGE,
                             proto='https',
                             verify=tls_cert,
+                            expected_kafka_messages=[
+                                {'topic': used_topic,
+                                 'messages': [TEST_MESSAGE],
+                                 }]),
+        ] + [
+            # Bad client certificate
+            HTTPPostMessage(
+                uri='/v1/data/' + used_topic,
+                data=TEST_MESSAGE,
+                proto='https',
+                verify=tls_cert,
+                cert=[s.replace('1', '2')
+                      for s in tls_client_cert],
+                expected_response_code=403,
+                expected_response="The signature verification failed",
+                ),
+
+            # Right client certificate
+            HTTPPostMessage(uri='/v1/data/' + used_topic,
+                            data=TEST_MESSAGE,
+                            proto='https',
+                            verify=tls_cert,
+                            cert=tls_client_cert,
                             expected_response_code=200,
                             expected_kafka_messages=[
                                 {'topic': used_topic,
                                  'messages': [TEST_MESSAGE],
                                  }]),
-        ]
+        ] if tls_client_cert else []
 
         t_locals = locals()
         self.base_test(base_config=base_config,

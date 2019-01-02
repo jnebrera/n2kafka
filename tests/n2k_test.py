@@ -219,6 +219,7 @@ class HTTPMessage(object):
 
         method_args = {
             key: self.params[key] for key in (
+                'cert',
                 'data',
                 'headers',
                 'params',

@@ -26,6 +26,7 @@
 
 #include <microhttpd.h>
 
+#include <stdbool.h>
 #include <stddef.h>
 
 struct n2k_decoder;
@@ -33,8 +34,6 @@ struct json_t;
 
 /// Per listener stuff
 struct http_listener;
-
-#define HTTP_UNUSED __attribute__((unused))
 
 /**
  * @brief      Cast http listener to a plain listener
@@ -79,10 +78,20 @@ struct http_callbacks {
 
 	/// Request completed
 	void (*request_completed)(void *cls,
-				  struct MHD_Connection *connection HTTP_UNUSED,
+				  struct MHD_Connection *connection,
 				  void **con_cls,
 				  enum MHD_RequestTerminationCode toe);
 };
+
+/**
+ * @brief      Ask the HTTP listener properties if it has configured a TLS
+ * client CA
+ *
+ * @param[in]  l HTTP listener
+ *
+ * @return     True or false
+ */
+bool http_listener_config_client_tls_ca(const struct http_listener *l);
 
 /**
  * @brief      Creates a http listener.

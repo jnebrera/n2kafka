@@ -299,9 +299,9 @@
    fun:malloc
    fun:pthread_atfork
    obj:*
-   obj:/usr/lib/libp11-kit.so.0.1.0
+   obj:/usr/lib/libp11-kit.so.0.3.0
    obj:*
-   obj:/usr/lib/libp11-kit.so.0.1.0
+   obj:/usr/lib/libp11-kit.so.0.3.0
    obj:*
    fun:__pthread_once_full
 }

@@ -30,12 +30,8 @@ save_docker_images:
       docker images  --filter "dangling=false" --format '{{.ID}} {{.Repository}} {{.Tag}}' | sort > docker_images.newsum
       if ! diff docker_images.newsum docker-cache/built-images.sum; then
         mv docker_images.newsum docker-cache/built-images.sum
-        docker_images=$(docker images --filter 'dangling=false' \
-          --format '{{.Repository}}:{{.Tag}}')
-        docker_histories=$(for i in ${docker_images}; \
-          do docker history -q $i | grep -v missing; \
-        done)
-        docker save ${docker_images} ${docker_histories} \
+        n2k_dev_history=$(docker history -q n2k-dev:latest | grep -v missing)
+        docker save n2k-dev:latest ${n2k_dev_history} \
           | gzip > docker-cache/built-images.tgz
       fi
 

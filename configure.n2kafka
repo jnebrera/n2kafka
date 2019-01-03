@@ -11,13 +11,18 @@ mkl_meta_set "description" "oneline"   "The Network to kafka conversion service"
 mkl_meta_set "description" "long"      "Consume messages from tcp/udp/http and send them via kafka"
 mkl_meta_set "description" "copyright" "Copyright (c) 2014-2016 Eneo Tecnologia S.L., (c) 2017 Eugenio Pérez <eupm90@gmail.com>, (c) 2018-2019 Wizzie S.L."
 
-mkl_mkvar_append CPPFLAGS CPPFLAGS "-DFORTIFY_SOURCE=2 -D_GNU_SOURCE"
-mkl_mkvar_append CPPFLAGS CPPFLAGS "-fno-strict-aliasing" # Needed by libev
-mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wunused -Wcast-qual -Wextra -Wsign-conversion -Wshadow"
+mkl_mkvar_append CPPFLAGS CPPFLAGS '-DFORTIFY_SOURCE=2 -D_GNU_SOURCE'
+mkl_mkvar_append CPPFLAGS CPPFLAGS '-fno-strict-aliasing' # Needed by libev
+mkl_mkvar_append CPPFLAGS CPPFLAGS '-Wunused -Wcast-qual -Wextra'
+mkl_mkvar_append CPPFLAGS CPPFLAGS '-Wsign-conversion -Wshadow'
 #mkl_mkvar_append CPPFLAGS CPPFLAGS "-ftrack-macro-expansion=2"
-mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wdisabled-optimization -Winit-self -Wlogical-op"
-mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wmissing-include-dirs -Wstrict-overflow=5 -Wundef -Wswitch-default"
-mkl_mkvar_append CPPFLAGS CPPFLAGS "-Wmissing-declarations -Wdisabled-optimization"
+mkl_mkvar_append CPPFLAGS CPPFLAGS '-Wdisabled-optimization -Winit-self'
+mkl_mkvar_append CPPFLAGS CPPFLAGS '-Wlogical-op'
+mkl_mkvar_append CPPFLAGS CPPFLAGS '-Wmissing-include-dirs -Wstrict-overflow=5'
+mkl_mkvar_append CPPFLAGS CPPFLAGS '-Wundef -Wswitch-default'
+mkl_mkvar_append CPPFLAGS CPPFLAGS '-Wmissing-declarations'
+mkl_mkvar_append CPPFLAGS CPPFLAGS '-Wdisabled-optimization'
+mkl_mkvar_append CPPFLAGS CPPFLAGS '-Wduplicated-cond'
 
 # This will make the life easier
 mkl_mkvar_append CPPFLAGS CPPFLAGS "-I. -I./src"

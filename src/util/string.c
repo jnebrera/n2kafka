@@ -30,6 +30,7 @@
 #include <limits.h>
 #include <stdarg.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <syslog.h>
 
@@ -143,7 +144,7 @@ int string_append_string(string *str, const char *data) {
 }
 
 static int print_not_utf8_code(string *str, char c) {
-	return string_printf(str, "\\\\x%u", c);
+	return string_printf(str, "\\\\x%u", *(uint8_t *)&c);
 }
 
 static size_t multibyte_utf8_unicode_size(const char *data, size_t data_size) {

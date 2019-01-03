@@ -230,7 +230,7 @@ locate_registered_decoder(const char *decode_as) {
 }
 
 static void parse_listener(json_t *config) {
-	char *proto = NULL, *decode_as = "";
+	const char *proto = NULL, *decode_as = "";
 	json_error_t json_err;
 
 	const int unpack_rc = json_unpack_ex(config,

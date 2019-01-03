@@ -16,13 +16,18 @@ mkl_mkvar_append CPPFLAGS CPPFLAGS '-fno-strict-aliasing' # Needed by libev
 mkl_mkvar_append CPPFLAGS CPPFLAGS '-Wunused -Wcast-qual -Wextra'
 mkl_mkvar_append CPPFLAGS CPPFLAGS '-Wsign-conversion -Wshadow'
 #mkl_mkvar_append CPPFLAGS CPPFLAGS "-ftrack-macro-expansion=2"
+#mkl_mkvar_append CPPFLAGS CPPFLAGS "Wstrict-aliasing=2"
 mkl_mkvar_append CPPFLAGS CPPFLAGS '-Wdisabled-optimization -Winit-self'
 mkl_mkvar_append CPPFLAGS CPPFLAGS '-Wlogical-op'
 mkl_mkvar_append CPPFLAGS CPPFLAGS '-Wmissing-include-dirs -Wstrict-overflow=5'
 mkl_mkvar_append CPPFLAGS CPPFLAGS '-Wundef -Wswitch-default'
 mkl_mkvar_append CPPFLAGS CPPFLAGS '-Wmissing-declarations'
 mkl_mkvar_append CPPFLAGS CPPFLAGS '-Wdisabled-optimization'
-mkl_mkvar_append CPPFLAGS CPPFLAGS '-Wduplicated-cond'
+mkl_mkvar_append CPPFLAGS CPPFLAGS '-Wfloat-equal'
+mkl_mkvar_append CPPFLAGS CPPFLAGS '-Wwrite-strings'
+mkl_mkvar_append CPPFLAGS CPPFLAGS '-Wformat=2'
+mkl_mkvar_append CPPFLAGS CPPFLAGS '-Wformat-signedness'
+mkl_mkvar_append CPPFLAGS CPPFLAGS '-Wformat-truncation=2'
 
 # This will make the life easier
 mkl_mkvar_append CPPFLAGS CPPFLAGS "-I. -I./src"
@@ -165,6 +170,19 @@ function checks_libmicrohttpd {
     mkl_define_set "Have libmicrohttpd library" "HAVE_LIBMICROHTTPD" "1"
 }
 
+##
+## @brief      Checks that the compiler support a given flag, and append it to
+##             CPPFLAGS
+## @param 1 Config & define name
+## @param 2 flag
+##
+cc_check_flag () {
+    declare -r test_snippet='int f(); int f(){ return 0; }'
+    if mkl_compile_check "$1" "$1" disable CC "$2" "$test_snippet"; then
+        mkl_mkvar_append CPPFLAGS CPPFLAGS "$2"
+    fi
+}
+
 function checks {
     checks_librd
     checks_tommyds
@@ -191,6 +209,12 @@ function checks {
     mkl_meta_set "yajl" "desc" "Small event-driven (SAX-style) JSON parser"
     mkl_lib_check --static=-lyajl "yajl" "" fail CC "-lyajl" \
       "#include <yajl/yajl_parse.h>"
+
+    cc_check_flag HAVE_CC_WDUPLICATED_BRANCHES '-Wduplicated-branches'
+    cc_check_flag HAVE_CC_WDUPLICATED_COND '-Wduplicated-cond'
+    cc_check_flag HAVE_CC_WRESTRICT '-Wrestrict'
+    cc_check_flag HAVE_CC_WNULL_REFERENCE '-Wnull-dereference'
+    cc_check_flag HAVE_CC_WCAST_ALIGN '-Wcast-align'
 
     if [[ "$ENABLE_ASSERTIONS" != 'y' ]]; then
       mkl_mkvar_append CPPFLAGS CPPFLAGS "-DNDEBUG"

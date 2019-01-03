@@ -14,46 +14,57 @@ WORKDIR /app
 #
 FROM n2k-base as n2k-dev
 
+# Need to install python-dev before or it will be installed from edge repository
+RUN	apk add --no-cache python3-dev
+
+# Need to install these before or they will be upgraded from base repository
+# gcc dependencies: binutils, gmp, isl, mpfr3, mpc1
+RUN	apk add --no-cache \
+		--repository http://dl-cdn.alpinelinux.org/alpine/edge/main/ \
+		binutils=2.31.1-r2 \
+		cgdb \
+		fortify-headers=1.0-r0 \
+		gdb=8.2-r1 \
+		g++=8.2.0-r2 \
+		gcc=8.2.0-r2 \
+		gmp=6.1.2-r1 \
+		valgrind=3.14.0-r0
+
 # ca-certificates: for wget bootstrapping
-# gcc dependencies: binutils, isl, libgomp, libatomic, mpfr3, mpc1
 # g++ dependencies: libc-dev
+# lcov dependencies: perl
 RUN apk add --no-cache \
 	bash \
-	binutils=2.30-r5 \
 	bsd-compat-headers=0.7.1-r0 \
 	ca-certificates \
-	cgdb \
 	file \
-	fortify-headers=0.9-r0 \
-	gcc=6.4.0-r9 \
-    g++=6.4.0-r9 \
 	git \
 	gnutls-dev=3.6.2-r0 \
 	isl=0.18-r0 \
 	jansson-dev=2.11-r0 \
 	libarchive-tools \
-	libatomic=6.4.0-r9 \
 	libc-dev=0.7.1-r0 \
 	libev-dev=4.24-r0 \
-	libgomp=6.4.0-r9 \
 	make \
 	mpc1=1.0.3-r1 \
 	mpfr3=3.1.5-r1 \
 	musl-dev=1.1.19-r10 \
 	openssl=1.0.2q-r0 \
+	perl \
 	py3-yaml \
-	python3-dev \
 	yajl-dev=2.1.0-r0 \
 	zlib-dev=1.2.11-r1
 
-# Only in edge testing repo
-RUN	apk add --no-cache \
-		--repository http://dl-cdn.alpinelinux.org/alpine/edge/testing/ \
-		lcov
-
-RUN	apk add --no-cache \
-		--repository http://dl-cdn.alpinelinux.org/alpine/edge/main/ \
-		valgrind=3.14.0-r0
+# alpine edge main/testing lcov does not support gcc-8 coverage format (See
+# a5dd9529f9232b8d901a4d6eb9ae54cae179e5b3 lcov commit).
+RUN	wget -O lcov.tgz\
+		https://api.github.com/repos/linux-test-project/lcov/tarball/28675dc7564aaa1ad231a7ac23106512a3956d68 && \
+	printf '7385563633347c7d6bcc055d118109e6ab1414bba4fcf17a109bbdaa92f46f51  lcov.tgz' | sha256sum -c && \
+	tar xvzpf lcov.tgz && \
+	(cd linux-test-project-lcov-28675dc/; \
+		sed -i 's%PREFIX  := /usr/local%PREFIX  := /usr%' Makefile && \
+		make install; ) && \
+	rm -f lcov.tgz
 
 RUN	update-ca-certificates
 RUN	pip3 install --upgrade pip && pip3 install \

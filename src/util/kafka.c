@@ -88,7 +88,7 @@ static void msg_delivered(rd_kafka_t *rk RD_UNUSED,
 		      rd_kafka_err2str(rkmessage->err));
 	} else {
 		rblog(LOG_DEBUG,
-		      "Message delivered (%zd bytes): %*.*s",
+		      "Message delivered (%zu bytes): %*.*s",
 		      rkmessage->len,
 		      (int)rkmessage->err,
 		      (int)rkmessage->err,

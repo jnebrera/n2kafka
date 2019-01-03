@@ -143,7 +143,7 @@ static void request_completed(void *cls,
 	}
 
 	if (toe != MHD_REQUEST_TERMINATED_COMPLETED_OK) {
-		rdlog(LOG_ERR, "Connection terminated because %d", toe);
+		rdlog(LOG_ERR, "Connection terminated because %u", toe);
 	}
 
 	struct conn_info *con_info = *con_cls;

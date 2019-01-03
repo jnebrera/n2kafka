@@ -636,6 +636,7 @@ listener_init_err:
 struct listener *create_http_listener0(const struct http_callbacks *callbacks,
 				       const struct json_t *t_config,
 				       const struct n2k_decoder *decoder) {
+	struct http_listener *http_listener = NULL;
 	int key_password_len = 0;
 	char *key_password = NULL;
 	json_t *config = json_deep_copy(t_config);
@@ -705,7 +706,7 @@ struct listener *create_http_listener0(const struct http_callbacks *callbacks,
 		handler_args.https_key_password = key_password;
 	}
 
-	struct http_listener *http_listener = start_http_loop(
+	http_listener = start_http_loop(
 			&handler_args, callbacks, decoder, config);
 	if (NULL == http_listener) {
 		rdlog(LOG_ERR, "Can't create http listener (out of memory?)");

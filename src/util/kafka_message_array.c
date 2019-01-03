@@ -50,6 +50,7 @@ size_t kafka_message_array_produce(rd_kafka_topic_t *rkt,
 				   kafka_message_array_produce_state *state) {
 	assert(rkt);
 	assert(array);
+	size_t msgs_ok = 0;
 	static const time_t alert_threshold = 5 * 60;
 
 	if (0 == kafka_message_array_size(array)) {
@@ -73,11 +74,11 @@ size_t kafka_message_array_produce(rd_kafka_topic_t *rkt,
 	}
 
 	const size_t messages_in_batch = karray->count;
-	size_t msgs_ok = (size_t)rd_kafka_produce_batch(rkt,
-							RD_KAFKA_PARTITION_UA,
-							rdkafka_flags,
-							karray->msgs,
-							karray->count);
+	msgs_ok = (size_t)rd_kafka_produce_batch(rkt,
+						 RD_KAFKA_PARTITION_UA,
+						 rdkafka_flags,
+						 karray->msgs,
+						 karray->count);
 	if (likely(msgs_ok == messages_in_batch)) {
 		// all OK!
 		goto end;

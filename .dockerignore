@@ -1,0 +1,55 @@
+# Object files
+*.o
+*.ko
+*.obj
+*.elf
+
+# Libraries
+*.lib
+*.a
+
+# Shared objects (inc. Windows DLLs)
+*.dll
+*.so
+*.so.*
+*.dylib
+
+# Executables
+*.exe
+*.out
+*.app
+*.i*86
+*.x86_64
+*.hex
+
+# Dependendes
+*.d
+
+# Coverage
+*.gcda
+*.gcno
+/coverage.info
+/coverage.out.html/
+
+# mklove
+/config.cache
+/config.log
+/config.log.old
+
+# Tests
+/tests/*.xml
+/tests/coverage.info
+/tests/out
+/tests/key.pem
+/tests/key.encrypted.pem
+/tests/certificate.pem
+/tests/client-certificate-?.pem
+/tests/client-key-?.pem
+**/__pycache__
+.pytest_cache/
+
+# Clang complete tools
+/.clang_complete
+
+# Editors garbage
+*~

@@ -2,6 +2,7 @@
 FROM alpine@sha256:46e71df1e5191ab8b8034c5189e325258ec44ea739bba1e5645cff83c9048ff1 as n2k-base
 
 RUN apk add --no-cache \
+	gnutls=3.6.2-r0 \
 	jansson=2.11-r0 \
 	libev=4.24-r0 \
 	yajl=2.1.0-r0 \

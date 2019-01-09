@@ -370,7 +370,7 @@ static void check_config() {
 
 void parse_config(const char *config_file_path) {
 	json_error_t error;
-	global_config.config_path = strdup(config_file_path);
+	global_config.config_path = config_file_path;
 	json_t *root = json_load_file(config_file_path, 0, &error);
 	if (root == NULL) {
 		rblog(LOG_ERR,
@@ -524,11 +524,6 @@ reload_decoder(struct n2kafka_config *config, const n2k_decoder *decoder) {
 		return;
 	}
 
-	if (!json_is_object(root)) {
-		rblog(LOG_ERR, "Can't reload, JSON config is not an object");
-		goto error_free_root;
-	}
-
 	const int unpack_rc = json_unpack_ex(root,
 					     &json_err,
 					     0,
@@ -599,8 +594,6 @@ void free_global_config() {
 		flush_kafka();
 		stop_rdkafka();
 	}
-
-	free(global_config.config_path);
 
 	in_addr_list_done(global_config.blacklist);
 	free(global_config.topic);

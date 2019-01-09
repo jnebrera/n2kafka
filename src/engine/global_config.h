@@ -32,7 +32,7 @@ typedef LIST_HEAD(, listener) listener_list;
 
 struct n2kafka_config {
 	/// Path to reload
-	char *config_path;
+	const char *config_path;
 
 	char *topic;
 	char *brokers;

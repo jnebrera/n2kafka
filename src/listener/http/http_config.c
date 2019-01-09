@@ -31,6 +31,7 @@
 #include "listener/listener_api.h"
 
 #include "util/file.h"
+#include "util/n2k_config_x.h"
 #include "util/util.h"
 
 #include <jansson.h>
@@ -226,15 +227,11 @@ static const char *string_identity_function(const char *a) {
 	  string_identity_function,                                            \
 	  NULL)
 
-#define X_STRUCT_HTTP_CONFIG(                                                  \
-		struct_type, json_unpack_type, json_name, struct_name, ...)    \
-	struct_type struct_name;
-
 /**
  * @brief      HTTP listener loop arguments
  */
 struct http_loop_args {
-	X_HTTP_CONFIG(X_STRUCT_HTTP_CONFIG)
+	X_HTTP_CONFIG(X_STRUCT_N2K_CONFIG)
 };
 
 /**
@@ -646,43 +643,12 @@ struct listener *create_http_listener0(const struct http_callbacks *callbacks,
 	}
 	json_error_t error;
 
-#define X_DEFAULTS_HTTP_CONFIG(struct_type,                                    \
-			       json_unpack_type,                               \
-			       json_name,                                      \
-			       struct_name,                                    \
-			       env_name,                                       \
-			       str_to_value_function,                          \
-			       t_default)                                      \
-	.struct_name = t_default,
-
-#define X_ENVIRON_HTTP_CONFIG(struct_type,                                     \
-			      json_unpack_type,                                \
-			      json_name,                                       \
-			      struct_name,                                     \
-			      env_name,                                        \
-			      str_to_value_function,                           \
-			      ...)                                             \
-	if (NULL != env_name) {                                                \
-		const char *env_val = getenv(env_name);                        \
-		if (env_val) {                                                 \
-			handler_args.struct_name =                             \
-					str_to_value_function(env_val);        \
-		}                                                              \
-	}
-
-#define X_JANSSON_UNPACK_FORMAT(struct_type, json_unpack_type, ...)            \
-	"s" json_unpack_type
-
-#define X_JANSSON_UNPACK_ARGS(                                                 \
-		struct_type, json_unpack_type, json_name, struct_name, ...)    \
-	/* */ #json_name, &handler_args.struct_name,
-
 	// Configured defaults
 	struct http_loop_args handler_args = {
-			X_HTTP_CONFIG(X_DEFAULTS_HTTP_CONFIG)};
+			X_HTTP_CONFIG(X_DEFAULTS_N2K_CONFIG)};
 
 	// Override with envionment
-	X_HTTP_CONFIG(X_ENVIRON_HTTP_CONFIG)
+	X_HTTP_CONFIG(X_ENVIRON_N2K_CONFIG)
 
 	// Override with config file
 	const int unpack_rc = json_unpack_ex(

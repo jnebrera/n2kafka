@@ -34,8 +34,6 @@ struct n2kafka_config {
 	/// Path to reload
 	char *config_path;
 
-	char *format;
-
 	char *topic;
 	char *brokers;
 

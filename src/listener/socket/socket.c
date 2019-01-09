@@ -231,13 +231,12 @@ static void process_data_received_from_socket(char *buffer,
 					      const size_t recv_result,
 					      const char *client,
 					      const struct listener *l) {
-	if (unlikely(global_config.debug))
-		rdlog(LOG_DEBUG,
-		      "received %zu data from %s: %.*s",
-		      recv_result,
-		      client,
-		      (int)recv_result,
-		      buffer);
+	rdlog(LOG_DEBUG,
+	      "received %zu data from %s: %.*s",
+	      recv_result,
+	      client,
+	      (int)recv_result,
+	      buffer);
 
 	struct pair attrs_mem[1];
 	attrs_mem->key = "client_ip";
@@ -246,17 +245,7 @@ static void process_data_received_from_socket(char *buffer,
 	keyval_list_t attrs = keyval_list_initializer(attrs);
 	add_key_value_pair(&attrs, attrs_mem);
 
-	if (unlikely(only_stdout_output())) {
-		free(buffer);
-	} else {
-		listener_decode(l,
-				buffer,
-				recv_result,
-				&attrs,
-				NULL,
-				NULL,
-				NULL);
-	}
+	listener_decode(l, buffer, recv_result, &attrs, NULL, NULL, NULL);
 }
 
 static int send_to_socket(int fd, const char *data, size_t len) {
@@ -429,15 +418,14 @@ static void accept_cb(struct ev_loop *loop __attribute__((unused)),
 
 	if (in_addr_list_contains(global_config.blacklist,
 				  &client_saddr.sin_addr)) {
-		if (global_config.debug)
-			rdbg("Connection rejected: %s in blacklist",
-			     client_addr);
+		rdlog(LOG_INFO,
+		      "Connection rejected: %s in blacklist",
+		      client_addr);
 		close(client_sd);
 		return;
-	} else if (global_config.debug) {
-		print_accepted_connection_log(
-				(struct sockaddr_in *)&client_saddr);
 	}
+
+	print_accepted_connection_log((struct sockaddr_in *)&client_saddr);
 
 	if (socket_listener->config.tcp_keepalive)
 		set_keepalive_opt(client_sd);

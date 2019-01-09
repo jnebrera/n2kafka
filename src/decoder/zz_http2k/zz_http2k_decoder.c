@@ -48,12 +48,6 @@ static struct zz_database zz_database = {NULL};
 
 static int zz_decoder_init(const struct json_t *config) {
 	(void)config;
-	if (only_stdout_output()) {
-		rdlog(LOG_ERR,
-		      "Can't use zz_http2k decoder if not kafka "
-		      "brokers configured.");
-		return -1;
-	}
 
 	const int init_db_rc = init_zz_database(&zz_database);
 	if (init_db_rc != 0) {

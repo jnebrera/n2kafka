@@ -108,13 +108,6 @@ void init_rdkafka() {
 
 	assert(global_config.kafka_conf);
 
-	if (only_stdout_output()) {
-		rblog(LOG_DEBUG,
-		      "No brokers and no topic specified. Output "
-		      "will be printed in stdout.");
-		return;
-	}
-
 	rd_kafka_conf_t *my_kafka_conf =
 			rd_kafka_conf_dup(global_config.kafka_conf);
 	rd_kafka_conf_set_dr_msg_cb(my_kafka_conf, msg_delivered);
@@ -130,13 +123,7 @@ void init_rdkafka() {
 		fatal("%% Failed to create new producer: %s", errstr);
 	}
 
-	if (global_config.debug) {
-		rd_kafka_set_log_level(global_config.rk, LOG_DEBUG);
-	}
-
-	if (global_config.brokers == NULL) {
-		fatal("%% No brokers specified");
-	}
+	rd_kafka_set_log_level(global_config.rk, global_config.log_severity);
 }
 
 void kafka_poll(int timeout_ms) {

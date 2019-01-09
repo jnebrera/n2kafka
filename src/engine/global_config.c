@@ -88,7 +88,7 @@ void init_global_config() {
 	global_config.kafka_conf = rd_kafka_conf_new();
 	global_config.kafka_topic_conf = rd_kafka_topic_conf_new();
 	global_config.blacklist = in_addr_list_new();
-	rd_log_set_severity(LOG_INFO);
+	global_config.log_severity = LOG_INFO;
 	LIST_INIT(&global_config.listeners);
 
 	size_t i;
@@ -114,20 +114,6 @@ static const char *assert_json_string(const char *key, const json_t *value) {
 	return json_string_value(value);
 }
 
-static int assert_json_integer(const char *key, const json_t *value) {
-	if (!json_is_integer(value)) {
-		fatal("%s value must be an integer in config file", key);
-	}
-	return json_integer_value(value);
-}
-
-static const json_t *assert_json_array(const char *key, const json_t *value) {
-	if (!json_is_array(value)) {
-		fatal("%s value must be an array", key);
-	}
-	return value;
-}
-
 static void *assert_pton(int af, const char *src, void *dst) {
 	const int pton_rc = inet_pton(af, src, dst);
 	if (pton_rc < 0) {
@@ -136,19 +122,14 @@ static void *assert_pton(int af, const char *src, void *dst) {
 	return dst;
 }
 
-static void parse_response(const char *key, const json_t *value) {
-	const char *filename = assert_json_string(key, value);
+static void parse_response(const char *filename) {
 	global_config.response =
 			rd_file_read(filename, &global_config.response_len);
-	if (global_config.response == NULL)
-		fatal("Cannot open response file %s",
-		      assert_json_string(key, value));
-}
-
-static void parse_debug(const char *key, const json_t *value) {
-	global_config.debug = assert_json_integer(key, value);
-	if (global_config.debug)
-		rd_log_set_severity(LOG_DEBUG);
+	if (global_config.response == NULL) {
+		fatal("Cannot open response file %s: %s",
+		      filename,
+		      gnu_strerror_r(errno));
+	}
 }
 
 static void parse_rdkafka_keyval_config(const char *key, const char *value) {
@@ -185,18 +166,16 @@ static void parse_rdkafka_config_json(const char *key, const json_t *jvalue) {
 	parse_rdkafka_keyval_config(key, value);
 }
 
-static void parse_blacklist(const char *key, const json_t *value) {
-	assert_json_array(key, value);
+static void parse_blacklist(const json_t *config_array) {
+	assert(json_is_array(config_array));
 
-	const size_t arr_len = json_array_size(value);
-	size_t i;
-	for (i = 0; i < arr_len; ++i) {
+	size_t index;
+	const json_t *value;
+	json_array_foreach(config_array, index, value) {
 		struct in_addr addr;
-		const json_t *json_i = json_array_get(value, i);
 		const char *addr_string =
-				assert_json_string("blacklist values", json_i);
-		if (global_config.debug)
-			rdbg("adding %s address to blacklist", addr_string);
+				assert_json_string("blacklist values", value);
+		rdlog(LOG_INFO, "adding %s address to blacklist", addr_string);
 		assert_pton(AF_INET, addr_string, &addr);
 		in_addr_list_add(global_config.blacklist, &addr);
 	}
@@ -279,50 +258,13 @@ static void parse_listener(json_t *config) {
 	LIST_INSERT_HEAD(&global_config.listeners, proto_listener, entry);
 }
 
-static void parse_listeners_array(const char *key, const json_t *array) {
-	assert_json_array(key, array);
-
-	size_t _index;
-	json_t *value;
-
-	json_array_foreach(array, _index, value) {
-		parse_listener(value);
-	}
-}
-
-/// @TODO use json_unpack_ex
-static void parse_config_keyval(const char *key, const json_t *value) {
-	if (!strcasecmp(key, CONFIG_TOPIC_KEY)) {
-		// Already parsed
-	} else if (!strcasecmp(key, CONFIG_BROKERS_KEY)) {
-		// Already parsed
-	} else if (!strcasecmp(key, CONFIG_LISTENERS_ARRAY)) {
-		parse_listeners_array(key, value);
-	} else if (!strcasecmp(key, CONFIG_DEBUG_KEY)) {
-		parse_debug(key, value);
-	} else if (!strcasecmp(key, CONFIG_RESPONSE_KEY)) {
-		parse_response(key, value);
-	} else if (!strncasecmp(key,
-				CONFIG_RDKAFKA_KEY,
-				strlen(CONFIG_RDKAFKA_KEY))) {
-		// Already parsed
-	} else if (!strcasecmp(key, CONFIG_BLACKLIST_KEY)) {
-		parse_blacklist(key, value);
-		/// @TODO replace next entries by a for in decoders
-	} else if (NULL != locate_registered_decoder(key)) {
-		// Already parsed
-	} else {
-		fatal("Unknown config key %s", key);
-	}
-}
-
 static void parse_rdkafka_config_keyval(const char *key, const json_t *value) {
 	if (!strcasecmp(key, CONFIG_TOPIC_KEY)) {
 		global_config.topic = strdup(assert_json_string(key, value));
 	} else if (!strcasecmp(key, CONFIG_BROKERS_KEY)) {
-		global_config.brokers = strdup(assert_json_string(key, value));
+		const char *brokers = assert_json_string(key, value);
 		parse_rdkafka_keyval_config("rdkafka.metadata.broker.list",
-					    global_config.brokers);
+					    brokers);
 	} else if (!strncasecmp(key,
 				CONFIG_RDKAFKA_KEY,
 				strlen(CONFIG_RDKAFKA_KEY))) {
@@ -331,50 +273,79 @@ static void parse_rdkafka_config_keyval(const char *key, const json_t *value) {
 	}
 }
 
-static void parse_config0(json_t *root) {
-	const char *key;
-	json_t *value;
-
-	/// Need to parse kafka stuff before
-	json_object_foreach(root, key, value) {
-		parse_rdkafka_config_keyval(key, value);
-	}
-
-	if (!only_stdout_output()) {
-		init_rdkafka();
-	}
-
-	json_object_foreach(root, key, value) {
-		parse_config_keyval(key, value);
-	}
-}
-
-static void check_config() {
-	if (!only_stdout_output() && global_config.brokers == NULL) {
-		fatal("You have to set a brokers to write to");
-	}
-}
-
 void parse_config(const char *config_file_path) {
-	json_error_t error;
+	const char *key;
+	json_error_t jerror;
+	json_t *json_val, *json_tmp;
 	global_config.config_path = config_file_path;
-	json_t *root = json_load_file(config_file_path, 0, &error);
+	json_t *root = json_load_file(config_file_path, 0, &jerror);
 	if (root == NULL) {
 		rblog(LOG_ERR,
-		      "Error parsing config file, line %d: %s",
-		      error.line,
-		      error.text);
+		      "Error parsing config file %s: %s, line %d: %s",
+		      jerror.source,
+		      jerror.text,
+		      jerror.line,
+		      jerror.text);
 		exit(1);
 	}
 
-	if (!json_is_object(root)) {
-		rblog(LOG_ERR, "JSON config is not an object");
-		exit(1);
+	// rdkafka configuration
+	json_t *rdkafka_configs = json_array();
+	if (NULL == rdkafka_configs) {
+		rdlog(LOG_ERR, "Can't allocate a json array (OOM?)");
+		goto kafka_array_err;
 	}
 
-	parse_config0(root);
+	// Need to parse kafka stuff, and delete it from the config
+	json_object_foreach_safe(root, json_tmp, key, json_val) {
+		parse_rdkafka_config_keyval(key, json_val);
+	}
+
+	const char *response_file = NULL;
+	json_t *blacklist = NULL, *listeners = NULL;
+
+	// Parse global stuff
+	const int json_unpack_rc = json_unpack_ex(root,
+						  &jerror,
+						  0,
+						  "{s?i,s?s,s?o,s:o}",
+						  CONFIG_DEBUG_KEY,
+						  &global_config.log_severity,
+						  CONFIG_RESPONSE_KEY,
+						  &response_file,
+						  CONFIG_BLACKLIST_KEY,
+						  &blacklist,
+						  CONFIG_LISTENERS_ARRAY,
+						  &listeners);
+
+	if (json_unpack_rc != 0) {
+		rdlog(LOG_ERR, "Can't unpack config json: %s", jerror.text);
+	}
+
+	rd_log_set_severity(global_config.log_severity);
+
+	if (response_file) {
+		parse_response(response_file);
+	}
+
+	if (blacklist) {
+		parse_blacklist(blacklist);
+	}
+
+	init_rdkafka();
+
+	if (rdkafka_configs) {
+		json_decref(rdkafka_configs);
+		rdkafka_configs = NULL;
+	}
+
+	size_t index;
+	json_array_foreach(listeners, index, json_val) {
+		parse_listener(json_val);
+	}
+
+kafka_array_err:
 	json_decref(root);
-	check_config();
 }
 
 static void shutdown_listener(struct listener *i) {
@@ -521,13 +492,10 @@ void free_global_config() {
 		}
 	}
 
-	if (!only_stdout_output()) {
-		flush_kafka();
-		stop_rdkafka();
-	}
+	flush_kafka();
+	stop_rdkafka();
 
 	in_addr_list_done(global_config.blacklist);
 	free(global_config.topic);
-	free(global_config.brokers);
 	free(global_config.response);
 }

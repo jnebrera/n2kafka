@@ -312,19 +312,6 @@ static void parse_config_keyval(const char *key, const json_t *value) {
 	} else if (NULL != locate_registered_decoder(key)) {
 		// Already parsed
 	} else {
-		size_t i;
-		for (i = 0; i < RD_ARRAYSIZE(registered_decoders); ++i) {
-			if (!registered_decoders[i]->config_parameter) {
-				continue;
-			}
-			const char *decoder_config_key =
-					registered_decoders[i]
-							->config_parameter();
-			if (0 == strcasecmp(key, decoder_config_key)) {
-				// Already parsed
-				return;
-			}
-		}
 		fatal("Unknown config key %s", key);
 	}
 }
@@ -502,61 +489,6 @@ reload_listeners(json_t *new_config, struct n2kafka_config *config) {
 
 typedef int (*reload_cb)(void *database, const struct json_t *config);
 
-static void
-reload_decoder(struct n2kafka_config *config, const n2k_decoder *decoder) {
-	json_error_t json_err;
-	json_t *decoder_config = NULL;
-	if (config->config_path == NULL) {
-		rblog(LOG_ERR, "Have no config file to reload");
-	}
-
-	if (NULL == decoder->reload || NULL == decoder->config_parameter) {
-		return;
-	}
-
-	/// @TODO not re-read config!!
-	json_t *root = json_load_file(config->config_path, 0, &json_err);
-	if (root == NULL) {
-		rblog(LOG_ERR,
-		      "Can't reload, Error parsing config file, line %d: %s",
-		      json_err.line,
-		      json_err.text);
-		return;
-	}
-
-	const int unpack_rc = json_unpack_ex(root,
-					     &json_err,
-					     0,
-					     "{s?o}",
-					     decoder->config_parameter(),
-					     &decoder_config);
-	if (unpack_rc != 0) {
-		rdlog(LOG_ERR,
-		      "Can't reload, can't parse config file line %d col %d: "
-		      "%s",
-		      json_err.line,
-		      json_err.column,
-		      json_err.text);
-		goto error_free_root;
-	}
-
-	if (NULL != decoder_config) {
-		decoder->reload(decoder_config);
-	}
-
-error_free_root:
-	json_decref(root);
-	return;
-}
-
-/// @TODO reload every decoder using new config
-static void reload_decoders(struct n2kafka_config *config) {
-	size_t i;
-	for (i = 0; i < RD_ARRAYSIZE(registered_decoders); ++i) {
-		reload_decoder(config, registered_decoders[i]);
-	}
-}
-
 void reload_config(struct n2kafka_config *config) {
 	json_error_t jerr;
 
@@ -576,7 +508,6 @@ void reload_config(struct n2kafka_config *config) {
 	}
 
 	reload_listeners(new_config_file, config);
-	reload_decoders(config);
 	json_decref(new_config_file);
 }
 

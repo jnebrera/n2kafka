@@ -52,8 +52,7 @@ enum decoder_callback_err {
   the same opaque from two different threads
   */
 typedef struct n2k_decoder {
-	const char *(*name)();		   ///< Registered decoder name.
-	const char *(*config_parameter)(); ///< Name of config parameter
+	const char *(*name)(); ///< Registered decoder name.
 
 	/** Callback that the listener needs to call for each data received.
 	    @param buffer JSON chunk buffer

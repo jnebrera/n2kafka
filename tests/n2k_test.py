@@ -396,7 +396,6 @@ class TestN2kafka(object):
 
     _BASE_LISTENER = {'proto': 'http', 'num_threads': 2}
     _BASE_CONFIG = {'brokers': 'kafka',
-                    'rdkafka.queue.buffering.max.ms': '0',
                     'rdkafka.socket.max.fails': '3',
                     'rdkafka.socket.keepalive.enable': 'true'}
 
@@ -409,6 +408,11 @@ class TestN2kafka(object):
 
         t_test_config = {**TestN2kafka._BASE_CONFIG, **t_test_config}
         t_file_name = TestN2kafka._random_config_file()
+
+        if 'RDKAFKA_QUEUE_BUFFERING_MAX_MS' not in os.environ and \
+                'rdkafka.queue.buffering.max.ms' not in t_test_config:
+            # Speed up tests
+            t_test_config['rdkafka.queue.buffering.max.ms'] = '0'
 
         with open(t_file_name, 'w') as f:
             json.dump(t_test_config, f)

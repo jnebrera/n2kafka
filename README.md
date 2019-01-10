@@ -41,6 +41,14 @@ behavior:
   * `"rdkafka.socket.max.fails":"3"`
   * `"rdkafka.socket.keepalive.enable":"true"`
 
+You can also set librdkafka configurations using environment variables of the
+form `RDKAFKA_<variable_key>=<variable_value>`, replacing dots (`.`) with
+underscores (`_`), like:
+
+```bash
+$ env RDKAFKA_QUEUE_BUFFERING_MAX_MS=10 RDKAFKA_SOCKET_MAX_FAILS=3 n2kafka`
+```
+
 ## Listeners
 If the information does not come via raw sockets, different listeners can read
 from different protocols. The other listener currently supported is the HTTP

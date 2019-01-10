@@ -46,6 +46,7 @@
 
 #include <arpa/inet.h>
 #include <assert.h>
+#include <ctype.h>
 #include <errno.h>
 #include <netinet/in.h>
 #include <stdint.h>
@@ -54,6 +55,7 @@
 #include <strings.h>
 #include <sys/socket.h>
 #include <syslog.h>
+#include <unistd.h>
 
 #ifndef LIST_FOREACH_SAFE
 #define LIST_FOREACH_SAFE(var, head, field, tvar)                              \
@@ -273,11 +275,87 @@ static void parse_rdkafka_config_keyval(const char *key, const json_t *value) {
 	}
 }
 
+static void get_rdkafka_config(const json_t *root) {
+	static const char *rdkafka_env_prefix = "RDKAFKA_";
+	char **environ_iter = environ;
+	json_t *json_val;
+	const char *json_key;
+
+	// Parse all environment first
+	for (environ_iter = environ; *environ_iter; environ_iter++) {
+		if (strncmp(*environ_iter,
+			    rdkafka_env_prefix,
+			    strlen(rdkafka_env_prefix))) {
+			continue;
+		}
+
+		// Max length of a "rdkafka.topic.<librdkafka_config_key>"" is
+		// 55 on librdkafka 0.11.4
+		char env_key[64];
+		// = strdup(*environ_iter);
+		const char *equal_sign = strchr(*environ_iter, '=');
+		assert(equal_sign); // all environ iter must have
+
+		const size_t key_size = (size_t)(equal_sign - *environ_iter);
+		if (key_size + 1 > sizeof(env_key)) {
+			// Too long for an rdkafka property
+			continue;
+		}
+
+		if (equal_sign[1] == '\0') {
+			// No value -> not for librdkafka
+			continue;
+		}
+
+		size_t i;
+		for (i = 0; i < key_size; i++) {
+			const char c = (*environ_iter)[i];
+			if (c == '_') {
+				env_key[i] = '.';
+			} else if (isupper(c)) {
+				env_key[i] = tolower(c);
+			} else if (isdigit(c)) {
+				env_key[i] = c;
+			}
+		}
+
+		env_key[key_size] = '\0';
+		const char *env_val = equal_sign + 1;
+
+		parse_rdkafka_keyval_config(env_key, env_val);
+	}
+
+	// Parse JSON overriding
+	json_object_foreach(const_cast(root), json_key, json_val) {
+		parse_rdkafka_config_keyval(json_key, json_val);
+	}
+
+	size_t dump_config_count, i;
+	const char **dump_config;
+
+#define DUMP_AND_PRINT(function, conf)                                         \
+	do {                                                                   \
+		dump_config = function(conf, &dump_config_count);              \
+		for (i = 0; i < dump_config_count; i += 2) {                   \
+			rdlog(LOG_INFO,                                        \
+			      "Kafka_config[%s][%s]",                          \
+			      dump_config[i],                                  \
+			      dump_config[i + 1]);                             \
+		}                                                              \
+                                                                               \
+		rd_kafka_conf_dump_free(dump_config, dump_config_count);       \
+	} while (0)
+
+	DUMP_AND_PRINT(rd_kafka_conf_dump, global_config.kafka_conf);
+	DUMP_AND_PRINT(rd_kafka_topic_conf_dump,
+		       global_config.kafka_topic_conf);
+#undef DUMP_AND_PRINT
+}
+
 void parse_config(const char *config_file_path) {
-	const char *key;
 	json_error_t jerror;
-	json_t *json_val, *json_tmp;
 	global_config.config_path = config_file_path;
+	json_t *json_val;
 	json_t *root = json_load_file(config_file_path, 0, &jerror);
 	if (root == NULL) {
 		rblog(LOG_ERR,
@@ -289,17 +367,7 @@ void parse_config(const char *config_file_path) {
 		exit(1);
 	}
 
-	// rdkafka configuration
-	json_t *rdkafka_configs = json_array();
-	if (NULL == rdkafka_configs) {
-		rdlog(LOG_ERR, "Can't allocate a json array (OOM?)");
-		goto kafka_array_err;
-	}
-
-	// Need to parse kafka stuff, and delete it from the config
-	json_object_foreach_safe(root, json_tmp, key, json_val) {
-		parse_rdkafka_config_keyval(key, json_val);
-	}
+	get_rdkafka_config(root);
 
 	const char *response_file = NULL;
 	json_t *blacklist = NULL, *listeners = NULL;
@@ -334,17 +402,11 @@ void parse_config(const char *config_file_path) {
 
 	init_rdkafka();
 
-	if (rdkafka_configs) {
-		json_decref(rdkafka_configs);
-		rdkafka_configs = NULL;
-	}
-
 	size_t index;
 	json_array_foreach(listeners, index, json_val) {
 		parse_listener(json_val);
 	}
 
-kafka_array_err:
 	json_decref(root);
 }
 

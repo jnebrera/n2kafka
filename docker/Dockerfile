@@ -80,6 +80,11 @@ RUN	pip3 install --upgrade pip && pip3 install \
 #
 FROM n2k-base AS release
 
+# Sane rdkafka defaults
+ENV RDKAFKA_SOCKET_KEEPALIVE_ENABLE=true
+ENV RDKAFKA_MESSAGE_SEND_MAX_RETRIES=0
+ENV RDKAFKA_API_VERSION_REQUEST=true
+
 # envsubst (gettext is very big! install only binary & dependency)
 RUN apk add --no-cache \
 	libintl=0.19.8.1-r2 \

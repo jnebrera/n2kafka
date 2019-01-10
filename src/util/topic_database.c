@@ -37,7 +37,6 @@
 #include <tommyds/tommytypes.h>
 
 #include <librd/rdlog.h>
-#include <librd/rdmem.h>
 
 #include <assert.h>
 #include <errno.h>
@@ -65,7 +64,6 @@ struct topic_s {
 	uint64_t magic;
 #endif
 	rd_kafka_topic_t *rkt;
-	const char *topic_name;
 	uint64_t refcnt;
 	time_t timestamp;
 
@@ -103,7 +101,7 @@ static int topics_cmp(const struct topic_s *topic, const char *topic_name) {
 	assert(topic);
 	assert(topic_name);
 
-	return strcmp(topic->topic_name, topic_name);
+	return strcmp(rd_kafka_topic_name(topic->rkt), topic_name);
 }
 
 static int void_topics_cmp(const void *arg, const void *obj) {
@@ -139,7 +137,6 @@ struct topics_db *topics_db_new() {
   @return New topic
   */
 static struct topic_s *new_topic_s(const char *topic_name) {
-	struct topic_s *ret = NULL;
 	rd_kafka_topic_t *rkt = rkt =
 			rd_kafka_topic_new(global_config.rk, topic_name, NULL);
 	if (unlikely(NULL == rkt)) {
@@ -150,13 +147,7 @@ static struct topic_s *new_topic_s(const char *topic_name) {
 		return NULL;
 	}
 
-	rd_calloc_struct(&ret,
-			 sizeof(*ret),
-			 -1,
-			 topic_name,
-			 &ret->topic_name,
-			 RD_MEM_END_TOKEN);
-
+	struct topic_s *ret = calloc(1, sizeof(*ret));
 	if (unlikely(!ret)) {
 		rdlog(LOG_ERR, "Couldn't allocate topic (out of memory?)");
 		goto alloc_err;

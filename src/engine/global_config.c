@@ -140,9 +140,9 @@ static void parse_rdkafka_keyval_config(rd_kafka_conf_t *conf,
 
 	const char *name = key + strlen(CONFIG_RDKAFKA_KEY);
 
-	/* Try "topic." prefixed properties on topic
-	 * conf first, and then fall through to global if
-	 * it didnt match a topic configuration property. */
+	// Once upon a time, topic and kafka handler configuration were two
+	// different properties. It is not like that anymore, but n2kafka needs
+	// to maintain compatibility.
 	if (!strncmp(name, "topic.", strlen("topic.")))
 		name += strlen("topic.");
 

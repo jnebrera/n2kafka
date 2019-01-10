@@ -42,28 +42,13 @@
     @param topic_name Topic name
     @param partitioner Partitioner function
     @return New topic handler */
-rd_kafka_topic_t *new_rkt_global_config(const char *topic_name,
-					rb_rd_kafka_partitioner_t partitioner) {
-	rd_kafka_topic_conf_t *template_config = global_config.kafka_topic_conf;
-	rd_kafka_topic_conf_t *my_rkt_conf =
-			rd_kafka_topic_conf_dup(template_config);
-
-	if (NULL == my_rkt_conf) {
-		rdlog(LOG_ERR,
-		      "Couldn't topic_conf_dup in topic %s",
-		      topic_name);
-		return NULL;
-	}
-
-	rd_kafka_topic_conf_set_partitioner_cb(my_rkt_conf, partitioner);
-
-	rd_kafka_topic_t *ret = rd_kafka_topic_new(
-			global_config.rk, topic_name, my_rkt_conf);
-	if (NULL == ret) {
+rd_kafka_topic_t *new_rkt_global_config(const char *topic_name) {
+	rd_kafka_topic_t *ret =
+			rd_kafka_topic_new(global_config.rk, topic_name, NULL);
+	if (unlikely(NULL == ret)) {
 		rdlog(LOG_ERR,
 		      "Couldn't create kafka topic: %s",
 		      gnu_strerror_r(errno));
-		rd_kafka_topic_conf_destroy(my_rkt_conf);
 	}
 
 	return ret;
@@ -103,19 +88,14 @@ static void msg_delivered(rd_kafka_t *rk RD_UNUSED,
 	}
 }
 
-void init_rdkafka() {
+void rdkafka_conf_set_partitioner(rd_kafka_conf_t *conf) {
+	rd_kafka_conf_set_dr_msg_cb(conf, msg_delivered);
+}
+
+void init_rdkafka(rd_kafka_conf_t *kafka_conf) {
 	char errstr[RDKAFKA_ERRSTR_SIZE];
-
-	assert(global_config.kafka_conf);
-
-	rd_kafka_conf_t *my_kafka_conf =
-			rd_kafka_conf_dup(global_config.kafka_conf);
-	rd_kafka_conf_set_dr_msg_cb(my_kafka_conf, msg_delivered);
-	if (NULL == my_kafka_conf) {
-		fatal("%% Failed to duplicate kafka conf (out of memory?)");
-	}
 	global_config.rk = rd_kafka_new(RD_KAFKA_PRODUCER,
-					my_kafka_conf,
+					kafka_conf,
 					errstr,
 					RDKAFKA_ERRSTR_SIZE);
 
@@ -141,9 +121,6 @@ void stop_rdkafka() {
 	while (rd_kafka_outq_len(global_config.rk) > 0) {
 		rd_kafka_poll(global_config.rk, 50);
 	}
-
-	rd_kafka_topic_conf_destroy(global_config.kafka_topic_conf);
-	rd_kafka_conf_destroy(global_config.kafka_conf);
 
 	rd_kafka_destroy(global_config.rk);
 	while (0 != rd_kafka_wait_destroyed(5000))

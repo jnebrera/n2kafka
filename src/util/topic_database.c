@@ -140,22 +140,13 @@ struct topics_db *topics_db_new() {
   */
 static struct topic_s *new_topic_s(const char *topic_name) {
 	struct topic_s *ret = NULL;
-	rd_kafka_topic_conf_t *rkt_conf =
-			rd_kafka_topic_conf_dup(global_config.kafka_topic_conf);
-
-	if (unlikely(!rkt_conf)) {
-		rdlog(LOG_ERR, "Couldn't duplicate conf (OOM?)");
-		return NULL;
-	}
-
-	rd_kafka_topic_t *rkt = rkt = rd_kafka_topic_new(
-			global_config.rk, topic_name, rkt_conf);
+	rd_kafka_topic_t *rkt = rkt =
+			rd_kafka_topic_new(global_config.rk, topic_name, NULL);
 	if (unlikely(NULL == rkt)) {
 		rdlog(LOG_ERR,
 		      "Can't create topic %s: %s",
 		      topic_name,
 		      gnu_strerror_r(errno));
-		rd_kafka_topic_conf_destroy(rkt_conf);
 		return NULL;
 	}
 

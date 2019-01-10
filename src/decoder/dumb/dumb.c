@@ -43,8 +43,7 @@ static enum decoder_callback_err dumb_decode(const char *buffer,
 	(void)sessionp;
 	(void)listener_callback_opaque;
 
-	rd_kafka_topic_t *rkt =
-			new_rkt_global_config(default_topic_name(), NULL);
+	rd_kafka_topic_t *rkt = new_rkt_global_config(default_topic_name());
 	if (unlikely(NULL == rkt)) {
 		static const char *null_rkt_err =
 				"No topic specified in config file";

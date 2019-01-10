@@ -34,24 +34,23 @@ void init_rdkafka();
 
 void kafka_poll();
 
-typedef int32_t (*rb_rd_kafka_partitioner_t)(const rd_kafka_topic_t *rkt,
-					     const void *keydata,
-					     size_t keylen,
-					     int32_t partition_cnt,
-					     void *rkt_opaque,
-					     void *msg_opaque);
-
 /** Creates a new topic handler using global configuration
     @param topic_name Topic name
     @param partitioner Partitioner function
     @return New topic handler */
-rd_kafka_topic_t *new_rkt_global_config(const char *topic_name,
-					rb_rd_kafka_partitioner_t partitioner);
+rd_kafka_topic_t *new_rkt_global_config(const char *topic_name);
 
 /** Default kafka topic name (if any)
 	@return Default kafka topic name (if any)
 	*/
 const char *default_topic_name();
+
+/**
+ * @brief      Set the kafka partitioner
+ *
+ * @param      conf  The kafka conf
+ */
+void rdkafka_conf_set_partitioner(rd_kafka_conf_t *conf);
 
 void flush_kafka();
 void stop_rdkafka();

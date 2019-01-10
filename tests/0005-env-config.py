@@ -106,22 +106,17 @@ class WatchedN2Kafka_handler(object):
 class TestHTTP2K(TestN2kafka):
     @pytest.mark.parametrize(  # noqa: F811
         # rdkafka handler config
-        "buffering_max_ms_config, buffering_max_ms_env,"
-        # rdkafka topic handler config
-        "offset_store_sync_interval_ms_config,"
-        "offset_store_sync_interval_ms_env", [
-            ('10', None, '50', None),
-            (None, '100', None, '500'),
-            ('10', '100', '50', '500'),
+        "buffering_max_ms_config, buffering_max_ms_env,", [
+            ('10', None),
+            (None, '100'),
+            ('10', '100'),
     ])
     def test_kafka_config(self,
                           child,
                           kafka_handler,
                           valgrind_handler,
                           buffering_max_ms_config,
-                          buffering_max_ms_env,
-                          offset_store_sync_interval_ms_config,
-                          offset_store_sync_interval_ms_env):
+                          buffering_max_ms_env):
         ''' Base n2kafka test
 
         Arguments:
@@ -152,11 +147,9 @@ class TestHTTP2K(TestN2kafka):
         else:
             # Use checks for actual testing: we only inspect stdout/stderr here
             child_wrapper = WatchedN2Kafka_handler(
-                     ('queue.buffering.max.ms',
-                      'offset.store.sync.interval.ms.config'),
-                     # Config always override environment
-                     ('10' if buffering_max_ms_config else '100',
-                      '50' if offset_store_sync_interval_ms_config else '500'))
+                                 ('queue.buffering.max.ms',),
+                                 # Config always override environment
+                                 ('10' if buffering_max_ms_config else '100',))
 
         t_locals = locals()
         self.base_test(base_config=base_config,

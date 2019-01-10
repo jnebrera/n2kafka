@@ -87,8 +87,7 @@ static const n2k_listener_factory *registered_listeners[] = {
 
 void init_global_config() {
 	memset(&global_config, 0, sizeof(global_config));
-	global_config.kafka_conf = rd_kafka_conf_new();
-	global_config.kafka_topic_conf = rd_kafka_topic_conf_new();
+
 	global_config.blacklist = in_addr_list_new();
 	global_config.log_severity = LOG_INFO;
 	LIST_INIT(&global_config.listeners);
@@ -134,38 +133,31 @@ static void parse_response(const char *filename) {
 	}
 }
 
-static void parse_rdkafka_keyval_config(const char *key, const char *value) {
-	rd_kafka_conf_res_t res;
+static void parse_rdkafka_keyval_config(rd_kafka_conf_t *conf,
+					const char *key,
+					const char *value) {
 	char errstr[512];
 
 	const char *name = key + strlen(CONFIG_RDKAFKA_KEY);
 
-	res = RD_KAFKA_CONF_UNKNOWN;
 	/* Try "topic." prefixed properties on topic
 	 * conf first, and then fall through to global if
 	 * it didnt match a topic configuration property. */
 	if (!strncmp(name, "topic.", strlen("topic.")))
-		res = rd_kafka_topic_conf_set(global_config.kafka_topic_conf,
-					      name + strlen("topic."),
-					      value,
-					      errstr,
-					      sizeof(errstr));
+		name += strlen("topic.");
 
-	if (res == RD_KAFKA_CONF_UNKNOWN)
-		res = rd_kafka_conf_set(global_config.kafka_conf,
-					name,
-					value,
-					errstr,
-					sizeof(errstr));
+	rd_kafka_conf_res_t res = rd_kafka_conf_set(
+			conf, name, value, errstr, sizeof(errstr));
 
 	if (res != RD_KAFKA_CONF_OK)
 		fatal("%s", errstr);
 }
 
-static void parse_rdkafka_config_json(const char *key, const json_t *jvalue) {
-	// Extracted from Magnus Edenhill's kafkacat
+static void parse_rdkafka_config_json(rd_kafka_conf_t *conf,
+				      const char *key,
+				      const json_t *jvalue) {
 	const char *value = assert_json_string(key, jvalue);
-	parse_rdkafka_keyval_config(key, value);
+	parse_rdkafka_keyval_config(conf, key, value);
 }
 
 static void parse_blacklist(const json_t *config_array) {
@@ -260,23 +252,26 @@ static void parse_listener(json_t *config) {
 	LIST_INSERT_HEAD(&global_config.listeners, proto_listener, entry);
 }
 
-static void parse_rdkafka_config_keyval(const char *key, const json_t *value) {
+static void parse_rdkafka_config_keyval(rd_kafka_conf_t *conf,
+					const char *key,
+					const json_t *value) {
 	if (!strcasecmp(key, CONFIG_TOPIC_KEY)) {
 		global_config.topic = strdup(assert_json_string(key, value));
 	} else if (!strcasecmp(key, CONFIG_BROKERS_KEY)) {
 		const char *brokers = assert_json_string(key, value);
-		parse_rdkafka_keyval_config("rdkafka.metadata.broker.list",
-					    brokers);
+		parse_rdkafka_keyval_config(
+				conf, "rdkafka.metadata.broker.list", brokers);
 	} else if (!strncasecmp(key,
 				CONFIG_RDKAFKA_KEY,
 				strlen(CONFIG_RDKAFKA_KEY))) {
 		// if starts with
-		parse_rdkafka_config_json(key, value);
+		parse_rdkafka_config_json(conf, key, value);
 	}
 }
 
-static void get_rdkafka_config(const json_t *root) {
+static rd_kafka_conf_t *get_rdkafka_config(const json_t *root) {
 	static const char *rdkafka_env_prefix = "RDKAFKA_";
+	rd_kafka_conf_t *ret = rd_kafka_conf_new();
 	char **environ_iter = environ;
 	json_t *json_val;
 	const char *json_key;
@@ -321,35 +316,28 @@ static void get_rdkafka_config(const json_t *root) {
 
 		env_key[key_size] = '\0';
 		const char *env_val = equal_sign + 1;
-
-		parse_rdkafka_keyval_config(env_key, env_val);
+		parse_rdkafka_keyval_config(ret, env_key, env_val);
 	}
 
 	// Parse JSON overriding
 	json_object_foreach(const_cast(root), json_key, json_val) {
-		parse_rdkafka_config_keyval(json_key, json_val);
+		parse_rdkafka_config_keyval(ret, json_key, json_val);
 	}
 
+	rdkafka_conf_set_partitioner(ret);
+
 	size_t dump_config_count, i;
-	const char **dump_config;
+	const char **dump_config = rd_kafka_conf_dump(ret, &dump_config_count);
+	for (i = 0; i < dump_config_count; i += 2) {
+		rdlog(LOG_INFO,
+		      "Kafka_config[%s][%s]",
+		      dump_config[i],
+		      dump_config[i + 1]);
+	}
 
-#define DUMP_AND_PRINT(function, conf)                                         \
-	do {                                                                   \
-		dump_config = function(conf, &dump_config_count);              \
-		for (i = 0; i < dump_config_count; i += 2) {                   \
-			rdlog(LOG_INFO,                                        \
-			      "Kafka_config[%s][%s]",                          \
-			      dump_config[i],                                  \
-			      dump_config[i + 1]);                             \
-		}                                                              \
-                                                                               \
-		rd_kafka_conf_dump_free(dump_config, dump_config_count);       \
-	} while (0)
+	rd_kafka_conf_dump_free(dump_config, dump_config_count);
 
-	DUMP_AND_PRINT(rd_kafka_conf_dump, global_config.kafka_conf);
-	DUMP_AND_PRINT(rd_kafka_topic_conf_dump,
-		       global_config.kafka_topic_conf);
-#undef DUMP_AND_PRINT
+	return ret;
 }
 
 void parse_config(const char *config_file_path) {
@@ -367,7 +355,7 @@ void parse_config(const char *config_file_path) {
 		exit(1);
 	}
 
-	get_rdkafka_config(root);
+	rd_kafka_conf_t *kafka_conf = get_rdkafka_config(root);
 
 	const char *response_file = NULL;
 	json_t *blacklist = NULL, *listeners = NULL;
@@ -400,7 +388,8 @@ void parse_config(const char *config_file_path) {
 		parse_blacklist(blacklist);
 	}
 
-	init_rdkafka();
+	init_rdkafka(kafka_conf);
+	kafka_conf = NULL;
 
 	size_t index;
 	json_array_foreach(listeners, index, json_val) {

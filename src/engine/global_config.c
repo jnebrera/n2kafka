@@ -324,7 +324,7 @@ static rd_kafka_conf_t *get_rdkafka_config(const json_t *root) {
 		parse_rdkafka_config_keyval(ret, json_key, json_val);
 	}
 
-	rdkafka_conf_set_partitioner(ret);
+	rdkafka_conf_set_n2kafka_callbacks(ret);
 
 	size_t dump_config_count, i;
 	const char **dump_config = rd_kafka_conf_dump(ret, &dump_config_count);

@@ -70,8 +70,8 @@ class TestChild(Popen):
 
         self.__exit_timeout = exit_timeout
 
-    def stdout_message(self, t_timeout_seconds):
-        ''' Obtain child stdout message '''
+    def readline(self, size=-1, t_timeout_seconds=5):
+        ''' Obtain child stdout message. Size parameter is ignored '''
         return self.__out_queue.get(timeout=t_timeout_seconds)
 
     @staticmethod
@@ -143,7 +143,7 @@ class N2KafkaChild(TestChild):
         t_proto, t_port = [self.__proto, self.__port]
 
         while True:
-            message = self.stdout_message(t_timeout_seconds)
+            message = self.readline(t_timeout_seconds)
             message = N2KafkaChild._N2KafkaChild__clean_rdlog_message(message)
 
             if not message.startswith(MESSAGE_START):
@@ -323,10 +323,13 @@ class HTTPMessage(object):
 
                 # Try to obtain new messages until timeout
                 while True:
-                    msg = t_child.stdout_message(stdout_timeout_s)
+                    msg = t_child.readline(stdout_timeout_s)
                     read_messages.append(msg)
                     if re.search(pattern, msg):
                         break
+
+        if 'expected_stdout_callback' in self.params:
+            self.params['expected_stdout_callback'](t_child)
 
         if self.params.get('expected_response'):
             assert(response.text == self.params['expected_response'])

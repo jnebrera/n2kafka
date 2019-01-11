@@ -33,6 +33,7 @@
 
 #include <assert.h>
 #include <errno.h>
+#include <string.h>
 #include <syslog.h>
 
 #define ERROR_BUFFER_SIZE 256
@@ -88,8 +89,53 @@ static void msg_delivered(rd_kafka_t *rk RD_UNUSED,
 	}
 }
 
-void rdkafka_conf_set_partitioner(rd_kafka_conf_t *conf) {
+static int
+rdkafka_stats_cb(rd_kafka_t *rk, char *json, size_t json_len, void *opaque) {
+	(void)rk;
+	(void)json_len;
+	(void)opaque;
+
+	static const int PLEASE_FREE_LIBRDKAFKA = 0;
+	const char *cursor = json, *next_comma = json, *comma = json;
+
+	rdlog(LOG_INFO, "Librdkafka stats ===");
+	while (next_comma) {
+		// 1st iteration:
+		// {blahblah,blahblah,blahblah}
+		// <- cursor, comma, next_comma
+		//
+		// Nth iteration:
+		// {blahblah,blahblah,blahblah}
+		//                    <- next comma
+		//           <- cursor, comma
+		while (next_comma && next_comma - cursor < 1024) {
+			comma = next_comma;
+			const size_t processed = (size_t)(comma + 1 - json);
+			next_comma = memchr(
+					comma + 1, ',', json_len - processed);
+		}
+
+		if (NULL == next_comma) {
+			break;
+		}
+
+		if (cursor == next_comma) {
+			rdlog(LOG_ERR, "Truncated, too long output");
+			break;
+		}
+
+		rdlog(LOG_INFO, "%.*s", (int)(comma + 1 - cursor), cursor);
+		cursor = comma + 1;
+	}
+
+	rdlog(LOG_INFO, "%s", cursor);
+
+	return PLEASE_FREE_LIBRDKAFKA;
+}
+
+void rdkafka_conf_set_n2kafka_callbacks(rd_kafka_conf_t *conf) {
 	rd_kafka_conf_set_dr_msg_cb(conf, msg_delivered);
+	rd_kafka_conf_set_stats_cb(conf, rdkafka_stats_cb);
 }
 
 void init_rdkafka(rd_kafka_conf_t *kafka_conf) {

@@ -46,11 +46,11 @@ rd_kafka_topic_t *new_rkt_global_config(const char *topic_name);
 const char *default_topic_name();
 
 /**
- * @brief      Set the kafka partitioner
+ * @brief      Set the n2kafka callbacks to rdkafka handler configuration.
  *
  * @param      conf  The kafka conf
  */
-void rdkafka_conf_set_partitioner(rd_kafka_conf_t *conf);
+void rdkafka_conf_set_n2kafka_callbacks(rd_kafka_conf_t *conf);
 
 void flush_kafka();
 void stop_rdkafka();

@@ -70,10 +70,12 @@ RUN	wget -O lcov.tgz\
 RUN	update-ca-certificates
 RUN	pip3 install --upgrade pip && pip3 install \
 		colorama \
+		ijson \
 		pykafka \
 		pytest \
 		pytest-xdist \
-		requests
+		requests \
+		timeout-decorator
 
 #
 # RELEASE

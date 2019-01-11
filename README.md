@@ -208,6 +208,12 @@ more info about it [here](src/decoder/zz_http2k/README.md).
 Another useful decoder is [Meraki](src/decoder/meraki/README.md). You can send
 your meraki location reports to n2kafka and it will forward to a kafka broker.
 
+## Kafka stats
+You can obtain the output kafka stats using the librdkafka configuration
+`rdkafka.statistics.interval.ms`, via configuration file or environment
+`RDKAFKA_STATISTICS_INTERVAL_MS`. `n2kafka` will print them each interval of
+its value in milliseconds.
+
 # Docker setup
 If you want an easy setup, you can use n2kafka docker image provided at
 gcr.io/wizzie-registry/n2kafka. This container provides default

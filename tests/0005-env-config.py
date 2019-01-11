@@ -52,7 +52,7 @@ class WatchedN2Kafka(N2KafkaChild):
 
         super().__init__(*n2k_args, **n2k_kwargs)
 
-    def stdout_message0(self, t_list, t_timeout_seconds):
+    def readline0(self, t_list, t_timeout_seconds):
         if t_list:
             return t_list.pop(0)
 
@@ -61,18 +61,18 @@ class WatchedN2Kafka(N2KafkaChild):
         else:
             o_list = self.__n2k_private_stdout
 
-        i = super().stdout_message(t_timeout_seconds)
+        i = super().readline(t_timeout_seconds)
         o_list.append(i)
         return i
 
-    def stdout_message(self, t_timeout_seconds):
+    def readline(self, t_timeout_seconds):
         ''' Obtain child stdout message '''
-        return self.stdout_message0(self.__n2k_child_stdout, t_timeout_seconds)
+        return self.readline0(self.__n2k_child_stdout, t_timeout_seconds)
 
-    def stdout_message_copy(self, t_timeout_seconds):
+    def readline_copy(self, t_timeout_seconds):
         ''' Obtain the private copy of child stdout '''
-        return self.stdout_message0(self.__n2k_private_stdout,
-                                    t_timeout_seconds)
+        return self.readline0(self.__n2k_private_stdout,
+                              t_timeout_seconds)
 
 
 class WatchedN2Kafka_handler(object):
@@ -96,7 +96,7 @@ class WatchedN2Kafka_handler(object):
             yield child
 
             while self.search_strings:
-                out_line = child.stdout_message_copy(1)
+                out_line = child.readline_copy(1)
 
                 self.search_strings = tuple(itertools.compress(
                           self.search_strings,

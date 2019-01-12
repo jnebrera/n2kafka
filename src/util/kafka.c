@@ -39,6 +39,14 @@
 #define ERROR_BUFFER_SIZE 256
 #define RDKAFKA_ERRSTR_SIZE ERROR_BUFFER_SIZE
 
+/// Topic to send librdkafka stats.
+rd_kafka_topic_t *stats_topic = NULL;
+
+/// librdkafka stats_cb return code indicating that librdkafka should free stats
+static const int PLEASE_FREE_LIBRDKAFKA = 0;
+/// librdkafka stats_cb return code indicating that app code will free stats
+static const int I_WILL_FREE_LIBRDKAFKA = 1;
+
 /** Creates a new topic handler using global configuration
     @param topic_name Topic name
     @param partitioner Partitioner function
@@ -89,13 +97,67 @@ static void msg_delivered(rd_kafka_t *rk RD_UNUSED,
 	}
 }
 
-static int
-rdkafka_stats_cb(rd_kafka_t *rk, char *json, size_t json_len, void *opaque) {
+/**
+ * @brief      Send rdkafka stats to an specific topic
+ *
+ * @param      rk        rdkafka handler
+ * @param[in]  json      The stats json
+ * @param      json_len  The stats json length
+ * @param      opaque    The opaque, needed for complain.
+ *
+ * @return     Expected in callback
+ */
+static int rdkafka_stats_topic_cb(rd_kafka_t *rk,
+				  char *json,
+				  size_t json_len,
+				  void *opaque) {
+	(void)rk;
+	(void)opaque;
+
+	if (NULL == stats_topic) {
+		// Race condition in stop_rdkafka, topic_cb can be queued
+		// between rd_kafka_topic_destroy and poll() pending callbacks
+		return PLEASE_FREE_LIBRDKAFKA;
+	}
+
+	const int produce_rc = rd_kafka_produce(stats_topic,
+						RD_KAFKA_PARTITION_UA,
+						RD_KAFKA_MSG_F_FREE,
+						json,
+						json_len,
+						NULL /* key */,
+						0 /* keylen */,
+						NULL /* msg_opaque */);
+	if (produce_rc != 0) {
+		const rd_kafka_resp_err_t rkerr = rd_kafka_last_error();
+		rdlog(LOG_ERR,
+		      "Can't produce stats message: %s",
+		      rd_kafka_err2str(rkerr));
+
+		return PLEASE_FREE_LIBRDKAFKA;
+	}
+
+	return I_WILL_FREE_LIBRDKAFKA;
+}
+
+/**
+ * @brief      Print rdkafka stats using rdlog
+ *
+ * @param      rk        rdkafka handler
+ * @param[in]  json      The stats json
+ * @param      json_len  The stats json length
+ * @param      opaque    The opaque, needed for complain.
+ *
+ * @return     Expected in callback
+ */
+static int rdkafka_stats_rdlog_cb(rd_kafka_t *rk,
+				  char *json,
+				  size_t json_len,
+				  void *opaque) {
 	(void)rk;
 	(void)json_len;
 	(void)opaque;
 
-	static const int PLEASE_FREE_LIBRDKAFKA = 0;
 	const char *cursor = json, *next_comma = json, *comma = json;
 
 	rdlog(LOG_INFO, "Librdkafka stats ===");
@@ -135,13 +197,19 @@ rdkafka_stats_cb(rd_kafka_t *rk, char *json, size_t json_len, void *opaque) {
 
 void rdkafka_conf_set_n2kafka_callbacks(rd_kafka_conf_t *conf) {
 	rd_kafka_conf_set_dr_msg_cb(conf, msg_delivered);
-	rd_kafka_conf_set_stats_cb(conf, rdkafka_stats_cb);
+	rd_kafka_conf_set_stats_cb(conf, rdkafka_stats_rdlog_cb);
 }
 
-void init_rdkafka(rd_kafka_conf_t *kafka_conf) {
+void init_rdkafka(n2kafka_rdkafka_conf *conf) {
 	char errstr[RDKAFKA_ERRSTR_SIZE];
+
+	if (conf->statistics.topic) {
+		rd_kafka_conf_set_stats_cb(conf->rk_conf,
+					   rdkafka_stats_topic_cb);
+	}
+
 	global_config.rk = rd_kafka_new(RD_KAFKA_PRODUCER,
-					kafka_conf,
+					conf->rk_conf,
 					errstr,
 					RDKAFKA_ERRSTR_SIZE);
 
@@ -149,7 +217,22 @@ void init_rdkafka(rd_kafka_conf_t *kafka_conf) {
 		fatal("%% Failed to create new producer: %s", errstr);
 	}
 
+	conf->rk_conf = NULL; // consumed by rdkafka
 	rd_kafka_set_log_level(global_config.rk, global_config.log_severity);
+
+	if (conf->statistics.topic) {
+		rdlog(LOG_INFO,
+		      "Sending rdkafka stats to topic %s",
+		      conf->statistics.topic);
+
+		stats_topic = rd_kafka_topic_new(
+				global_config.rk, conf->statistics.topic, NULL);
+
+		if (unlikely(NULL == stats_topic)) {
+			fatal("Can't create stats topic: %s",
+			      rd_kafka_err2str(rd_kafka_last_error()));
+		}
+	}
 }
 
 void kafka_poll(int timeout_ms) {
@@ -161,6 +244,10 @@ void flush_kafka() {
 }
 
 void stop_rdkafka() {
+	if (stats_topic) {
+		rd_kafka_topic_destroy(stats_topic);
+		stats_topic = NULL;
+	}
 	rdlog(LOG_INFO, "Waiting kafka handler to stop properly");
 
 	/* Make sure all outstanding requests are transmitted and handled. */

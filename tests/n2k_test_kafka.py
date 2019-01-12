@@ -30,7 +30,6 @@ __status__ = "Production"
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import pykafka.common
-import itertools
 from pykafka import KafkaClient
 
 
@@ -62,11 +61,17 @@ class KafkaHandler(object):
         except AttributeError:
             pass  # Already in bytes
 
-        consumer = self._consumer(topic_name)
-        consumed_messages = list(itertools.islice(consumer, 0, len(messages)))
+        consumer = iter(self._consumer(topic_name))
 
-        assert([m.value for m in consumed_messages] ==
-               [s.encode() for s in messages])
+        for m_expected in messages:
+            m_consumed = next(consumer)
+            if isinstance(m_expected, str):
+                m_expected = m_expected.encode()
+
+            if isinstance(m_expected, bytes):
+                assert(m_expected == m_consumed.value)
+            else:
+                m_expected(consumer)
 
     def assert_all_messages_consumed(self):
         num_consumers = len(self._kafka_consumers)

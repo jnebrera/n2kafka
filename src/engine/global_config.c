@@ -133,7 +133,7 @@ static void parse_response(const char *filename) {
 	}
 }
 
-static void parse_rdkafka_keyval_config(rd_kafka_conf_t *conf,
+static void parse_rdkafka_keyval_config(n2kafka_rdkafka_conf *conf,
 					const char *key,
 					const char *value) {
 	char errstr[512];
@@ -146,14 +146,20 @@ static void parse_rdkafka_keyval_config(rd_kafka_conf_t *conf,
 	if (!strncmp(name, "topic.", strlen("topic.")))
 		name += strlen("topic.");
 
+	if (!strcmp(name, "n2kafka.statistics.topic")) {
+		rdlog(LOG_INFO, "Sending rdkafka stats to topic %s", value);
+		conf->statistics.topic = value;
+		return;
+	}
+
 	rd_kafka_conf_res_t res = rd_kafka_conf_set(
-			conf, name, value, errstr, sizeof(errstr));
+			conf->rk_conf, name, value, errstr, sizeof(errstr));
 
 	if (res != RD_KAFKA_CONF_OK)
 		fatal("%s", errstr);
 }
 
-static void parse_rdkafka_config_json(rd_kafka_conf_t *conf,
+static void parse_rdkafka_config_json(n2kafka_rdkafka_conf *conf,
 				      const char *key,
 				      const json_t *jvalue) {
 	const char *value = assert_json_string(key, jvalue);
@@ -252,7 +258,7 @@ static void parse_listener(json_t *config) {
 	LIST_INSERT_HEAD(&global_config.listeners, proto_listener, entry);
 }
 
-static void parse_rdkafka_config_keyval(rd_kafka_conf_t *conf,
+static void parse_rdkafka_config_keyval(n2kafka_rdkafka_conf *conf,
 					const char *key,
 					const json_t *value) {
 	if (!strcasecmp(key, CONFIG_TOPIC_KEY)) {
@@ -269,12 +275,16 @@ static void parse_rdkafka_config_keyval(rd_kafka_conf_t *conf,
 	}
 }
 
-static rd_kafka_conf_t *get_rdkafka_config(const json_t *root) {
+static void get_rdkafka_config(n2kafka_rdkafka_conf *conf, const json_t *root) {
 	static const char *rdkafka_env_prefix = "RDKAFKA_";
-	rd_kafka_conf_t *ret = rd_kafka_conf_new();
 	char **environ_iter = environ;
 	json_t *json_val;
 	const char *json_key;
+	conf->rk_conf = rd_kafka_conf_new();
+
+	if (unlikely(!conf->rk_conf)) {
+		fatal("Can't create rdkafka conf (OOM?)");
+	}
 
 	// Parse all environment first
 	for (environ_iter = environ; *environ_iter; environ_iter++) {
@@ -316,18 +326,19 @@ static rd_kafka_conf_t *get_rdkafka_config(const json_t *root) {
 
 		env_key[key_size] = '\0';
 		const char *env_val = equal_sign + 1;
-		parse_rdkafka_keyval_config(ret, env_key, env_val);
+		parse_rdkafka_keyval_config(conf, env_key, env_val);
 	}
 
 	// Parse JSON overriding
 	json_object_foreach(const_cast(root), json_key, json_val) {
-		parse_rdkafka_config_keyval(ret, json_key, json_val);
+		parse_rdkafka_config_keyval(conf, json_key, json_val);
 	}
 
-	rdkafka_conf_set_n2kafka_callbacks(ret);
+	rdkafka_conf_set_n2kafka_callbacks(conf->rk_conf);
 
 	size_t dump_config_count, i;
-	const char **dump_config = rd_kafka_conf_dump(ret, &dump_config_count);
+	const char **dump_config =
+			rd_kafka_conf_dump(conf->rk_conf, &dump_config_count);
 	for (i = 0; i < dump_config_count; i += 2) {
 		rdlog(LOG_INFO,
 		      "Kafka_config[%s][%s]",
@@ -336,8 +347,6 @@ static rd_kafka_conf_t *get_rdkafka_config(const json_t *root) {
 	}
 
 	rd_kafka_conf_dump_free(dump_config, dump_config_count);
-
-	return ret;
 }
 
 void parse_config(const char *config_file_path) {
@@ -345,6 +354,7 @@ void parse_config(const char *config_file_path) {
 	global_config.config_path = config_file_path;
 	json_t *json_val;
 	json_t *root = json_load_file(config_file_path, 0, &jerror);
+	n2kafka_rdkafka_conf rdkafka_conf = {};
 	if (root == NULL) {
 		rblog(LOG_ERR,
 		      "Error parsing config file %s: %s, line %d: %s",
@@ -355,7 +365,7 @@ void parse_config(const char *config_file_path) {
 		exit(1);
 	}
 
-	rd_kafka_conf_t *kafka_conf = get_rdkafka_config(root);
+	get_rdkafka_config(&rdkafka_conf, root);
 
 	const char *response_file = NULL;
 	json_t *blacklist = NULL, *listeners = NULL;
@@ -388,8 +398,7 @@ void parse_config(const char *config_file_path) {
 		parse_blacklist(blacklist);
 	}
 
-	init_rdkafka(kafka_conf);
-	kafka_conf = NULL;
+	init_rdkafka(&rdkafka_conf);
 
 	size_t index;
 	json_array_foreach(listeners, index, json_val) {

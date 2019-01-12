@@ -214,6 +214,10 @@ You can obtain the output kafka stats using the librdkafka configuration
 `RDKAFKA_STATISTICS_INTERVAL_MS`. `n2kafka` will print them each interval of
 its value in milliseconds.
 
+If you want to send them to an specific topic, set the previous one to a
+meaningful value and `rdkafka.n2kafka.statistics.topic` to the name of the
+topic you want to send them.
+
 # Docker setup
 If you want an easy setup, you can use n2kafka docker image provided at
 gcr.io/wizzie-registry/n2kafka. This container provides default

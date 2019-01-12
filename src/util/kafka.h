@@ -30,7 +30,27 @@
 /* Private data */
 struct rd_kafka_message_s;
 
-void init_rdkafka();
+/// rdkafka options
+typedef struct n2kafka_rdkafka_conf {
+	/// Options that can be mapped directly to a rdkafka conf
+	rd_kafka_conf_t *rk_conf;
+
+	/// Stats related options
+	struct {
+		/// Stats destination topic
+		const char *topic;
+	} statistics;
+} n2kafka_rdkafka_conf;
+
+/**
+ * @brief      Init rdkafka system
+ *
+ * @param      kafka_conf   The kafka configuration
+ * @param[in]  stats_topic  The topic to send rdkafka statistics. If NULL and
+ *                          rdkafka.statistics.interval.ms > 0, they are print
+ *                          to stdout
+ */
+void init_rdkafka(n2kafka_rdkafka_conf *conf);
 
 void kafka_poll();
 

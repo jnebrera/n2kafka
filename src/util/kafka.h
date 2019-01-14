@@ -39,6 +39,14 @@ typedef struct n2kafka_rdkafka_conf {
 	struct {
 		/// Stats destination topic
 		const char *topic;
+
+		/// Stats message added data
+		struct {
+			/// Buffer size. Includes terminating 0.
+			size_t size;
+			/// Buffer
+			char *buf;
+		} message_extra;
 	} statistics;
 } n2kafka_rdkafka_conf;
 
@@ -64,13 +72,6 @@ rd_kafka_topic_t *new_rkt_global_config(const char *topic_name);
 	@return Default kafka topic name (if any)
 	*/
 const char *default_topic_name();
-
-/**
- * @brief      Set the n2kafka callbacks to rdkafka handler configuration.
- *
- * @param      conf  The kafka conf
- */
-void rdkafka_conf_set_n2kafka_callbacks(rd_kafka_conf_t *conf);
 
 void flush_kafka();
 void stop_rdkafka();

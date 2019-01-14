@@ -277,9 +277,10 @@ static void parse_rdkafka_config_keyval(n2kafka_rdkafka_conf *conf,
 
 static void get_rdkafka_config(n2kafka_rdkafka_conf *conf, const json_t *root) {
 	static const char *rdkafka_env_prefix = "RDKAFKA_";
+	static const char *stats_add_key = "rdkafka.n2kafka.stats.append";
 	char **environ_iter = environ;
-	json_t *json_val;
-	const char *json_key;
+	json_t *json_val, *jstats_json_enrich = NULL;
+	const char *json_key, *stats_json_enrich = NULL;
 	conf->rk_conf = rd_kafka_conf_new();
 
 	if (unlikely(!conf->rk_conf)) {
@@ -326,27 +327,85 @@ static void get_rdkafka_config(n2kafka_rdkafka_conf *conf, const json_t *root) {
 
 		env_key[key_size] = '\0';
 		const char *env_val = equal_sign + 1;
+
+		if (0 == strcmp(stats_add_key, env_key)) {
+			stats_json_enrich = env_val;
+			continue;
+		}
+
 		parse_rdkafka_keyval_config(conf, env_key, env_val);
 	}
 
 	// Parse JSON overriding
 	json_object_foreach(const_cast(root), json_key, json_val) {
+		if (0 == strcmp(stats_add_key, json_key)) {
+			if (json_is_string(json_val)) {
+				stats_json_enrich = json_string_value(json_val);
+				continue;
+			}
+
+			if (json_is_object(jstats_json_enrich)) {
+				jstats_json_enrich = json_val;
+				continue;
+			}
+
+			fatal("%s must be an object or a string",
+			      stats_add_key);
+		}
 		parse_rdkafka_config_keyval(conf, json_key, json_val);
 	}
 
-	rdkafka_conf_set_n2kafka_callbacks(conf->rk_conf);
+	if (jstats_json_enrich) {
+		// Valid json, we can use string
+		conf->statistics.message_extra.buf = json_dumps(
+				jstats_json_enrich, JSON_EMBED | JSON_COMPACT);
+	} else if (stats_json_enrich) {
+		json_error_t jerr;
+		json_t *stats_extra = json_loads(
+				stats_json_enrich, 0 /*flags*/, &jerr);
+		if (NULL == stats_extra) {
+			fatal("Can't parse %s: %s (in utf-8 column %d byte "
+			      "position %d",
+			      stats_add_key,
+			      jerr.text,
+			      jerr.column,
+			      jerr.position);
+		}
 
-	size_t dump_config_count, i;
-	const char **dump_config =
-			rd_kafka_conf_dump(conf->rk_conf, &dump_config_count);
-	for (i = 0; i < dump_config_count; i += 2) {
-		rdlog(LOG_INFO,
-		      "Kafka_config[%s][%s]",
-		      dump_config[i],
-		      dump_config[i + 1]);
+		if (!json_is_object(stats_extra)) {
+			fatal("%s must be a json object", stats_add_key);
+		}
+
+		const size_t jchilds = json_object_size(stats_extra);
+
+		// Valid object, free
+		json_decref(stats_extra);
+
+		if (!jchilds) {
+			// No childs, no need to save
+			return;
+		}
+
+		const char *open_brace = strchr(stats_json_enrich, '{');
+		assert(open_brace);
+		const char *last_brace = strrchr(open_brace, '}');
+		assert(last_brace);
+
+		conf->statistics.message_extra.size =
+				(size_t)(last_brace - open_brace);
+		conf->statistics.message_extra.buf =
+				malloc(conf->statistics.message_extra.size);
+		if (NULL == conf->statistics.message_extra.buf) {
+			fatal("Can't allocate rdkafka stats extra info (OOM?)");
+		}
+
+		memcpy(conf->statistics.message_extra.buf,
+		       open_brace + sizeof((char)'{'),
+		       conf->statistics.message_extra.size - sizeof((char)'}'));
+		conf->statistics.message_extra
+				.buf[conf->statistics.message_extra.size - 1] =
+				'\0';
 	}
-
-	rd_kafka_conf_dump_free(dump_config, dump_config_count);
 }
 
 void parse_config(const char *config_file_path) {

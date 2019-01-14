@@ -39,8 +39,27 @@
 #define ERROR_BUFFER_SIZE 256
 #define RDKAFKA_ERRSTR_SIZE ERROR_BUFFER_SIZE
 
-/// Topic to send librdkafka stats.
-rd_kafka_topic_t *stats_topic = NULL;
+typedef int (*rdkafka_stats_cb)(rd_kafka_t *rk,
+				char *json,
+				size_t json_len,
+				void *opaque);
+
+/// Kafka statis info
+struct {
+	/// Topic to send librdkafka stats.
+	rd_kafka_topic_t *stats_topic;
+
+	/// rdkafka stats callback
+	rdkafka_stats_cb n2k_stats_cb;
+
+	/// Data to add to each stats callback
+	struct {
+		/// Buffer to add
+		char *buf;
+		/// Buffer size
+		size_t size;
+	} append_buf;
+} stats;
 
 /// librdkafka stats_cb return code indicating that librdkafka should free stats
 static const int PLEASE_FREE_LIBRDKAFKA = 0;
@@ -114,13 +133,13 @@ static int rdkafka_stats_topic_cb(rd_kafka_t *rk,
 	(void)rk;
 	(void)opaque;
 
-	if (NULL == stats_topic) {
+	if (NULL == stats.stats_topic) {
 		// Race condition in stop_rdkafka, topic_cb can be queued
 		// between rd_kafka_topic_destroy and poll() pending callbacks
 		return PLEASE_FREE_LIBRDKAFKA;
 	}
 
-	const int produce_rc = rd_kafka_produce(stats_topic,
+	const int produce_rc = rd_kafka_produce(stats.stats_topic,
 						RD_KAFKA_PARTITION_UA,
 						RD_KAFKA_MSG_F_FREE,
 						json,
@@ -190,24 +209,77 @@ static int rdkafka_stats_rdlog_cb(rd_kafka_t *rk,
 		cursor = comma + 1;
 	}
 
-	rdlog(LOG_INFO, "%s", cursor);
+	rdlog(LOG_INFO, "%.*s", (int)(json + json_len - cursor), cursor);
 
 	return PLEASE_FREE_LIBRDKAFKA;
 }
 
-void rdkafka_conf_set_n2kafka_callbacks(rd_kafka_conf_t *conf) {
-	rd_kafka_conf_set_dr_msg_cb(conf, msg_delivered);
-	rd_kafka_conf_set_stats_cb(conf, rdkafka_stats_rdlog_cb);
+static int rdkafka_stats_enrich_decorator_cb(rd_kafka_t *rk,
+					     char *json,
+					     size_t json_len,
+					     void *opaque) {
+	assert(stats.append_buf.size);
+	assert(stats.append_buf.buf);
+
+	const size_t new_json_len = json_len + stats.append_buf.size;
+	char *new_json = realloc(json, new_json_len);
+	if (unlikely(NULL == new_json)) {
+		rdlog(LOG_ERR, "Can't reallocate stats buffer (OOM?)");
+	} else {
+		json = new_json;
+		assert(json[json_len - 1] == '}');
+		char *json_last_brace = &json[json_len - 1];
+		*json_last_brace = ',';
+		memcpy(json_last_brace + 1,
+		       stats.append_buf.buf,
+		       stats.append_buf.size);
+		json[new_json_len - 1] = '}';
+	}
+
+	const int child_rc = stats.n2k_stats_cb(rk, json, new_json_len, opaque);
+
+	if (new_json && child_rc == PLEASE_FREE_LIBRDKAFKA) {
+		// Librdkafka can have a dangling pointer because of realloc
+		free(json);
+		return I_WILL_FREE_LIBRDKAFKA;
+	}
+
+	return child_rc;
+}
+
+static void print_rdkafka_conf(rd_kafka_conf_t *conf) {
+	size_t dump_config_count, i;
+	const char **dump_config = rd_kafka_conf_dump(conf, &dump_config_count);
+	for (i = 0; i < dump_config_count; i += 2) {
+		rdlog(LOG_INFO,
+		      "Kafka_config[%s][%s]",
+		      dump_config[i],
+		      dump_config[i + 1]);
+	}
+
+	rd_kafka_conf_dump_free(dump_config, dump_config_count);
 }
 
 void init_rdkafka(n2kafka_rdkafka_conf *conf) {
 	char errstr[RDKAFKA_ERRSTR_SIZE];
 
 	if (conf->statistics.topic) {
-		rd_kafka_conf_set_stats_cb(conf->rk_conf,
-					   rdkafka_stats_topic_cb);
+		stats.n2k_stats_cb = rdkafka_stats_topic_cb;
+	} else {
+		stats.n2k_stats_cb = rdkafka_stats_rdlog_cb;
 	}
 
+	stats.append_buf.buf = conf->statistics.message_extra.buf;
+	stats.append_buf.size = conf->statistics.message_extra.size;
+	if (stats.append_buf.size) {
+		rd_kafka_conf_set_stats_cb(conf->rk_conf,
+					   rdkafka_stats_enrich_decorator_cb);
+	} else {
+		rd_kafka_conf_set_stats_cb(conf->rk_conf, stats.n2k_stats_cb);
+	}
+
+	print_rdkafka_conf(conf->rk_conf);
+	rd_kafka_conf_set_dr_msg_cb(conf->rk_conf, msg_delivered);
 	global_config.rk = rd_kafka_new(RD_KAFKA_PRODUCER,
 					conf->rk_conf,
 					errstr,
@@ -225,10 +297,10 @@ void init_rdkafka(n2kafka_rdkafka_conf *conf) {
 		      "Sending rdkafka stats to topic %s",
 		      conf->statistics.topic);
 
-		stats_topic = rd_kafka_topic_new(
+		stats.stats_topic = rd_kafka_topic_new(
 				global_config.rk, conf->statistics.topic, NULL);
 
-		if (unlikely(NULL == stats_topic)) {
+		if (unlikely(NULL == stats.stats_topic)) {
 			fatal("Can't create stats topic: %s",
 			      rd_kafka_err2str(rd_kafka_last_error()));
 		}
@@ -244,9 +316,9 @@ void flush_kafka() {
 }
 
 void stop_rdkafka() {
-	if (stats_topic) {
-		rd_kafka_topic_destroy(stats_topic);
-		stats_topic = NULL;
+	if (stats.stats_topic) {
+		rd_kafka_topic_destroy(stats.stats_topic);
+		stats.stats_topic = NULL;
 	}
 	rdlog(LOG_INFO, "Waiting kafka handler to stop properly");
 
@@ -258,4 +330,6 @@ void stop_rdkafka() {
 	rd_kafka_destroy(global_config.rk);
 	while (0 != rd_kafka_wait_destroyed(5000))
 		;
+
+	free(stats.append_buf.buf);
 }

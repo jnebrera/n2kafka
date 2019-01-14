@@ -82,20 +82,24 @@ class GrepThread:
         return ret
 
 
-def _right_kafka_stats_message(m):
+def _right_kafka_stats_message(m, check_for_enrich_data):
     try:
-        for (topic_k, topic) in m['topics'].items():
-            for (partition_i, partition) in topic['partitions'].items():
-                if partition['msgs'] > 0:
-                    return True
+        return any(
+            partition['msgs'] > 0
+            for (topic_k, topic) in m['topics'].items()
+            for (partition_i, partition) in topic['partitions'].items()) \
+            and (not check_for_enrich_data or m['test'] == 1)
+
     except KeyError:
         pass
 
     return False
 
 
-@timeout_decorator.timeout(5)
-def _check_child_rdlog_json_stats(child):
+@timeout_decorator.timeout(60)
+def _check_child_rdlog_json_stats(child,
+                                  check_json_callback,
+                                  *callback_kwargs):
     while True:
         line = child.readline(t_timeout_seconds=5)
         print(line)
@@ -116,19 +120,22 @@ def _check_child_rdlog_json_stats(child):
             elif event == 'end_map':
                 map_stack_i -= 1
                 if map_stack_i == 0:
-                    break
+                    if _right_kafka_stats_message(json_builder.value,
+                                                  *callback_kwargs):
+                        return  # all OK!
+                    else:
+                        break  # Search again
 
-                if _right_kafka_stats_message(json_builder.value):
-                    return  # all OK!
 
-
-@timeout_decorator.timeout(5)
-def _check_kafka_consumed_message_json_stats(kafka_consumer):
+@timeout_decorator.timeout(60)
+def _check_kafka_consumed_message_json_stats(kafka_consumer,
+                                             check_callback,
+                                             *check_callback_kwargs):
     while True:
         kafka_message_bytes = next(kafka_consumer).value
         kafka_message = kafka_message_bytes.decode()
         dict_message = json.loads(kafka_message)
-        if _right_kafka_stats_message(dict_message):
+        if check_callback(dict_message, *check_callback_kwargs):
             break
 
 
@@ -192,16 +199,34 @@ class TestHTTP2K(TestN2kafka):
 
         statistics_topic = stats_topic_config or stats_topic_env
 
+        if stats_append_env:
+            os.environ['RDKAFKA_N2KAFKA_STATS_APPEND'] = stats_append_env
+
+        if stats_append_config:
+            base_config['rdkafka.n2kafka.stats.append'] = stats_append_config
+
+        check_for_enrich_data = \
+            (stats_append_config not in [None, '{}']) or \
+            (not stats_append_config and stats_append_env not in [None, '{}'])
+
+        def check_rdlog_callback(message):
+            _check_child_rdlog_json_stats(
+                message, _right_kafka_stats_message, check_for_enrich_data)
+
+        def check_kafka_callback(consumer):
+            _check_kafka_consumed_message_json_stats(
+                consumer, _right_kafka_stats_message, check_for_enrich_data)
+
         extra_msg_args = {}
         if not statistics_topic:
             extra_msg_args = {
-                'expected_stdout_callback': _check_child_rdlog_json_stats
+                'expected_stdout_callback': check_rdlog_callback
             }
         elif statistics_topic and kafka_broker == 'kafka':
             extra_msg_args = {
                 'expected_kafka_messages': [{
                     'topic': statistics_topic,
-                    'messages': [_check_kafka_consumed_message_json_stats],
+                    'messages': [check_kafka_callback],
                 }]
             }
         else:

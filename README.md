@@ -218,6 +218,11 @@ If you want to send them to an specific topic, set the previous one to a
 meaningful value and `rdkafka.n2kafka.statistics.topic` to the name of the
 topic you want to send them.
 
+If you need to set custom (but fixed) json members, you can use
+`rdkafka.n2kafka.stats.append={"my_custom":"object"}`. The object in this
+property is merged with the produced message, allowing to tag the stats
+message.
+
 # Docker setup
 If you want an easy setup, you can use n2kafka docker image provided at
 gcr.io/wizzie-registry/n2kafka. This container provides default

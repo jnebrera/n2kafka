@@ -1,57 +1,80 @@
-version: 2
+version: 2.1
 
 default_workspace: &default_workspace
   # Smallest circleci official image at 11/17. We don't need any tools here.
   docker:
     - image: docker/compose:1.21.2
 
-save_cache:
-  - &save_cache
-    save_cache:
-      key: n2k-cache-{{ .Branch }}-{{ .BuildNum }}
-      paths:
-        - docker-cache/built-images.tgz
+commands:
+  save_docker_images_sum:
+    description: "Save docker images ID to a file"
+    parameters:
+      out_file:
+        type: string
+    steps:
+      - run: >
+          docker images --filter "dangling=false" \
+            --format '{{.ID}} {{.Repository}} {{.Tag}}' | sort > \
+            << parameters.out_file >>
 
-restore_cache:
-  - &restore_cache
-    restore_cache:
-      keys:
-        - n2k-cache-{{ .Branch }}-
-        - n2k-cache-
+  save_docker_cache:
+    description: "Save docker images to cache if they have changed"
+    steps:
+      - run: mkdir -p /tmp/docker-cache
+      - save_docker_images_sum:
+          out_file: /tmp/docker-cache/docker_images.newsum
+      - run:
+          environment:
+            - alpine_sha: alpine@sha256:46e71df1e5191ab8b8034c5189e325258ec44ea739bba1e5645cff83c9048ff1
+          # Save tags & history. If you don't save both, can't re-use docker
+          # cache
+          command: |
+            if diff /tmp/docker-cache/built-images.sum \
+                    /tmp/docker-cache/docker_images.newsum; then
+              exit 0
+            fi
 
+            mv /tmp/docker-cache/docker_images.newsum \
+               /tmp/docker-cache/built-images.sum
+            for image in \
+                          "${alpine_sha}" \
+                          n2k-dev:latest; do
+              printf '%s\n' "${image}"
+              docker history -q "${image}"
+            done | \
+            grep -vx '<missing>' | \
+            tee /dev/stderr | \
+            xargs docker save \
+            | gzip > \
+            /tmp/docker-cache/built-images.tgz
+      - save_cache:
+          key: n2k-cache-{{ .Branch }}-{{ .BuildNum }}
+          paths:
+            - /tmp/docker-cache/built-images.tgz
 
-# Save all docker images in cache
-save_docker_images:
-  - &save_docker_images
-    # Save tags & history. If you don't save history, can't re-use docker cache
-    # Keep in sync the diff with load_docker_images
-    run: |
-      mkdir -p docker-cache
-      docker images  --filter "dangling=false" --format '{{.ID}} {{.Repository}} {{.Tag}}' | sort > docker_images.newsum
-      if ! diff docker_images.newsum docker-cache/built-images.sum; then
-        mv docker_images.newsum docker-cache/built-images.sum
-        n2k_dev_history=$(docker history -q n2k-dev:latest | grep -v missing)
-        docker save n2k-dev:latest ${n2k_dev_history} \
-          | gzip > docker-cache/built-images.tgz
-      fi
+  restore_docker_cache:
+    description: "Restore docker images from cache"
+    steps:
+      - restore_cache:
+          keys:
+            - n2k-cache-{{ .Branch }}-
+            - n2k-cache-
 
-load_docker_images:
-  - &load_docker_images
-    # Keep in sync the summary generation with save_docker_images
-    run: |
-      if [[ -f docker-cache/built-images.tgz ]]; then
-        zcat docker-cache/built-images.tgz | docker load;
-        docker images  --filter "dangling=false" --format '{{.ID}} {{.Repository}} {{.Tag}}' | sort > docker-cache/built-images.sum
-      else
-        echo "NO DOCKER CACHE";
-      fi
+      - run: |
+          if [[ -f /tmp/docker-cache/built-images.tgz ]]; then
+            zcat /tmp/docker-cache/built-images.tgz | docker load;
+          else
+            echo "NO DOCKER CACHE";
+          fi
+      - save_docker_images_sum:
+          out_file: /tmp/docker-cache/built-images.sum
 
-# Save n2kafka binary in to be used in another job
-save_binary:
-  - &save_binary
-    run: |
-      mkdir -p "/tmp/${CIRCLE_JOB}"
-      cp n2kafka "/tmp/${CIRCLE_JOB}"
+  save_binary:
+    description: "Save n2kafka binary in to be used in another job"
+    steps:
+      - run: |
+          mkdir -p "/tmp/${CIRCLE_JOB}"
+          cp n2kafka "/tmp/${CIRCLE_JOB}"
 
 jobs:
   # Check source format
@@ -81,8 +104,7 @@ jobs:
       - setup_remote_docker
       - checkout
       # Use cached n2k images if possible
-      - *restore_cache
-      - *load_docker_images
+      - restore_docker_cache
       # Create development environment
       - run: apk add --no-cache make
       - run:
@@ -90,9 +112,7 @@ jobs:
             DOCKER_OUTPUT_TAG: n2k-dev
             DOCKER_OUTPUT_VERSION: latest
           command: make dev-docker
-      - *save_docker_images
-      - *save_cache
-
+      - save_docker_cache
 
   # (Template) execute a single command in development docker
   T_dev_run: &T_dev_run
@@ -100,8 +120,7 @@ jobs:
     steps:
       - setup_remote_docker
       - checkout
-      - *restore_cache
-      - *load_docker_images
+      - restore_docker_cache
       - run: '[[ -f workspace.tgz ]] && tar xvzpf workspace.tgz || true'
       # sed: Don't want thread-safety test because musl bug
       - run: sed -i 's%\$(TESTS_\(DRD\|HELGRIND\)_XML)%%g' Makefile
@@ -182,8 +201,7 @@ jobs:
               -o /usr/bin/docker-compose
       - setup_remote_docker
       - checkout
-      - *restore_cache
-      - *load_docker_images
+      - restore_docker_cache
       - attach_workspace:
           at: /tmp/workspace
       - run:

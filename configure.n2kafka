@@ -18,7 +18,6 @@ mkl_mkvar_append CPPFLAGS CPPFLAGS '-Wsign-conversion -Wshadow'
 #mkl_mkvar_append CPPFLAGS CPPFLAGS "-ftrack-macro-expansion=2"
 #mkl_mkvar_append CPPFLAGS CPPFLAGS "Wstrict-aliasing=2"
 mkl_mkvar_append CPPFLAGS CPPFLAGS '-Wdisabled-optimization -Winit-self'
-mkl_mkvar_append CPPFLAGS CPPFLAGS '-Wlogical-op'
 mkl_mkvar_append CPPFLAGS CPPFLAGS '-Wmissing-include-dirs -Wstrict-overflow=5'
 mkl_mkvar_append CPPFLAGS CPPFLAGS '-Wundef -Wswitch-default'
 mkl_mkvar_append CPPFLAGS CPPFLAGS '-Wmissing-declarations'
@@ -26,8 +25,6 @@ mkl_mkvar_append CPPFLAGS CPPFLAGS '-Wdisabled-optimization'
 mkl_mkvar_append CPPFLAGS CPPFLAGS '-Wfloat-equal'
 mkl_mkvar_append CPPFLAGS CPPFLAGS '-Wwrite-strings'
 mkl_mkvar_append CPPFLAGS CPPFLAGS '-Wformat=2'
-mkl_mkvar_append CPPFLAGS CPPFLAGS '-Wformat-signedness'
-mkl_mkvar_append CPPFLAGS CPPFLAGS '-Wformat-truncation=2'
 
 # This will make the life easier
 mkl_mkvar_append CPPFLAGS CPPFLAGS "-I. -I./src"
@@ -36,22 +33,26 @@ mkl_toggle_option "Feature" WITH_HTTP           "--enable-http"           "HTTP 
 mkl_toggle_option "Debug"   ENABLE_ASSERTIONS   "--enable-assertions"     "Enable C code assertions" "n"
 mkl_toggle_option "Debug"   WITH_COVERAGE       "--enable-coverage"       "Coverage build" "n"
 
-LIBRD_COMMIT=bb4ec7e65c8d3d411837e506e8d02f293b9a0a20
-function bootstrap_librd {
-  if [[ -d "librd" ]]; then
-    # Already bootstrapped
-    return 0
-  fi
+LIBRD_COMMIT=b9b9fec588c3cd9022bbd390b6101a2079f0573b
+bootstrap_librd () {
+    if [[ -d "librd" ]]; then
+        # Already bootstrapped
+        return 0
+    fi
 
-  mv "librd-${LIBRD_COMMIT}" librd
-  cd librd
-  if [[ $HAVE_LTO = 'y' ]]; then
-    local -r cflag_lto='-flto'
-    local -r ar_lto='gcc-ar'
-    local -r ld_lto='gcc'
-    sed -i 's%-soname%-Wl,-soname%' Makefile
-  fi
-  CC=gcc CFLAGS="$cflag_lto" AR="$ar_lto" LD="$ld_lto" make libs
+    mv "librd-${LIBRD_COMMIT}" librd
+    cd librd
+    if [[ $HAVE_LTO = 'y' ]]; then
+        export CFLAGS
+        CFLAGS+=' -flto'
+        if [[ $CC == gcc ]]; then
+            export AR='gcc-ar'
+            export LD='gcc'
+        fi
+        sed -i 's%-soname%-Wl,-soname%' Makefile
+    fi
+
+    make libs
 }
 
 function checks_librd {
@@ -149,11 +150,24 @@ bootstrap_microhttpd () {
   #make install
 }
 
+##
+## @brief      Checks that the compiler support a given flag, and append it to
+##             CPPFLAGS
+## @param 1 Config & define name
+## @param 2 flag
+##
+cc_check_flag () {
+    declare -r test_snippet='int f(); int f(){ return 0; }'
+    if mkl_compile_check "$1" "$1" disable CC "$2" "$test_snippet"; then
+        mkl_mkvar_append CPPFLAGS CPPFLAGS "$2"
+    fi
+}
+
 function checks_libmicrohttpd {
     # quick hack to avoid bad formatted libmicrohttpd header. With this macro
     # defined, the header will know that we are using GCC at libmicrohttp
     # 0.9.44
-    mkl_mkvar_append CPPFLAGS CPPFLAGS "-D__clang_major__"
+    cc_check_flag MICROHTTPD_NEED_DEFINE_CLANG_MAJOR "-D__clang_major__"
     mkl_meta_set "libmicrohttpd" "desc" \
         "library embedding HTTP server functionality"
     mkl_meta_set "libmicrohttpd" "deb" "libmicrohttpd-dev"
@@ -168,19 +182,6 @@ function checks_libmicrohttpd {
     mkl_lib_check --static=-lmicrohttpd --libname=-lmicrohttpd "libmicrohttpd" "" fail CC "-lmicrohttpd -lgnutls" \
         "#include <microhttpd.h>"
     mkl_define_set "Have libmicrohttpd library" "HAVE_LIBMICROHTTPD" "1"
-}
-
-##
-## @brief      Checks that the compiler support a given flag, and append it to
-##             CPPFLAGS
-## @param 1 Config & define name
-## @param 2 flag
-##
-cc_check_flag () {
-    declare -r test_snippet='int f(); int f(){ return 0; }'
-    if mkl_compile_check "$1" "$1" disable CC "$2" "$test_snippet"; then
-        mkl_mkvar_append CPPFLAGS CPPFLAGS "$2"
-    fi
 }
 
 function checks {
@@ -215,6 +216,9 @@ function checks {
     cc_check_flag HAVE_CC_WRESTRICT '-Wrestrict'
     cc_check_flag HAVE_CC_WNULL_REFERENCE '-Wnull-dereference'
     cc_check_flag HAVE_CC_WCAST_ALIGN '-Wcast-align'
+    cc_check_flag HAVE_CC_LOGICAL_OP '-Wlogical-op'
+    cc_check_flag HAVE_CC_FORMAT_SIGNEDNESS '-Wformat-signedness'
+    cc_check_flag HAVE_CC_FORMAT_TRUNCATION '-Wformat-truncation=2'
 
     if [[ "$ENABLE_ASSERTIONS" != 'y' ]]; then
       mkl_mkvar_append CPPFLAGS CPPFLAGS "-DNDEBUG"

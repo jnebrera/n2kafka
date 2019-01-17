@@ -281,6 +281,33 @@
    ...
 }
 
+{
+   Sasl reachable
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   fun:malloc
+   ...
+   fun:sasl_client_init
+   obj:/usr/lib/x86_64-linux-gnu/librdkafka.so.1
+   fun:rd_kafka_new
+   fun:init_rdkafka
+   fun:parse_config
+   fun:main
+}
+
+{
+   clang 7.0.0-3 + valgrind-3.13.0 leak
+   Memcheck:Leak
+   match-leak-kinds: reachable
+   fun:*alloc
+   ...
+   fun:dl_open_worker
+   fun:_dl_catch_exception
+   fun:_dl_open
+   fun:dlopen_doit
+   fun:_dl_catch_exception
+}
+
 #
 # musl leaks
 #

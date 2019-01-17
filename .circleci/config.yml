@@ -123,8 +123,6 @@ jobs:
       - checkout
       - restore_docker_cache
       - run: '[[ -f workspace.tgz ]] && tar xvzpf workspace.tgz || true'
-      # sed: Don't want thread-safety test because musl bug
-      - run: sed -i 's%\$(TESTS_\(DRD\|HELGRIND\)_XML)%%g' Makefile
       # Launch test compose
       - run:
           background: true

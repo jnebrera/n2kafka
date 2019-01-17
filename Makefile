@@ -115,7 +115,7 @@ tests: $(TESTS_XML)
 checks: $(TESTS_CHECKS_XML)
 	$(call show_test_result,-c)
 
-memchecks: $(TESTS_VALGRIND_XML)
+memchecks: $(TESTS_MEM_XML)
 	@$(call show_test_result,-m)
 
 drdchecks:

@@ -1,9 +1,10 @@
 version: 2.1
 
-default_workspace: &default_workspace
-  # Smallest circleci official image at 11/17. We don't need any tools here.
-  docker:
-    - image: docker/compose:1.21.2
+executors:
+  compose_executor:
+    # Smallest circleci official image at 11/17. We don't need any tools here.
+    docker:
+      - image: docker/compose:1.21.2
 
 commands:
   save_docker_images_sum:
@@ -99,7 +100,7 @@ jobs:
 
   # Build & prepare devel container
   build_dev:
-    <<: *default_workspace
+    executor: compose_executor
     steps:
       - setup_remote_docker
       - checkout
@@ -116,7 +117,7 @@ jobs:
 
   # (Template) execute a single command in development docker
   T_dev_run: &T_dev_run
-    <<: *default_workspace
+    executor: compose_executor
     steps:
       - setup_remote_docker
       - checkout
@@ -274,7 +275,7 @@ jobs:
 #
 #  # Check source code
 #  static-analyzer:
-#    <<: *default_workspace
+#    executor: compose_executor
 #    docker:
 #      - image: alabate/clang-format
 #    steps:

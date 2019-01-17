@@ -213,21 +213,25 @@ DOCKER?=docker
 
 docker_build_cb = $(strip $(DOCKER) build \
 	-t $(DOCKER_OUTPUT_TAG):$(DOCKER_OUTPUT_VERSION) --target $(1) \
-	$(2) -f docker/Dockerfile .)
+	$(3) -f $(2) .)
 
 docker: $(BIN)
-	$(call docker_build_cb,release,)
+	$(call docker_build_cb,release,docker/Dockerfile)
 
 gdb-docker: $(BIN)
-	$(call docker_build_cb,bin_wrapper,--build-arg INSTALL_PKGS=cgdb \
-		--build-arg EXEC_WRAPPER='cgdb --args')
+	$(call docker_build_cb,bin_wrapper,docker/Dockerfile, \
+		--build-arg INSTALL_PKGS=cgdb --build-arg EXEC_WRAPPER='cgdb --args')
 
 valgrind-docker: $(BIN)
-	$(call docker_build_cb,bin_wrapper,--build-arg INSTALL_PKGS=valgrind  \
-		--build-arg EXEC_WRAPPER=valgrind)
+	$(call docker_build_cb,bin_wrapper,docker/Dockerfile,\
+		--build-arg INSTALL_PKGS=valgrind --build-arg EXEC_WRAPPER=valgrind)
 
 dev-docker:
-	$(call docker_build_cb,n2k-dev)
+	$(call docker_build_cb,n2k-dev,docker/Dockerfile)
+
+ubuntu-dev-docker:
+	$(call docker_build_cb,n2k-ubuntu-dev,docker/ubuntu.Dockerfile)
+
 
 -include $(DEPS)
 

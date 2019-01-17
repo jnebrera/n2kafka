@@ -41,7 +41,9 @@ commands:
                /tmp/docker-cache/built-images.sum
             for image in \
                           "${alpine_sha}" \
-                          n2k-dev:latest; do
+                          n2k-dev:latest \
+                          n2k-ubuntu-dev:latest \
+                          ubuntu:18.10; do
               printf '%s\n' "${image}"
               docker history -q "${image}"
             done | \
@@ -162,6 +164,11 @@ jobs:
             DOCKER_OUTPUT_TAG: n2k-dev
             DOCKER_OUTPUT_VERSION: latest
           command: make dev-docker
+      - run:
+          environment:
+            DOCKER_OUTPUT_TAG: n2k-ubuntu-dev
+            DOCKER_OUTPUT_VERSION: latest
+          command: make ubuntu-dev-docker
       - save_docker_cache
       - persist_to_workspace:
           root: /tmp
@@ -173,12 +180,18 @@ jobs:
       configure_args:
         type: string
         default: '--bootstrap'
+      configure_env:
+        type: string
+        default: ''
       memory_checks:
         type: boolean
         default: false
       coverage:
         type: boolean
         default: false
+      compose_flavor:
+        type: string
+        default: ''
     executor: compose_executor
     steps:
       - setup_remote_docker
@@ -191,13 +204,17 @@ jobs:
       # Launch test compose
       - run:
           background: true
-          command: docker-compose -f tests/docker-compose.yml up
+          command: |
+            env FLAVOR=<<parameters.compose_flavor>> \
+            docker-compose -f tests/docker-compose.yml up
       # Wait container start & copy
       - run: while ! docker cp . dev-container:/app; do :; done;
 
       # Actual commands run. Exit 255 will stop iteration
       - run_in_n2k_dev_docker:
-          command: ./configure <<parameters.configure_args>>
+          command: |
+            env <<parameters.configure_env>> \
+            ./configure <<parameters.configure_args>>
       - run_in_n2k_dev_docker:
           command: make -j 3
       - run_in_n2k_dev_docker:
@@ -356,6 +373,13 @@ workflows:
           name: Release
           configure_args: --bootstrap
           memory_checks: true
+
+      - dev_run:
+          <<: *uses_build_dev_workspace
+          name: Ubuntu+Clang
+          compose_flavor: ubuntu-
+          configure_env: CC=clang
+          configure_args: --bootstrap
 
       - dev_run:
           <<: *uses_build_dev_workspace

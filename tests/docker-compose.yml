@@ -12,7 +12,7 @@ services:
             && supervisord -n']
     dev-container:
         container_name: dev-container
-        image: 'n2k-dev'
+        image: 'n2k-${FLAVOR:-}dev'
         tty: true # Allow to run in background forever
         build:
             context: ..

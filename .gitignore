@@ -50,6 +50,10 @@
 /tests/client-key-?.pem
 __pycache__
 .pytest_cache/
+/n2k_config_*
+/n2k_topic_*
+/n2k_htpasswd_*
+
 
 # Docker
 /docker/devel/

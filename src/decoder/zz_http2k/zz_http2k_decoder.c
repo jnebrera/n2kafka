@@ -37,7 +37,7 @@
 #include <jansson.h>
 #include <librd/rdlog.h>
 #include <librdkafka/rdkafka.h>
-#include <yajl_parse.h>
+#include <yajl/yajl_parse.h>
 
 #include <assert.h>
 #include <stdlib.h>

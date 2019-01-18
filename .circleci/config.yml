@@ -241,7 +241,7 @@ jobs:
           name: Release container
           # Get release binary
           command: |
-            cp /tmp/workspace/bin/assertions/n2kafka . &&
+            cp /tmp/workspace/bin/release/n2kafka . &&
             strip ./n2kafka && \
 
             make -t docker && \

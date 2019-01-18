@@ -13,15 +13,17 @@ commands:
       out_file:
         type: string
     steps:
-      - run: >
-          docker images --filter "dangling=false" \
-            --format '{{.ID}} {{.Repository}} {{.Tag}}' | sort > \
-            << parameters.out_file >>
+      - run:
+          name: Save docker sums in <<parameters.out_file>>
+          command: >
+            mkdir -p $(dirname "<< parameters.out_file >>");
+            docker images --filter "dangling=false" \
+              --format '{{.ID}} {{.Repository}} {{.Tag}}' | sort > \
+              << parameters.out_file >>
 
   save_docker_cache:
     description: "Save docker images to cache if they have changed"
     steps:
-      - run: mkdir -p /tmp/docker-cache
       - save_docker_images_sum:
           out_file: /tmp/docker-cache/docker_images.newsum
       - run:
@@ -77,6 +79,17 @@ commands:
           mkdir -p "/tmp/${CIRCLE_JOB}"
           cp n2kafka "/tmp/${CIRCLE_JOB}"
 
+  run_in_n2k_dev_docker:
+    description: "Run a command in n2k-dev container"
+    parameters:
+      command:
+        type: string
+      docker_opts:
+        type: string
+        default: ''
+    steps:
+      - run: docker exec dev-container << parameters.command >>
+
 jobs:
   # Check source format
   clang-format:
@@ -114,15 +127,31 @@ jobs:
             DOCKER_OUTPUT_VERSION: latest
           command: make dev-docker
       - save_docker_cache
+      - persist_to_workspace:
+          root: /tmp
+          paths:
+            - docker-cache
 
-  # (Template) execute a single command in development docker
-  T_dev_run: &T_dev_run
+  dev_run:
+    parameters:
+      configure_args:
+        type: string
+        default: '--bootstrap'
+      memory_checks:
+        type: boolean
+        default: false
+      coverage:
+        type: boolean
+        default: false
     executor: compose_executor
     steps:
       - setup_remote_docker
       - checkout
-      - restore_docker_cache
-      - run: '[[ -f workspace.tgz ]] && tar xvzpf workspace.tgz || true'
+      - attach_workspace:
+          at: /tmp/
+      - run: |
+          [[ ! -f /tmp/docker-cache/built-images.tgz ]] || \
+          zcat /tmp/docker-cache/built-images.tgz | docker load;
       # Launch test compose
       - run:
           background: true
@@ -131,9 +160,24 @@ jobs:
       - run: while ! docker cp . dev-container:/app; do :; done;
 
       # Actual commands run. Exit 255 will stop iteration
-      - run: |
-             printf "%s\n" "${docker_cmds}" | \
-               xargs -I {} -t -n 1 docker exec dev-container sh -c '{} || exit 255'
+      - run_in_n2k_dev_docker:
+          command: ./configure <<parameters.configure_args>>
+      - run_in_n2k_dev_docker:
+          command: make -j 3
+      - run_in_n2k_dev_docker:
+          docker_opts: -e PYTEST_JOBS=5
+          command: make checks
+      - when:
+          condition: << parameters.memory_checks >>
+          steps:
+            - run_in_n2k_dev_docker:
+                docker_opts: -e PYTEST_JOBS=5
+                command: make memchecks
+      - when:
+          condition: << parameters.coverage >>
+          steps:
+            - run_in_n2k_dev_docker:
+                command: make coverage
 
       # Collect results
       - run:
@@ -154,36 +198,6 @@ jobs:
             - bin
             - config
 
-  # Release build -> no asserts, optimizations on
-  release:
-    <<: *T_dev_run
-    environment:
-      - docker_cmds: |
-          ./configure --bootstrap
-          make
-          env PYTEST_JOBS=5 make checks
-          env PYTEST_JOBS=5 make memchecks
-
-  # Test with assertions on
-  assertions:
-    <<: *T_dev_run
-    environment:
-      - docker_cmds: |
-          ./configure --bootstrap --disable-optimization --enable-assertions
-          make
-          env PYTEST_JOBS=5 make checks
-
-  coverage:
-    <<: *T_dev_run
-    environment:
-      - PYTEST: py.test-3
-      - docker_cmds: |
-          ./configure --bootstrap --disable-optimization --enable-coverage
-          make
-          env PYTEST_JOBS=5 make checks
-          env PYTEST_JOBS=5 make memchecks
-          make coverage
-
   containers:
     docker:
       - image: google/cloud-sdk:alpine
@@ -200,11 +214,11 @@ jobs:
           at: /tmp/workspace
       - run:
           name: Gdb container
-          # Get coverage binary, it is supposed to not to have any optimization
+          # Get assertions binary, it is supposed to not to have any optimization
           # enabled
           command: |
-            cp /tmp/workspace/bin/coverage/n2kafka \
-              /tmp/workspace/config/coverage/Makefile.config . &&
+            cp /tmp/workspace/bin/assertions/n2kafka \
+              /tmp/workspace/config/assertions/Makefile.config . &&
 
             make -t gdb-docker && \
             CIRCLE_TAG=${CIRCLE_TAG//+/.} && \
@@ -215,8 +229,8 @@ jobs:
           name: Valgrind container
           # Get release binary
           command: |
-            cp /tmp/workspace/bin/coverage/n2kafka \
-              /tmp/workspace/config/coverage/Makefile.config . &&
+            cp /tmp/workspace/bin/assertions/n2kafka \
+              /tmp/workspace/config/assertions/Makefile.config . &&
 
             make -t valgrind-docker && \
             CIRCLE_TAG=${CIRCLE_TAG//+/.} && \
@@ -227,7 +241,7 @@ jobs:
           name: Release container
           # Get release binary
           command: |
-            cp /tmp/workspace/bin/coverage/n2kafka . &&
+            cp /tmp/workspace/bin/assertions/n2kafka . &&
             strip ./n2kafka && \
 
             make -t docker && \
@@ -317,25 +331,30 @@ workflows:
       - build_dev:
           <<: *filter_version_tag
 
-      - assertions:
-          <<: *uses_build_dev_workspace
-
-      - release:
+       # Release build -> no asserts, optimizations on
+      - dev_run:
           <<: *uses_build_dev_workspace
           <<: *filter_version_tag
+          name: Release
+          configure_args: --bootstrap
+          memory_checks: true
 
-      - coverage:
+      - dev_run:
           <<: *uses_build_dev_workspace
           <<: *filter_version_tag
+          name: Assertions
+          configure_args: --bootstrap --disable-optimization --enable-assertions
 
-      #- checks:
-      #    requires:
-      #      - make
+      - dev_run:
+          <<: *uses_build_dev_workspace
+          name: Coverage
+          configure_args: --bootstrap --disable-optimization --enable-coverage
+          coverage: true
 
       - containers:
           requires:
-            - coverage
-            - release
+            - Assertions
+            - Release
           filters:
             <<: *version_tag_filter
             branches:

@@ -90,6 +90,42 @@ commands:
     steps:
       - run: docker exec dev-container << parameters.command >>
 
+  make_container:
+    description: "Create a docker container container"
+    parameters:
+      workspace_atifacts_from:
+        type: string
+      make_target:
+        type: string
+        default: docker
+      docker_tag_suffix:
+        type: string
+        default: ''
+      copy_makefile_config:
+        type: boolean
+        default: false
+      strip_binary:
+        type: boolean
+        default: false
+    steps:
+      - run:
+          name: Copy <<parameters.workspace_atifacts_from>> artifacts
+          command: |
+            cp /tmp/workspace/bin/<<parameters.workspace_atifacts_from>>/n2kafka \
+               <<#parameters.copy_makefile_config>>/tmp/workspace/config/<<parameters.workspace_atifacts_from>>/Makefile.config<</parameters.copy_makefile_config>> \
+               .
+      - when:
+          condition: << parameters.strip_binary >>
+          steps:
+            - run: strip ./n2kafka
+
+      - run: |
+          make -t <<parameters.make_target>> && \
+          CIRCLE_TAG=${CIRCLE_TAG//+/.} && \
+          env DOCKER_OUTPUT_TAG=gcr.io/wizzie-registry/n2kafka \
+            DOCKER_OUTPUT_VERSION=${CIRCLE_TAG:-latest}<<parameters.docker_tag_suffix>> \
+            make <<parameters.make_target>>
+
 jobs:
   # Check source format
   clang-format:
@@ -212,43 +248,22 @@ jobs:
       - restore_docker_cache
       - attach_workspace:
           at: /tmp/workspace
-      - run:
-          name: Gdb container
-          # Get assertions binary, it is supposed to not to have any optimization
-          # enabled
-          command: |
-            cp /tmp/workspace/bin/assertions/n2kafka \
-              /tmp/workspace/config/assertions/Makefile.config . &&
+      - make_container:
+          workspace_atifacts_from: Assertions
+          copy_makefile_config: true
+          make_target: gdb-docker
+          docker_tag_suffix: .gdb
 
-            make -t gdb-docker && \
-            CIRCLE_TAG=${CIRCLE_TAG//+/.} && \
-            env DOCKER_OUTPUT_TAG=gcr.io/wizzie-registry/n2kafka \
-              DOCKER_OUTPUT_VERSION=${CIRCLE_TAG:-latest}.gdb \
-              make gdb-docker
-      - run:
-          name: Valgrind container
-          # Get release binary
-          command: |
-            cp /tmp/workspace/bin/assertions/n2kafka \
-              /tmp/workspace/config/assertions/Makefile.config . &&
+      - make_container:
+          workspace_atifacts_from: Release
+          copy_makefile_config: true
+          make_target: valgrind-docker
+          docker_tag_suffix: .valgrind
 
-            make -t valgrind-docker && \
-            CIRCLE_TAG=${CIRCLE_TAG//+/.} && \
-            env DOCKER_OUTPUT_TAG=gcr.io/wizzie-registry/n2kafka \
-              DOCKER_OUTPUT_VERSION=${CIRCLE_TAG:-latest}.valgrind \
-              make valgrind-docker
-      - run:
-          name: Release container
-          # Get release binary
-          command: |
-            cp /tmp/workspace/bin/release/n2kafka . &&
-            strip ./n2kafka && \
+      - make_container:
+          workspace_atifacts_from: Release
+          strip_binary: true
 
-            make -t docker && \
-            CIRCLE_TAG=${CIRCLE_TAG//+/.} && \
-            env DOCKER_OUTPUT_TAG=gcr.io/wizzie-registry/n2kafka \
-              DOCKER_OUTPUT_VERSION=${CIRCLE_TAG:-latest} \
-              make docker
       - run:
           name: Upload images to gcr
           command: |

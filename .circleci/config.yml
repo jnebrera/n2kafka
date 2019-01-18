@@ -288,11 +288,14 @@ jobs:
 
             set -- '' '.gdb' '.valgrind'
             for ext in "$@"; do
-              docker push -- gcr.io/wizzie-registry/n2kafka:${CIRCLE_TAG:-latest}"$ext"
               docker tag gcr.io/wizzie-registry/n2kafka:${CIRCLE_TAG:-latest}"$ext" \
                          wizzieio/n2kafka:${CIRCLE_TAG:-latest}"$ext"
-              docker push -- wizzieio/n2kafka:${CIRCLE_TAG:-latest}"$ext"
             done
+
+            {
+              printf 'gcr.io/wizzie-registry/n2kafka:'"${CIRCLE_TAG:-latest}"'%s\n' "$ext"$'\n' "$@"
+              printf 'wizzieio/n2kafka:'"${CIRCLE_TAG:-latest}"'%s\n' "$ext"$'\n' "$@"
+            } | xargs -n 1 -- docker push --
 
 #
 #  # Check source code

@@ -40,7 +40,7 @@
 int send_buffered_response(struct MHD_Connection *con,
 			   size_t sz,
 			   char *buf,
-			   int buf_kind,
+			   enum MHD_ResponseMemoryMode buf_kind,
 			   unsigned int response_code);
 
 /**

@@ -38,7 +38,7 @@ static struct {
 int send_buffered_response(struct MHD_Connection *con,
 			   size_t sz,
 			   char *buf,
-			   int buf_kind,
+			   enum MHD_ResponseMemoryMode buf_kind,
 			   unsigned int response_code) {
 	struct MHD_Response *http_response =
 			MHD_create_response_from_buffer(sz, buf, buf_kind);

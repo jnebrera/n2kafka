@@ -15,5 +15,5 @@
   "brokers": "kafka",
   "topic": "messages",
   "rdkafka.socket.max.fails": "3",
-  "rdkafka.socket.keepalive.enable": "true",
+  "rdkafka.socket.keepalive.enable": "true"
 }

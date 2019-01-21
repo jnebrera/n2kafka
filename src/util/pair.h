@@ -35,4 +35,16 @@ typedef TAILQ_HEAD(, pair) keyval_list_t;
 #define keyval_list_init TAILQ_INIT
 
 void add_key_value_pair(keyval_list_t *list, struct pair *pair);
-const char *valueof(const keyval_list_t *list, const char *key);
+
+/**
+ * @brief      Obtains a value for a given key in the key-value list
+ *
+ * @param[in]  list                     The list
+ * @param[in]  key                      The key
+ * @param[in]  string_compare_callback  The string compare callback
+ *
+ * @return     Value if found, NULL otherwise.
+ */
+const char *valueof(const keyval_list_t *list,
+		    const char *key,
+		    int (*string_compare_callback)(const char *, const char *));

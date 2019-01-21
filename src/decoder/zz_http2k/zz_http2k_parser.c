@@ -175,8 +175,8 @@ int new_zz_session(struct zz_session *sess,
 	assert(sess);
 	assert(zz_db);
 	assert(msg_vars);
-	const char *client_ip = valueof(msg_vars, "D-Client-IP");
-	const char *url = valueof(msg_vars, "D-HTTP-URI");
+	const char *client_ip = valueof(msg_vars, "D-Client-IP", strcmp);
+	const char *url = valueof(msg_vars, "D-HTTP-URI", strcmp);
 	struct {
 		const char *buf;
 		size_t buf_len;
@@ -188,7 +188,7 @@ int new_zz_session(struct zz_session *sess,
 		rdlog(LOG_ERR, "Couldn't extract url topic from %s", url);
 		return -1;
 	}
-	client_uuid.buf = valueof(msg_vars, "X-Consumer-ID");
+	client_uuid.buf = valueof(msg_vars, "X-Consumer-ID", strcasecmp);
 
 	if (client_uuid.buf) {
 		client_uuid.buf_len = strlen(client_uuid.buf);

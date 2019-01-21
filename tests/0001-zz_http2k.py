@@ -27,6 +27,7 @@ __maintainer__ = "Eugenio Perez"
 __email__ = "eperez@wizzie.io"
 __status__ = "Production"
 
+import copy
 import itertools
 import json
 import requests
@@ -43,11 +44,6 @@ from n2k_test import \
 from n2k_test import valgrind_handler  # noqa: F401
 
 
-@pytest.fixture(params=[None, 'deflate', 'gzip', 'unknown_content_encoding'])
-def content_encoding(request):
-    return request.param
-
-
 def strip_apart(base, min_pieces=10, max_pieces=30):
     ''' Strip apart a string at random positions in random number of pieces
     > min_pieces'''
@@ -58,6 +54,10 @@ def strip_apart(base, min_pieces=10, max_pieces=30):
         + [base_len])
     return [base[cut_positions[i]:cut_positions[i + 1]]
             for i in range(len(cut_positions) - 1)]
+
+
+def _random_case(s):
+    return ''.join(random.random() > 0.5 and x.upper() or x for x in s)
 
 
 class TestHTTP2K(TestN2kafka):
@@ -149,9 +149,9 @@ class TestHTTP2K(TestN2kafka):
         consumer_id_post_key = 'X-Consumer-ID'
         consumer_id_post_keys = [
             consumer_id_post_key,
-            # TODO consumer_id_post_key.upper(),
-            # TODO consumer_id_post_key.lower(),
-            # TODO consumer_id_post_key.title()
+            consumer_id_post_key.upper(),
+            consumer_id_post_key.lower(),
+            consumer_id_post_key.title()
         ]
 
         test_messages = [
@@ -235,7 +235,12 @@ class TestHTTP2K(TestN2kafka):
 
         return ret
 
-    def test_http2k_messages(self,  # noqa: F811
+    @pytest.mark.parametrize('content_encoding',  # noqa: F811
+                             [None,
+                              'deflate',
+                              'gzip',
+                              'unknown_content_encoding'])
+    def test_http2k_messages(self,
                              kafka_handler,
                              child,
                              valgrind_handler,
@@ -423,6 +428,36 @@ class TestHTTP2K(TestN2kafka):
                   'libz deflate error: a dictionary is need'
                 ]
             }))
+
+        if content_encoding:
+            # HTTP headers case-insensitive.
+            case_insensitive_headers_args = {
+                **base_args,
+                'data': ''.join(two_messages),
+                'expected_kafka_messages': [
+                      {'topic': used_topic,
+                       'messages': two_messages}
+                  ]}
+
+            try:
+                c = case_insensitive_headers_args['compressor']
+                del case_insensitive_headers_args['compressor']
+            except KeyError:
+                c = None
+
+            case_insensitive_headers_args = [
+                copy.deepcopy(case_insensitive_headers_args) for i in range(10)
+            ]
+
+            for m in case_insensitive_headers_args:
+                del m['headers']['Content-Encoding']
+                m['headers'][_random_case('Content-Encoding')] = \
+                    _random_case(content_encoding)
+                if c:
+                    m['compressor'] = c
+
+            test_messages.extend([HTTPPostMessage(**args) for args
+                                  in case_insensitive_headers_args])
 
         self._base_http2k_test(child=child,
                                messages=test_messages,

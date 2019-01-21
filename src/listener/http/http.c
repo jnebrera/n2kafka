@@ -177,8 +177,9 @@ static int connection_args_iterator(void *cls,
 		return MHD_YES; // Not interested in
 	}
 
-	if (value && 0 == strcmp("Content-Encoding", key) &&
-	    (0 == strcmp("deflate", value) || (0 == strcmp("gzip", value)))) {
+	if (value && 0 == strcasecmp("Content-Encoding", key) &&
+	    (0 == strcasecmp("deflate", value) ||
+	     (0 == strcasecmp("gzip", value)))) {
 		con_info->zlib.enable = 1;
 	}
 

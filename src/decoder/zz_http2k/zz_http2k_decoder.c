@@ -109,7 +109,7 @@ static enum decoder_callback_err zz_decode0(char *buffer,
 					    void *t_session) {
 	(void)t_decoder_opaque;
 
-	const char *http_method = valueof(props, "D-HTTP-method");
+	const char *http_method = valueof(props, "D-HTTP-method", strcmp);
 	if (unlikely(http_method && 0 != strcmp("POST", http_method))) {
 		return DECODER_CALLBACK_HTTP_METHOD_NOT_ALLOWED;
 	}

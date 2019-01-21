@@ -139,7 +139,7 @@ static int new_meraki_session(void *zz_sess,
 	struct pair zz_keyvals0[] = {
 			{.key = "D-HTTP-URI", .value = meraki_uri},
 			{.key = "D-Client-IP",
-			 .value = valueof(msg_vars, "D-Client-IP")},
+			 .value = valueof(msg_vars, "D-Client-IP", strcmp)},
 	};
 
 	keyval_list_t zz_keyvals = keyval_list_initializer(zz_keyvals);
@@ -175,10 +175,10 @@ static enum decoder_callback_err meraki_decode(const char *buffer,
 					       const char **response,
 					       size_t *response_size,
 					       void *sessionp) {
-	const char *http_method = valueof(attrs, "D-HTTP-method");
+	const char *http_method = valueof(attrs, "D-HTTP-method", strcmp);
 
 	if (0 == strcmp(http_method, "GET")) {
-		const char *uri = valueof(attrs, "D-HTTP-URI");
+		const char *uri = valueof(attrs, "D-HTTP-URI", strcmp);
 		*response = url_validator(uri);
 		if (NULL == *response) {
 			rdlog(LOG_ERR, "Invalid URI %s", uri);

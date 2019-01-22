@@ -24,12 +24,13 @@
 
 #pragma once
 
-#include <librdkafka/rdkafka.h>
-#include <yajl/yajl_parse.h>
+#include "zz_http2k_parser_json.h"
 
 #include "util/kafka_message_array.h"
 #include "util/pair.h"
 #include "util/string.h"
+
+#include <librdkafka/rdkafka.h>
 
 #include <stddef.h>
 
@@ -44,22 +45,18 @@ struct zz_session {
 	uint64_t magic;
 #endif
 
-	/// JSON handler
-	yajl_handle handler;
+	union {
+		zz_json_session json_session;
+	};
 
 	/// Topid handler
 	struct topic_s *topic_handler;
 
-	/// Parsing stack position
-	size_t stack_pos;
+	/// Kafka output messages
+	kafka_message_array kafka_msgs;
 
 	/// Warning state of kafka_msgs_produce
 	struct kafka_message_array_last_warning_state kafka_msgs_last_warning;
-
-	/// Previous chunk object, in case that
-	struct {
-		string last_object;
-	} http_prev_chunk;
 
 	/// Messages sent in this session
 	size_t session_messages_sent;
@@ -67,23 +64,22 @@ struct zz_session {
 	/// HTTP response
 	string http_response;
 
-	/// Per chunk information
-	struct {
-		kafka_message_array kafka_msgs; ///< Kafka output messages
-		const char *in_buffer;     ///< current yajl_parse call chunk
-		const char *last_open_map; ///< Last seen open map
-	} http_chunk;
+	/// Process buffer callback
+	enum decoder_callback_err (*process_buffer)(const char *buffer,
+						    size_t bsize,
+						    struct zz_session *session);
+
+	/// Free session callback
+	void (*free_session)(struct zz_session *session);
+
+	/// Final error message callback
+	string (*error_message)(string decoder_err,
+				enum decoder_callback_err process_err,
+				size_t kafka_messages_sent);
 };
 
 /// Cast an opaque pointer to zz_session
-static struct zz_session *zz_session_cast(void *opaque) RD_UNUSED;
-static struct zz_session *zz_session_cast(void *opaque) {
-	struct zz_session *ret = opaque;
-#ifdef ZZ_SESSION_MAGIC
-	assert(ZZ_SESSION_MAGIC == ret->magic);
-#endif
-	return ret;
-}
+struct zz_session *zz_session_cast(void *opaque);
 
 int new_zz_session(struct zz_session *sess,
 		   struct zz_database *zz_db,

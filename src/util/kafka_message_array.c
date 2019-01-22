@@ -45,7 +45,6 @@ kafka_error_to_warning_time_pos(rd_kafka_resp_err_t err) {
 
 size_t kafka_message_array_produce(rd_kafka_topic_t *rkt,
 				   kafka_message_array *array,
-				   char *payload_buffer,
 				   int rdkafka_flags,
 				   kafka_message_array_produce_state *state) {
 	assert(rkt);
@@ -60,7 +59,7 @@ size_t kafka_message_array_produce(rd_kafka_topic_t *rkt,
 
 	struct kafka_message_array_internal *karray =
 			kafka_message_array_get_internal(array);
-	if (payload_buffer) {
+	if (karray->payload_buffer) {
 		// The payload buffer is shared between all messages, and it
 		// needs to be freed when ALL messages has been delivered. So we
 		// send that information to librdkafka delivery report callback.
@@ -70,7 +69,6 @@ size_t kafka_message_array_produce(rd_kafka_topic_t *rkt,
 		}
 		// stealing karray
 		*array = KAFKA_MESSAGE_ARRAY_INITIALIZER;
-		karray->payload_buffer = payload_buffer;
 	}
 
 	const size_t messages_in_batch = karray->count;

@@ -24,7 +24,6 @@
 
 #include "zz_http2k_decoder.h"
 
-#include "engine/global_config.h"
 #include "zz_database.h"
 #include "zz_http2k_parser.h"
 
@@ -58,40 +57,8 @@ static int zz_decoder_init(const struct json_t *config) {
 	return 0;
 }
 
-/** Decode a JSON chunk
-    @param buffer JSONs buffer
-    @param bsize buffer size
-    @param session ZZ messages session
-    @return DECODER_CALLBACK_OK if all went OK, DECODER_CALLBACK_INVALID_REQUEST
-	    if request was invalid. In latter case, session->http_response will
-	be filled with JSON error
-    */
-static enum decoder_callback_err process_zz_buffer(const char *buffer,
-						   size_t bsize,
-						   struct zz_session *session) {
-
-	assert(session);
-	const unsigned char *in_iterator = (const unsigned char *)buffer;
-
-	yajl_status stat = yajl_parse(session->handler, in_iterator, bsize);
-
-	if (unlikely(stat != yajl_status_ok)) {
-		static const int yajl_verbose = 1;
-		char *str = (char *)yajl_get_error(session->handler,
-						   yajl_verbose,
-						   in_iterator,
-						   bsize);
-		rdlog(LOG_ERR, "Invalid entry JSON:\n%s", (const char *)str);
-		string_append(&session->http_response, str, strlen(str));
-		yajl_free_error(session->handler, (unsigned char *)str);
-		return DECODER_CALLBACK_INVALID_REQUEST;
-	}
-
-	return DECODER_CALLBACK_OK;
-}
-
 /** Main decoder entrypoint, borrowing buffer
-    @param buffer JSON chunk buffer
+    @param received HTTP chunk buffer
     @param buf_size JSON chunk buffer size
     @param props HTTP properties
     @param response Static allocated response
@@ -100,13 +67,13 @@ static enum decoder_callback_err process_zz_buffer(const char *buffer,
     @param t_session Decoder session
     @return Proper decoder error
     */
-static enum decoder_callback_err zz_decode0(char *buffer,
-					    size_t buf_size,
-					    const keyval_list_t *props,
-					    void *t_decoder_opaque,
-					    const char **response,
-					    size_t *response_size,
-					    void *t_session) {
+static enum decoder_callback_err zz_decode(const char *buffer,
+					   size_t buf_size,
+					   const keyval_list_t *props,
+					   void *t_decoder_opaque,
+					   const char **response,
+					   size_t *response_size,
+					   void *t_session) {
 	(void)t_decoder_opaque;
 
 	const char *http_method = valueof(props, "D-HTTP-method", strcmp);
@@ -119,48 +86,15 @@ static enum decoder_callback_err zz_decode0(char *buffer,
 	struct zz_session *session = zz_session_cast(t_session);
 	assert(session->topic_handler);
 
-	kafka_msg_array_init(&session->http_chunk.kafka_msgs);
-	session->http_chunk.in_buffer = buffer;
+	kafka_msg_array_init(&session->kafka_msgs);
 	const enum decoder_callback_err process_err =
-			process_zz_buffer(buffer, buf_size, session);
-
-	//
-	// Check if we are in the middle of JSON object processing
-	//
-
-	// clang-format off
-	const int append_rc =
-		(session->http_chunk.last_open_map) ?
-			// JSON object is not closed, save it for the next
-			// decode call
-			string_append(&session->http_prev_chunk.last_object,
-			              session->http_chunk.last_open_map,
-			              buf_size -
-			                 (size_t)(
-			                       session->http_chunk.last_open_map
-			                       - buffer))
-		: (string_size(&session->http_prev_chunk.last_object) != 0) ?
-			// process_zz_buffer did not consume last object buffer,
-			// so JSON object is divided in >2 chunks. Act like all
-			// JSON object was in the last message!
-			string_append(&session->http_prev_chunk.last_object,
-			              buffer,
-			              buf_size)
-		: 0;
-	// clang-format on
-
-	if (unlikely(append_rc != 0)) {
-		rdlog(LOG_ERR,
-		      "Couldn't append chunked JSON object to temp buffer "
-		      "(OOM?)");
-		// @TODO signal error, buffer is not valid anymore!
-	}
+			session->process_buffer(buffer, buf_size, session);
 
 	//
 	// Clean & consume all info generated in this call
 	//
-	const size_t kafka_messages_count = kafka_message_array_size(
-			&session->http_chunk.kafka_msgs);
+	const size_t kafka_messages_count =
+			kafka_message_array_size(&session->kafka_msgs);
 	size_t kafka_messages_sent = 0;
 	if (kafka_messages_count) {
 		rd_kafka_topic_t *rkt = topics_db_get_rdkafka_topic(
@@ -168,15 +102,12 @@ static enum decoder_callback_err zz_decode0(char *buffer,
 
 		kafka_messages_sent = kafka_message_array_produce(
 				rkt,
-				&session->http_chunk.kafka_msgs,
-				buffer,
+				&session->kafka_msgs,
 				0 /* rdkafka flags */,
 				&session->kafka_msgs_last_warning);
-	} else {
-		free(buffer);
 	}
 
-	memset(&session->http_chunk, 0, sizeof(session->http_chunk));
+	memset(&session->kafka_msgs, 0, sizeof(session->kafka_msgs));
 
 	//
 	// Return information
@@ -192,62 +123,23 @@ static enum decoder_callback_err zz_decode0(char *buffer,
 				DECODER_CALLBACK_BUFFER_FULL;
 		// clang-format on
 
-		string yajl_err = session->http_response;
-		session->http_response = N2K_STRING_INITIALIZER;
+		string full_error =
+				session->error_message(session->http_response,
+						       process_err,
+						       kafka_messages_sent);
 
-		const int printf_rc = string_printf(&session->http_response,
-						    "{\"messages_queued\":%zu",
-						    kafka_messages_sent);
-		if (printf_rc > 0 && process_err != DECODER_CALLBACK_OK) {
-			string_append_string(&session->http_response,
-					     ",\"json_decoder_error\":\"");
-			string_append_json_string(&session->http_response,
-						  yajl_err.buf,
-						  string_size(&yajl_err));
-			string_append_string(&session->http_response, "\"");
+		if (string_size(&full_error) > 0) {
+			string_done(&session->http_response);
+			session->http_response = full_error;
 		}
 
-		if (printf_rc > 0) {
-			string_append_string(&session->http_response, "}");
-			*response = session->http_response.buf;
-			*response_size = session->http_response.size;
-		}
-
-		string_done(&yajl_err);
+		*response = session->http_response.buf;
+		*response_size = session->http_response.size;
 
 		return rc;
 	}
 
 	return DECODER_CALLBACK_OK;
-}
-
-/// zz_decode with const buffer, need to copy it
-static enum decoder_callback_err zz_decode(const char *buffer,
-					   size_t buf_size,
-					   const keyval_list_t *props,
-					   void *t_decoder_opaque,
-					   const char **response,
-					   size_t *response_size,
-					   void *t_session) {
-	char *buffer_copy = NULL;
-	if (likely(buf_size)) {
-		buffer_copy = malloc(buf_size);
-
-		if (unlikely(NULL == buffer_copy)) {
-			rdlog(LOG_ERR, "Couldn't copy buffer (OOM?)");
-			return DECODER_CALLBACK_MEMORY_ERROR;
-		}
-
-		memcpy(buffer_copy, buffer, buf_size);
-	}
-
-	return zz_decode0(buffer_copy,
-			  buf_size,
-			  props,
-			  t_decoder_opaque,
-			  response,
-			  response_size,
-			  t_session);
 }
 
 static void zz_decoder_done() {

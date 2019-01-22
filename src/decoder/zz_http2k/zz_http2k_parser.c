@@ -26,122 +26,23 @@
 
 #include "zz_database.h"
 
-#include "util/kafka_message_array.h"
 #include "util/pair.h"
 #include "util/topic_database.h"
 #include "util/util.h"
 
 #include <librd/rdlog.h>
-#include <librdkafka/rdkafka.h>
-#include <yajl/yajl_parse.h>
 
 #include <assert.h>
 #include <string.h>
 #include <syslog.h>
 #include <time.h>
 
-#define YAJL_PARSER_OK 1
-#define YAJL_PARSER_ABORT 0
-
-//
-// PARSING
-//
-
-static int zz_parse_start_map(void *ctx) {
-	struct zz_session *sess = ctx;
-	if (0 == sess->stack_pos++) {
-		sess->http_chunk.last_open_map =
-				sess->http_chunk.in_buffer +
-				yajl_get_bytes_consumed(sess->handler) -
-				sizeof((char)'{');
-	}
-	return YAJL_PARSER_OK;
-}
-
-/** Generate kafka message.
- */
-static void zz_parse_generate_rdkafka_message(struct zz_session *sess,
-					      rd_kafka_message_t *msg) {
-	assert(sess);
-	assert(msg);
-	const char *end_msg = sess->http_chunk.in_buffer +
-			      yajl_get_bytes_consumed(sess->handler);
-	assert(end_msg > sess->http_chunk.last_open_map);
-	*msg = (rd_kafka_message_t){
-			.payload = const_cast(sess->http_chunk.last_open_map),
-			.len = (size_t)(end_msg -
-					sess->http_chunk.last_open_map),
-	};
-}
-
-static int zz_parse_end_map0(struct zz_session *sess) {
-	rd_kafka_message_t msg;
-	zz_parse_generate_rdkafka_message(sess, &msg);
-	const int add_rc =
-			kafka_msg_array_add(&sess->http_chunk.kafka_msgs, &msg);
-
-	// This is not the last message anymore
-	sess->http_chunk.last_open_map = NULL;
-	if (unlikely(add_rc != 0)) {
-		rdlog(LOG_ERR, "Couldn't add kafka message (OOM?)");
-	}
-
-	return YAJL_PARSER_OK;
-}
-
-/** Send a message of a split message
-  @param sess Parsing message session
-  @return do keep or not to keep parsing
-  */
-static int zz_parse_end_map_split(struct zz_session *sess) {
-	const int append_rc =
-			string_append(&sess->http_prev_chunk.last_object,
-				      sess->http_chunk.in_buffer,
-				      yajl_get_bytes_consumed(sess->handler));
-	if (unlikely(append_rc != 0)) {
-		rdlog(LOG_ERR, "Couldn't append message (OOM?)");
-		goto err;
-	}
-
-	rd_kafka_topic_t *rkt =
-			topics_db_get_rdkafka_topic(sess->topic_handler);
-	const int produce_rc = rd_kafka_produce_batch(
-			// clang-format off
-		rkt,
-		RD_KAFKA_PARTITION_UA,
-		RD_KAFKA_MSG_F_FREE,
-		&(rd_kafka_message_t){
-			.payload = sess->http_prev_chunk.last_object.buf,
-			.len = string_size(&sess->http_prev_chunk.last_object),
-		},
-		1);
-	// clang-format on
-
-	if (likely(1 == produce_rc)) {
-		// librdkafka will free it
-		sess->http_prev_chunk.last_object.buf = NULL;
-	}
-
-err:
-	string_done(&sess->http_prev_chunk.last_object);
-
-	return YAJL_PARSER_OK;
-}
-
-static int zz_parse_end_map(void *ctx) {
-	struct zz_session *sess = ctx;
-
-	if (0 != --sess->stack_pos) {
-		return YAJL_PARSER_OK;
-	}
-
-	return (string_size(&sess->http_prev_chunk.last_object) > 0)
-			       ?
-			       // The message is divided between two chunks
-			       zz_parse_end_map_split(sess)
-			       :
-
-			       zz_parse_end_map0(sess);
+struct zz_session *zz_session_cast(void *opaque) {
+	struct zz_session *ret = opaque;
+#ifdef ZZ_SESSION_MAGIC
+	assert(ZZ_SESSION_MAGIC == ret->magic);
+#endif
+	return ret;
 }
 
 /* Return code: Valid uri prefix (i.e., /v1/data/) & topic */
@@ -222,23 +123,15 @@ int new_zz_session(struct zz_session *sess,
 		goto topic_err;
 	}
 
-	static const yajl_callbacks yajl_callbacks = {
-			.yajl_start_map = zz_parse_start_map,
-			.yajl_end_map = zz_parse_end_map,
-	};
+	const int handler_rc = new_zz_session_json(sess);
 
-	sess->handler = yajl_alloc(&yajl_callbacks, NULL, sess);
-	if (NULL == sess->handler) {
-		rdlog(LOG_CRIT, "Couldn't allocate yajl_handler");
-		goto err_yajl_handler;
+	if (unlikely(0 != handler_rc)) {
+		goto err_handler;
 	}
-
-	yajl_config(sess->handler, yajl_allow_multiple_values, 1);
-	yajl_config(sess->handler, yajl_allow_trailing_garbage, 1);
 
 	return 0;
 
-err_yajl_handler:
+err_handler:
 	topic_decref(sess->topic_handler);
 
 topic_err:
@@ -247,7 +140,8 @@ topic_err:
 
 void free_zz_session(struct zz_session *sess) {
 	string_done(&sess->http_response);
-	string_done(&sess->http_prev_chunk.last_object);
-	yajl_free(sess->handler);
+
+	sess->free_session(sess);
+
 	topic_decref(sess->topic_handler);
 }

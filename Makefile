@@ -87,8 +87,20 @@ ifneq ($(PYTEST_JOBS), 0)
 pytest_jobs_arg := -n $(PYTEST_JOBS)
 endif
 
-.PHONY: tests checks memchecks drdchecks helchecks coverage check_coverage \
-	docker dev-docker gdb-docker valgrind-docker .clang_complete
+.PHONY: \
+	.clang_complete \
+	check_coverage \
+	checks \
+	coverage \
+	dev-docker \
+	docker \
+	drdchecks \
+	gdb-docker \
+	helchecks \
+	memchecks \
+	tests \
+	ubuntu-dev-docker \
+	valgrind-docker \
 
 show_test_result = tests/show_tests.py $(1) $(TESTS_CHECKS_XML:.xml=)
 

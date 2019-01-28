@@ -37,9 +37,12 @@
 #include <yajl/yajl_parse.h>
 
 #include <assert.h>
+#include <limits.h>
+#include <pthread.h>
 #include <stdbool.h>
 #include <string.h>
 #include <syslog.h>
+#include <threads.h>
 
 #define NO_JSON_LAST_OPEN_MAP ((ssize_t)-1)
 
@@ -55,23 +58,75 @@
 #define yajl_gen_key_strlen yajl_gen_string_strlen
 
 /**
- * @brief      Generate a JSON key-value
- *
- * @param[in]  gen    The YAJL generator
- * @param[in]  key    The pair key
- * @param[in]  value  The pair value
- *
- * @return     yajl_gen_status_ok if all OK, proper error in other case
- */
-static yajl_gen_status
-yajl_gen_key_value_strlen(yajl_gen gen, const char *key, const char *value) {
+ @brief      Convenience function to generate a key and value, taking
+	     strlen(key) as key length
+
+ @param[in]  gen        The YAJL generator
+ @param[in]  key        The 0-terminated key
+ @param[in]  value      The value
+ @param[in]  value_len  The value length
+
+ @return     yajl_gen_ok if all OK, first error in generating key/value if not
+*/
+static yajl_gen_status yajl_gen_key_strlen_value(yajl_gen gen,
+						 const char *key,
+						 const char *value,
+						 size_t value_len) {
 	yajl_gen_status rc =
 			yajl_gen_key_strlen(gen, (const unsigned char *)key);
 	if (unlikely(rc != yajl_gen_status_ok)) {
 		return rc;
 	}
 
-	return yajl_gen_string_strlen(gen, (const unsigned char *)value);
+	return yajl_gen_string(gen, (const unsigned char *)value, value_len);
+}
+
+/**
+ * @brief      Generate a JSON key-value
+ *
+ * @param[in]  gen    The YAJL generator
+ * @param[in]  key    The pair's 0-terminated key
+ * @param[in]  value  The pair's 0-terminated value
+ *
+ * @return     yajl_gen_status_ok if all OK, proper error in other case
+ */
+static yajl_gen_status
+yajl_gen_key_value_strlen(yajl_gen gen, const char *key, const char *value) {
+	return yajl_gen_key_strlen_value(gen, key, value, strlen(value));
+}
+
+/**
+ @brief      Test bit position in bool array
+
+ @param[in]  bit_vector    The bit vector
+ @param[in]  bit_position  The bit position
+
+ @return     True if bit is set, false otherwise
+*/
+static bool bit_test(const char *bit_vector, size_t bit_position) {
+	return ((bit_vector[bit_position / CHAR_BIT] &
+		 (1 << bit_position % CHAR_BIT)) != 0);
+}
+
+/**
+ @brief      Set the bit position
+
+ @param[in]  bit_vector    The bit vector
+ @param[in]  bit_position  The bit position
+*/
+static void bit_set(char *bit_vector, size_t bit_position) {
+	bit_vector[bit_position / CHAR_BIT] |= 1 << (bit_position % CHAR_BIT);
+}
+
+/**
+ @brief      Clear the bit position
+
+ @param[in]  bit_vector    The bit vector
+ @param[in]  bit_position  The bit position
+*/
+static void bit_clear(char *bit_vector, size_t bit_position) {
+	bit_vector[bit_position / CHAR_BIT] &=
+			~(1 << (bit_position % CHAR_BIT));
 }
 
 /**
@@ -290,6 +345,26 @@ queue_xml_error0(struct zz_session *session, struct xml_parser_err errors) {
 }
 
 /**
+ @brief      Helper macro to generate JSON elements and go to an error label in
+	     error case
+
+ @param      gen_status_var  The YAJL generator call return code
+ @param      err_label       The error label to go in case of error
+ @param      err_str_var     The error string variable will be set to err_str in
+			     case of error
+ @param      err_str         The error string in case of error
+ @param      ...             YAJL generator call
+*/
+#define GEN_OR_GOTO_ERR(gen_status_var, err_label, err_str_var, err_str, ...)  \
+	do {                                                                   \
+		gen_status_var = __VA_ARGS__;                                  \
+		if (unlikely(yajl_gen_status_ok != gen_status_var)) {          \
+			err_str_var = err_str;                                 \
+			goto err_label;                                        \
+		}                                                              \
+	} while (0)
+
+/**
  @brief      Queue and log an XML error.
 
  @param      session          The session
@@ -326,15 +401,6 @@ static void queue_xml_error(struct zz_session *session,
 static void zz_parse_start_xml_element(void *data,
 				       const XML_Char *el,
 				       const XML_Char **attr) {
-#define GEN_OR_GOTO_ERR(gen_status_var, err_label, err_str_var, err_str, ...)  \
-	do {                                                                   \
-		gen_status_var = __VA_ARGS__;                                  \
-		if (unlikely(yajl_gen_status_ok != gen_status_var)) {          \
-			err_str_var = err_str;                                 \
-			goto err_label;                                        \
-		}                                                              \
-	} while (0)
-
 	const char *error_what = NULL;
 	struct zz_session *sess = zz_session_cast(data);
 	yajl_gen_status gen_status = yajl_gen_status_ok;
@@ -350,6 +416,9 @@ static void zz_parse_start_xml_element(void *data,
 		sess->xml_session.json_buf.last_open_map = (ssize_t)string_size(
 				&sess->xml_session.json_buf.yajl_gen_buf);
 	}
+
+	bit_clear(sess->xml_session.json_buf.printing_text,
+		  sess->xml_session.json_buf.stack_pos);
 
 	// Top of the tree
 	GEN_OR_GOTO_ERR(gen_status,
@@ -459,6 +528,120 @@ static void zz_parse_end_xml_element(void *data, const XML_Char *element_name) {
 	XML_StopParser(sess->xml_session.expat_handler, false /* resumable */);
 }
 
+/// Pthread key, only used for the destructor property
+static pthread_key_t thread_local_gen_key;
+
+/**
+ @brief      Free the yajl_gen. Only used for "casting" the pthread_key
+	     destructor callback
+
+ @param      yajl_gen  The yajl generator
+*/
+static void void_yajl_gen_free(void *yajl_gen) {
+	yajl_gen_free(yajl_gen);
+}
+
+/**
+ * @brief      Initializes thread_local_gen_key.
+ */
+static void thread_local_gen_key_init(void) {
+	pthread_key_create(&thread_local_gen_key, void_yajl_gen_free);
+}
+
+/**
+ @brief      Parse text character data
+
+ @param[in]  user_data  The handler
+ @param[in]  text       The character buffer
+ @param[in]  text_len   The text length
+*/
+static void zz_parse_xml_character_data(void *user_data,
+					const XML_Char *text,
+					int text_len) {
+
+	static const yajl_alloc_funcs *allocFuncs = NULL;
+
+	struct zz_session *sess = zz_session_cast(user_data);
+
+	assert(sess);
+	assert(text);
+	assert(text_len >= 0);
+	const char *error_what = NULL;
+	yajl_gen_status gen_status = yajl_gen_status_ok;
+
+	const size_t printing_text_bit_pos =
+			sess->xml_session.json_buf.stack_pos;
+
+	// This callback is called multiple times, incrementally, while we are
+	// parsing text. So we need to differentiate here if we are starting to
+	// print text or, on the contrary, we are in the successive calls
+	if (!bit_test(sess->xml_session.json_buf.printing_text,
+		      printing_text_bit_pos)) {
+
+		// First call
+		GEN_OR_GOTO_ERR(gen_status,
+				err,
+				error_what,
+				"Can't gen JSON attribute key + val in XML tag "
+				"text",
+				yajl_gen_key_strlen_value(
+						sess->xml_session.yajl_gen,
+						"text",
+						text,
+						(size_t)text_len));
+
+		bit_set(sess->xml_session.json_buf.printing_text,
+			printing_text_bit_pos);
+
+		return;
+	}
+
+	// Not first call
+	thread_local static yajl_gen temp_yajl = NULL;
+	if (unlikely(NULL == temp_yajl)) {
+		static pthread_once_t key_once = PTHREAD_ONCE_INIT;
+		pthread_once(&key_once, thread_local_gen_key_init);
+
+		temp_yajl = yajl_gen_alloc(allocFuncs);
+		pthread_setspecific(thread_local_gen_key, temp_yajl);
+
+		if (unlikely(NULL == temp_yajl)) {
+			error_what = "Can't allocate temporary JSON "
+				     "generator (OOM?)";
+			goto err;
+		}
+	}
+
+	yajl_gen_reset(temp_yajl, "");
+	yajl_gen_clear(temp_yajl);
+
+	GEN_OR_GOTO_ERR(gen_status,
+			err,
+			error_what,
+			"Can't generate XML text in JSON string",
+			yajl_gen_string(temp_yajl,
+					(const unsigned char *)text,
+					(size_t)text_len));
+
+	const char *yajl_buf;
+	size_t yajl_buf_size;
+	yajl_gen_get_buf(temp_yajl,
+			 (const unsigned char **)&yajl_buf,
+			 &yajl_buf_size);
+
+	assert(yajl_buf);
+
+	string_pop_back(&sess->xml_session.json_buf.yajl_gen_buf);
+	string_append(&sess->xml_session.json_buf.yajl_gen_buf,
+		      yajl_buf + 1 /* skip first quote */,
+		      yajl_buf_size - 1);
+
+err:
+	if (unlikely(error_what)) {
+		queue_xml_error(sess, error_what, yajl_gen_status_ok);
+	}
+}
+
 /**
  @brief      Reset the parser and set the user data and handlers
 	     (XML_ParserReset does delete them). If the parser is just
@@ -484,6 +667,7 @@ static void zz_reset_xml_handler(XML_Parser xml_parser,
 	XML_SetElementHandler(xml_parser,
 			      zz_parse_start_xml_element,
 			      zz_parse_end_xml_element);
+	XML_SetCharacterDataHandler(xml_parser, zz_parse_xml_character_data);
 }
 
 /** Decode an XML chunk

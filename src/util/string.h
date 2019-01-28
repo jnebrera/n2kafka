@@ -73,6 +73,14 @@ int string_append_string(string *str, const char *str_b);
 */
 int string_append_json_string(string *str, const char *data, size_t data_size);
 
+/**
+ @brief      Erases the last character of the string, effectively reducing its
+	     length by one.
+
+ @param      str   The string
+*/
+void string_pop_back(string *str);
+
 /** Append message to string using printf format.
 
  @param      str        The string

@@ -471,6 +471,22 @@ class TestHTTP2K(TestN2kafka):
                     '</attributes>',
                     r'''<attributes attr1='sq"dq"' attr2="dq'sq'" />'''
                  ]
+            ] + [
+                # Text
+                ('<ttext>text1 text1</ttext>',
+                 ['{"tag":"ttext","text":"text1 text1"}']),
+
+                # Text + attr
+                ('<ttext attr1="1">text1 text1</ttext>',
+                 ['{"tag":"ttext","attributes":{"attr1":"1"},'
+                  '"text":"text1 text1"}']),
+
+                # Complex text
+                ('<ttext>"new" año &lt; next year &amp; all that\n'
+                 'newline and		tabs stuff</ttext>',
+                 [r'{"tag":"ttext","text":"\"new\" año < next year & all that'
+                  r'\nnewline and\t\ttabs stuff"}']),
+
             ]
         ] + [
             HTTPPostMessage(**{

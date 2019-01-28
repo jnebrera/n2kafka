@@ -36,9 +36,12 @@ If you do not use HTTP `X-Consumer-ID` header:
 Output will be sent to topic `topic1`.
 
 ### XML over HTTP
-Similarly, XML can be sent and they will be transformed to a JSON message.
-Since XML is a little bit more complex, the following transformation rules
-apply:
+Similarly, http2k decoder does support XML, as long as proper HTTP content
+type is present in request: http2k transforms it into a JSON message. With
+curl, you can add it with `-H 'Content-type: xml` (actually, anything that
+ends with `xml` is treated as an XML, allowing to use typical `application/xml`
+and `text/xml`). Since XML is a little bit more complex than JSON, the
+following transformation rules apply:
 
 *The XML root object is the JSON root object:*
 
@@ -67,6 +70,16 @@ Attributes add an `attributes` array:
 {"tag":"attributes","attributes":{"attr1":"one"}}
 ```
 
+*XML text*
+
+Text inside a XML tag adds a `text` JSON key:
+```xml
+'<ttext>text1 text1</ttext>'
+```
+
+```json
+{"tag":"ttext","text":"text1 text1"}
+```
 
 ## Deflate compression
 

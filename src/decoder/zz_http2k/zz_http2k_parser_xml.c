@@ -534,6 +534,15 @@ static void zz_parse_start_xml_element(void *data,
 					sess->xml_session.json_buf
 							.stack_boolean_info,
 					sess->xml_session.json_buf.stack_pos);
+		} else {
+			// Need to close previous child, we know for sure that
+			// there is no trailing text
+			GEN_OR_GOTO_ERR(gen_status,
+					err,
+					error_what,
+					"Can't gen JSON child array close "
+					"brace",
+					yajl_gen_map_close(yajl_gen));
 		}
 	}
 
@@ -617,6 +626,13 @@ static void zz_parse_end_xml_element(void *data, const XML_Char *element_name) {
 	if (test_current_stack_children_printed(
 			    sess->xml_session.json_buf.stack_boolean_info,
 			    sess->xml_session.json_buf.stack_pos)) {
+		// Close last child
+		GEN_OR_GOTO_ERR(gen_status,
+				err,
+				error_what,
+				"Can't gen child JSON close key",
+				yajl_gen_map_close(yajl_gen));
+
 		GEN_OR_GOTO_ERR(gen_status,
 				err,
 				error_what,
@@ -624,16 +640,22 @@ static void zz_parse_end_xml_element(void *data, const XML_Char *element_name) {
 				yajl_gen_array_close(yajl_gen));
 	}
 
-	GEN_OR_GOTO_ERR(gen_status,
-			err,
-			error_what,
-			"Can't gen JSON close key",
-			yajl_gen_map_close(yajl_gen));
+	// We should close the JSON object here, but text can come after this
+	// close tag. Instead, we will close the (child) JSON object when:
+	// - New object (child) is appended
+	// - Close the root object (if we are it)
 
 	if (--sess->xml_session.json_buf.stack_pos > 0) {
 		// Not last element
 		return;
 	}
+
+	// Need to add last close
+	GEN_OR_GOTO_ERR(gen_status,
+			err,
+			error_what,
+			"Can't gen child JSON close key",
+			yajl_gen_map_close(yajl_gen));
 
 	const size_t buf_siz =
 			string_size(&sess->xml_session.json_buf.yajl_gen_buf);
@@ -720,6 +742,15 @@ static void zz_parse_xml_character_data(void *user_data,
 			    printing_text_bit_pos)) {
 
 		// First call
+
+		// clang-format off
+		const char *key = test_current_stack_children_printed(
+				sess->xml_session.json_buf.stack_boolean_info,
+				printing_text_bit_pos)
+			? "tail"
+			: "text";
+		// clang-format off
+
 		GEN_OR_GOTO_ERR(gen_status,
 				err,
 				error_what,
@@ -727,7 +758,7 @@ static void zz_parse_xml_character_data(void *user_data,
 				"text",
 				yajl_gen_key_strlen_value(
 						sess->xml_session.yajl_gen,
-						"text",
+						key,
 						text,
 						(size_t)text_len));
 

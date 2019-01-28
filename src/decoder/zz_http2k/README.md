@@ -81,6 +81,20 @@ Text inside a XML tag adds a `text` JSON key:
 {"tag":"ttext","text":"text1 text1"}
 ```
 
+*XML text after a tag*
+Text after tag is appended at its `tail` key:
+
+```xml
+<root><child1 a="r">t1</child1>tt<child2>t2</child2></root>
+```
+
+```json
+{"tag":"root","children":[
+  {"tag":"child1","attributes":{"a":"r"},"text":"t1","tail":"tt"},
+  {"tag":"child2","text":"t2"}
+]}
+```
+
 ## Deflate compression
 
 You can send compressed messages to ZZ decoder using `Content-Encoding: deflate` in

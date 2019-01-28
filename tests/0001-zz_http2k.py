@@ -514,6 +514,13 @@ class TestHTTP2K(TestN2kafka):
                   '[{"tag":"child1","attributes":{"a":"r"},"text":"t1"},'
                   '{"tag":"child2","text":"t2"}]}']),
 
+                # Children with tail text
+                ('<root><child1 a="r">t1</child1>tt<child2>t2</child2></root>',
+                 ['{"tag":"root","children":'
+                  '[{"tag":"child1","attributes":{"a":"r"},'
+                  '"text":"t1","tail":"tt"},'
+                  '{"tag":"child2","text":"t2"}]}']),
+
                 # More complex tree
                 ('<root>'
                  '<child1 a="r">t1<gchild1 /></child1><child2>t2</child2>'

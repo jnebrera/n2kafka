@@ -487,6 +487,41 @@ class TestHTTP2K(TestN2kafka):
                  [r'{"tag":"ttext","text":"\"new\" año < next year & all that'
                   r'\nnewline and\t\ttabs stuff"}']),
 
+                # Text on different tags
+                ('<ttext attr1="1">text1 text1</ttext><ttext2>two</ttext2>',
+                 ['{"tag":"ttext","attributes":{"attr1":"1"},'
+                  '"text":"text1 text1"}',
+                  '{"tag":"ttext2","text":"two"}']),
+            ] + [
+                # Child
+                ('<root><child1></child1></root>',
+                 ['{"tag":"root","children":[{"tag":"child1"}]}']),
+
+                # Children
+                ('<root><child1></child1><child2></child2></root>',
+                 ['{"tag":"root","children":'
+                  '[{"tag":"child1"},{"tag":"child2"}]}']),
+
+                # Children with attributes
+                ('<root><child1 a="r" /><child2 /></root>',
+                 ['{"tag":"root","children":'
+                  '[{"tag":"child1","attributes":{"a":"r"}},'
+                  '{"tag":"child2"}]}']),
+
+                # Children with attributes and text
+                ('<root><child1 a="r">t1</child1><child2>t2</child2></root>',
+                 ['{"tag":"root","children":'
+                  '[{"tag":"child1","attributes":{"a":"r"},"text":"t1"},'
+                  '{"tag":"child2","text":"t2"}]}']),
+
+                # More complex tree
+                ('<root>'
+                 '<child1 a="r">t1<gchild1 /></child1><child2>t2</child2>'
+                 '</root>',
+                 ['{"tag":"root","children":'
+                  '[{"tag":"child1","attributes":{"a":"r"},"text":"t1",'
+                  '"children":[{"tag":"gchild1"}]},'
+                  '{"tag":"child2","text":"t2"}]}']),
             ]
         ] + [
             HTTPPostMessage(**{
@@ -503,6 +538,9 @@ class TestHTTP2K(TestN2kafka):
 
                 # One message is queued
                 ('<simple />>bad', ['{"tag":"simple"}'],),
+
+                # Too deep JSON
+                ('<t>'*200, []),
             ]
         ]
 

@@ -206,6 +206,103 @@ static struct code_str expat_err2codestr(enum XML_Error xml_err) {
 	return ret;
 }
 
+/*
+ * @brief      Return the bit position on the stack that marks the stack object
+ * as "text printed"
+ *
+ * @param[in]  stack_position  The stack position
+ *
+ * @return     The bit in the array that indicates if the current object has
+ *             printed the object text
+ */
+static size_t text_printed_bit_from_frame(size_t stack_position) {
+	return stack_position * 2;
+}
+
+/**
+ * @brief      Mark the current stack object as "text" printed.
+ *
+ * @param[in]  bit_vector      The bit vector
+ * @param[in]  stack_position  The JSON/XML stack position
+ */
+static void
+set_current_stack_text_printed(char *bit_vector, size_t stack_position) {
+	bit_set(bit_vector, text_printed_bit_from_frame(stack_position));
+}
+
+/**
+ * @brief      Clear the current stack object has "text" key printed.
+ *
+ * @param[in]  bit_vector      The bit vector
+ * @param[in]  stack_position  The JSON/XML stack position
+ */
+static void
+clear_current_stack_text_printed(char *bit_vector, size_t stack_position) {
+	bit_clear(bit_vector, text_printed_bit_from_frame(stack_position));
+}
+
+/**
+ * @brief      Check if the current stack object has printed the "child" array.
+ *
+ * @param[in]  bit_vector      The bit vector
+ * @param[in]  stack_position  The stack position
+ *
+ * @return     { description_of_the_return_value }
+ */
+static bool
+test_current_stack_text_printed(const char *bit_vector, size_t stack_position) {
+	return bit_test(bit_vector,
+			text_printed_bit_from_frame(stack_position));
+}
+
+/**
+ * @brief      Returns the bit position that indicates that the children JSON
+ *             key has been printed
+ *
+ * @param[in]  stack_position  The stack position
+ *
+ * @return     Bit position
+ */
+static size_t children_printed_bit_from_frame(size_t stack_position) {
+	return stack_position * 2 + 1;
+}
+
+/**
+ * @brief      Mark the current stack object as "text" printed.
+ *
+ * @param[in]  bit_vector      The bit vector
+ * @param[in]  stack_position  The JSON/XML stack position
+ */
+static void
+set_current_stack_children_printed(char *bit_vector, size_t stack_position) {
+	bit_set(bit_vector, children_printed_bit_from_frame(stack_position));
+}
+
+/**
+ * @brief      Clear the current stack object has "text" key printed.
+ *
+ * @param[in]  bit_vector      The bit vector
+ * @param[in]  stack_position  The JSON/XML stack position
+ */
+static void
+clear_current_stack_children_printed(char *bit_vector, size_t stack_position) {
+	bit_clear(bit_vector, children_printed_bit_from_frame(stack_position));
+}
+
+/**
+ * @brief      Check if the current stack object has printed the "child" array.
+ *
+ * @param[in]  bit_vector      The bit vector
+ * @param[in]  stack_position  The stack position
+ *
+ * @return     { description_of_the_return_value }
+ */
+static bool
+test_current_stack_children_printed(char *bit_vector, size_t stack_position) {
+	return bit_test(bit_vector,
+			children_printed_bit_from_frame(stack_position));
+}
+
 /**
  @brief      Yajl gen errors strings copied from commit
 	     12ee82ae5138ac86252c41f3ae8f9fd9880e4284 file yajl_gen.h
@@ -412,15 +509,43 @@ static void zz_parse_start_xml_element(void *data,
 
 	yajl_gen yajl_gen = sess->xml_session.yajl_gen;
 
-	if (sess->xml_session.json_buf.stack_pos++ == 0) {
+	if (sess->xml_session.json_buf.stack_pos == 0) {
 		sess->xml_session.json_buf.last_open_map = (ssize_t)string_size(
 				&sess->xml_session.json_buf.yajl_gen_buf);
+	} else {
+		if (!test_current_stack_children_printed(
+				    sess->xml_session.json_buf
+						    .stack_boolean_info,
+				    sess->xml_session.json_buf.stack_pos)) {
+			GEN_OR_GOTO_ERR(gen_status,
+					err,
+					error_what,
+					"Can't gen JSON children key",
+					yajl_gen_key_strlen(yajl_gen,
+							    "children"));
+			GEN_OR_GOTO_ERR(gen_status,
+					err,
+					error_what,
+					"Can't gen JSON child array open "
+					"bracket",
+					yajl_gen_array_open(yajl_gen));
+
+			set_current_stack_children_printed(
+					sess->xml_session.json_buf
+							.stack_boolean_info,
+					sess->xml_session.json_buf.stack_pos);
+		}
 	}
 
-	bit_clear(sess->xml_session.json_buf.printing_text,
-		  sess->xml_session.json_buf.stack_pos);
+	sess->xml_session.json_buf.stack_pos++;
 
-	// Top of the tree
+	clear_current_stack_text_printed(
+			sess->xml_session.json_buf.stack_boolean_info,
+			sess->xml_session.json_buf.stack_pos);
+	clear_current_stack_children_printed(
+			sess->xml_session.json_buf.stack_boolean_info,
+			sess->xml_session.json_buf.stack_pos);
+
 	GEN_OR_GOTO_ERR(gen_status,
 			err,
 			error_what,
@@ -480,20 +605,30 @@ err:
 static void zz_parse_end_xml_element(void *data, const XML_Char *element_name) {
 	(void)element_name;
 	struct zz_session *sess = zz_session_cast(data);
+	const char *error_what = NULL;
+	yajl_gen_status gen_status = yajl_gen_status_ok;
+	yajl_gen yajl_gen = sess->xml_session.yajl_gen;
 
 	if (unlikely(string_size(&sess->http_response) > 0)) {
 		// An error has already been queued
 		return;
 	}
 
-	yajl_gen yajl_gen = sess->xml_session.yajl_gen;
-
-	const yajl_gen_status gen_close_rc = yajl_gen_map_close(yajl_gen);
-	if (unlikely(gen_close_rc != yajl_gen_status_ok)) {
-		// Error
-		queue_xml_error(sess, "Can't gen JSON close key", gen_close_rc);
-		return;
+	if (test_current_stack_children_printed(
+			    sess->xml_session.json_buf.stack_boolean_info,
+			    sess->xml_session.json_buf.stack_pos)) {
+		GEN_OR_GOTO_ERR(gen_status,
+				err,
+				error_what,
+				"Can't gen JSON child array close bracket",
+				yajl_gen_array_close(yajl_gen));
 	}
+
+	GEN_OR_GOTO_ERR(gen_status,
+			err,
+			error_what,
+			"Can't gen JSON close key",
+			yajl_gen_map_close(yajl_gen));
 
 	if (--sess->xml_session.json_buf.stack_pos > 0) {
 		// Not last element
@@ -526,6 +661,11 @@ static void zz_parse_end_xml_element(void *data, const XML_Char *element_name) {
 	}
 
 	XML_StopParser(sess->xml_session.expat_handler, false /* resumable */);
+	return;
+
+err:
+	queue_xml_error(sess, error_what, gen_status);
+	sess->xml_session.json_buf.last_open_map = NO_JSON_LAST_OPEN_MAP;
 }
 
 /// Pthread key, only used for the destructor property
@@ -575,8 +715,9 @@ static void zz_parse_xml_character_data(void *user_data,
 	// This callback is called multiple times, incrementally, while we are
 	// parsing text. So we need to differentiate here if we are starting to
 	// print text or, on the contrary, we are in the successive calls
-	if (!bit_test(sess->xml_session.json_buf.printing_text,
-		      printing_text_bit_pos)) {
+	if (!test_current_stack_text_printed(
+			    sess->xml_session.json_buf.stack_boolean_info,
+			    printing_text_bit_pos)) {
 
 		// First call
 		GEN_OR_GOTO_ERR(gen_status,
@@ -590,8 +731,9 @@ static void zz_parse_xml_character_data(void *user_data,
 						text,
 						(size_t)text_len));
 
-		bit_set(sess->xml_session.json_buf.printing_text,
-			printing_text_bit_pos);
+		set_current_stack_text_printed(
+				sess->xml_session.json_buf.stack_boolean_info,
+				printing_text_bit_pos);
 
 		return;
 	}

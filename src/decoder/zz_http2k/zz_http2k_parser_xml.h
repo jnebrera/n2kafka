@@ -54,8 +54,10 @@ typedef struct zz_xml_session {
 		/// Generator stack position
 		size_t stack_pos;
 
-		/// Boolean vector/stack to check if we are printing text
-		char printing_text[128 / CHAR_BIT];
+		/// Boolean vector/stack to check if we are:
+		/// 1: Printing text
+		/// 2: Childs have been printed
+		char stack_boolean_info[2 * 128 / CHAR_BIT];
 	} json_buf;
 
 	/// Expat handler

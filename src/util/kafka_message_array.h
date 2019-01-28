@@ -33,6 +33,7 @@
 #include <time.h>
 
 #include <assert.h>
+#include <stdbool.h>
 #include <stdlib.h>
 
 /// Internal kafka message array definition
@@ -123,14 +124,21 @@ static size_t kafka_message_array_size(const kafka_message_array *array) {
 			       : 0;
 }
 
-static void
-kafka_message_array_set_payload_buffer(kafka_message_array *array,
-				       char *payload_buffer) RD_UNUSED;
-static void kafka_message_array_set_payload_buffer(kafka_message_array *array,
-						   char *payload_buffer) {
-	kafka_message_array_get_internal(array)->payload_buffer =
-			payload_buffer;
-}
+/**
+ * @brief      Sets an internal payload buffer, that will be free when
+ * librdkafka processes all messages of the array. If sum_offset is provided,
+ * the payload
+ *
+ * @param[in]  array           The kafka messages array
+ * @param[in]  payload_buffer  The payload buffer
+ * @param[in]  sum_offset      The sum offset
+ */
+void kafka_message_array_set_payload_buffer0(kafka_message_array *array,
+					     char *payload_buffer,
+					     bool sum_offset);
+
+#define kafka_message_array_set_payload_buffer(array, payload_buffer)          \
+	kafka_message_array_set_payload_buffer0(array, payload_buffer, false)
 
 #define X_RK_M_PRODUCE_ERR(X)                                                  \
 	X(RD_KAFKA_RESP_ERR__QUEUE_FULL, LAST_WARNING_TIME__QUEUE_FULL)        \
@@ -177,37 +185,17 @@ static void kafka_msg_array_done(kafka_message_array *array) {
 	string_done(&array->str);
 }
 
-/** Add a message to the message array
+/** Add a message to the message array.
+
+   You can pass the offset of the
+   payload_buffer in msg.payload, and then sum the final offset at
+   kafka_message_array_set_payload_buffer0. Doing so, you need not to worry
+   about reallocating payload's buffer in between kafka_msg_array_add calls.
 	@param array Queue
 	@param msg Message
 	@return 0 if ok, other if no memory avalable */
-static int
-kafka_msg_array_add(kafka_message_array *array, const rd_kafka_message_t *msg)
-		__attribute__((unused));
-static int
-kafka_msg_array_add(kafka_message_array *array, const rd_kafka_message_t *msg) {
-	if (0 == kafka_message_array_size(array)) {
-		static const struct kafka_message_array_internal karray_init = {
-#ifdef KAFKA_MESSAGE_ARRAY_INTERNAL_MAGIC
-				.magic = KAFKA_MESSAGE_ARRAY_INTERNAL_MAGIC,
-#endif
-		};
-		const int create_rc = string_append(&array->str,
-						    (const char *)&karray_init,
-						    sizeof(karray_init));
-		if (unlikely(create_rc != 0)) {
-			return create_rc;
-		}
-	}
-
-	const int rc = string_append(
-			&array->str, (const char *)msg, sizeof(*msg));
-	if (likely(rc == 0)) {
-		kafka_message_array_get_internal(array)->count++;
-	}
-
-	return rc;
-}
+int kafka_msg_array_add(kafka_message_array *array,
+			const rd_kafka_message_t *msg);
 
 /** Decrement reference counter in a thread-safe manner
   @param array Kafka messages array

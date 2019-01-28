@@ -1,9 +1,10 @@
 # Wizzie decoder
 
-ZZ decoder allows you to inject many JSON/HTTP in the same HTTP POST, and send
-them to many different topics using the same n2kafka instance.
+ZZ decoder allows you to inject many JSON or XML objects in the same HTTP
+POST, and send them to many different topics using the same n2kafka instance.
 
 ## HTTP POST format
+### JSON over HTTP
 HTTP POST format has the next restrictions:
 - URL needs to be `v1/data/<topic>`
 - It reads the next POST parameters:
@@ -33,6 +34,39 @@ If you do not use HTTP `X-Consumer-ID` header:
 `curl -v http://<n2kafka host>/v1/data/topic1 -d '{"test":1}'`
 
 Output will be sent to topic `topic1`.
+
+### XML over HTTP
+Similarly, XML can be sent and they will be transformed to a JSON message.
+Since XML is a little bit more complex, the following transformation rules
+apply:
+
+*The XML root object is the JSON root object:*
+
+These two simple XML objects:
+
+```xml
+<simple />'
+'<simple></simple>'
+```
+
+Produce the next JSON output:
+```json
+{"tag":"simple"}
+```
+
+With only the tag name in them.
+
+*XML attributes:*
+
+Attributes add an `attributes` array:
+```xml
+<attributes attr1="one"></attributes>
+```
+
+```json
+{"tag":"attributes","attributes":{"attr1":"one"}}
+```
+
 
 ## Deflate compression
 

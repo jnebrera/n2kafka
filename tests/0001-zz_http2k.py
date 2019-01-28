@@ -287,7 +287,7 @@ class TestHTTP2K(TestN2kafka):
                  '{{"error":"deflated input is not conforming to the '
                  'zlib format"}}']
 
-        test_messages = [
+        test_messages_json = [
             # POST with no messages
             HTTPPostMessage(**{**base_args,
                                'data': '',
@@ -414,6 +414,83 @@ class TestHTTP2K(TestN2kafka):
                 'data': bytearray(random.getrandbits(8) for _ in range(20)),
             }),
         ]
+
+        #
+        # XML tests
+        #
+
+        # TODO: Try with application/json, text/json, text/xml
+        xml_base_args = copy.copy(base_args)
+        xml_base_args['headers'] = copy.copy(base_args['headers']) \
+            if 'headers' in base_args else {}
+
+        xml_base_args['headers']['Content-type'] = 'application/xml'
+
+        test_messages_xml = [
+          HTTPPostMessage(**{
+            **xml_base_args,
+            'data': data,
+            'expected_response_code': 200,
+            'expected_kafka_messages': [
+               {'topic': used_topic,
+                'messages': expected_kafka_messages},
+            ]}
+          ) for data, expected_kafka_messages in [
+                # No actual message
+                ('', []),
+                (' ', []),
+            ] + [
+                # Simple tag
+                (simple_data, ['{"tag":"simple"}'])
+                for simple_data in ['<simple />', '<simple></simple>']
+            ] + [
+                # One attribute
+                (one_attribute_data,
+                 ['{"tag":"attributes","attributes":{"attr1":"one"}}'])
+                for one_attribute_data in [
+                    '<attributes attr1="one" />',
+                    '<attributes attr1="one"></attributes>',
+                ]
+            ] + [
+                # One attribute, two following tags
+                (one_attribute_data,
+                 ['{"tag":"attributes","attributes":{"attr1":"one"}}',
+                  '{"tag":"attributes","attributes":{"attr2":"two"}}'])
+                for one_attribute_data in [
+                    '<attributes attr1="one" /><attributes attr2="two" />',
+                    '<attributes attr1="one"></attributes>'
+                    '<attributes attr2="two"></attributes>',
+                ]
+            ] + [
+                # Two attributes, complex punctuation
+                (two_attributes_data,
+                 ['{"tag":"attributes","attributes":'
+                  r'''{"attr1":"sq\"dq\"","attr2":"dq'sq'"}}'''])
+                for two_attributes_data in [
+                    r'''<attributes attr1='sq"dq"' attr2="dq'sq'">'''
+                    '</attributes>',
+                    r'''<attributes attr1='sq"dq"' attr2="dq'sq'" />'''
+                 ]
+            ]
+        ] + [
+            HTTPPostMessage(**{
+                **xml_base_args,
+                'data': data,
+                'expected_response_code': 400,
+                'expected_kafka_messages': [
+                   {'topic': used_topic,
+                    'messages': expected_kafka_messages},
+                ]})
+            for (data, expected_kafka_messages) in [
+                # No message should be queued
+                ('>bad<simple />', [],),
+
+                # One message is queued
+                ('<simple />>bad', ['{"tag":"simple"}'],),
+            ]
+        ]
+
+        test_messages = test_messages_json + test_messages_xml
 
         if content_encoding == 'deflate':
             # deflate data sent with no dict

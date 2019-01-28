@@ -33,6 +33,7 @@
 #include <librd/rdlog.h>
 
 #include <assert.h>
+#include <stdbool.h>
 #include <string.h>
 #include <syslog.h>
 #include <time.h>
@@ -68,6 +69,27 @@ extract_url_topic(const char *url, const char **topic, size_t *topic_size) {
 	}
 
 	return 0;
+}
+
+/**
+ * @brief      Checks if a content type is xml
+ *
+ * @param[in]  content_type  The content type
+ *
+ * @return     True if xml content type, False otherwise.
+ */
+static bool is_xml_content_type(const char *content_type) {
+	if (!content_type) {
+		return false;
+	}
+
+	const size_t content_type_len = strlen(content_type);
+	if (content_type_len < strlen("xml")) {
+		return false;
+	}
+
+	return 0 == strcasecmp(content_type + content_type_len - strlen("xml"),
+			       "xml");
 }
 
 int new_zz_session(struct zz_session *sess,
@@ -123,7 +145,12 @@ int new_zz_session(struct zz_session *sess,
 		goto topic_err;
 	}
 
-	const int handler_rc = new_zz_session_json(sess);
+	const char *content_type =
+			valueof(msg_vars, "Content-type", strcasecmp);
+	const bool content_type_xml = is_xml_content_type(content_type);
+
+	const int handler_rc = content_type_xml ? new_zz_session_xml(sess)
+						: new_zz_session_json(sess);
 
 	if (unlikely(0 != handler_rc)) {
 		goto err_handler;

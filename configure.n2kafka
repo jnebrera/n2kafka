@@ -30,6 +30,7 @@ mkl_mkvar_append CPPFLAGS CPPFLAGS '-Wformat=2'
 mkl_mkvar_append CPPFLAGS CPPFLAGS "-I. -I./src"
 
 mkl_toggle_option "Feature" WITH_HTTP           "--enable-http"           "HTTP support using libmicrohttpd" "y"
+mkl_toggle_option "Feature" WITH_EXPAT          "--enable-expat"          "XML support using expat" "y"
 mkl_toggle_option "Debug"   ENABLE_ASSERTIONS   "--enable-assertions"     "Enable C code assertions" "n"
 mkl_toggle_option "Debug"   WITH_COVERAGE       "--enable-coverage"       "Coverage build" "n"
 
@@ -184,6 +185,64 @@ function checks_libmicrohttpd {
     mkl_define_set "Have libmicrohttpd library" "HAVE_LIBMICROHTTPD" "1"
 }
 
+expat_version=2.2.6
+bootstrap_expat () {
+    mkdir -p expat_opt
+    cd expat-${expat_version}
+
+    export CFLAGS=
+    export CPPFLAGS
+    export LDFLAGS
+    if [[ $HAVE_LTO = 'y' ]]; then
+        # Duplicated functions
+        export CPPFLAGS='-flto'
+        export LDFLAGS='-flto'
+
+        if [[ $CC == gcc ]]; then
+            export CC
+            export AR='gcc-ar'
+            export LD='gcc'
+            export RANLIB=gcc-ranlib
+        fi
+    fi
+
+    ./configure \
+        --prefix "$(pwd)/../expat_opt" \
+        --without-docbook \
+        --without-xmlwf \
+        --enable-fast-install=no \
+        --disable-shared \
+        --disable-xml-context
+    make
+    ln -s /usr/bin/install . # autoconf should include it but...
+    make install
+}
+
+checks_expat () {
+    mkl_meta_set "expat" "desc" "Stream-oriented XML parser library"
+    mkl_meta_set "expat" "deb" "libexpat1-dev"
+    mkl_meta_set "expat" "bootstrap_url" \
+      "https://github.com/libexpat/libexpat/releases/download/R_${expat_version//./_}/expat-${expat_version}.tar.bz2"
+    mkl_meta_set "expat" "bootstrap_cppflags" \
+      "-I./vendor/expat/expat_opt/include/"
+    mkl_meta_set "expat" "bootstrap_static_lib" \
+      "./vendor/expat/expat_opt/lib/libexpat.a"
+    mkl_meta_set "expat" "bootstrap_makefn" "bootstrap_expat"
+
+#  config name (library name (for pkg-config))
+#  define name
+#  action (fail|disable|cont)
+#  compiler (CC|CXX)
+#  compiler flags (optional "", e.g: "-lyajl")
+#  source snippet
+    mkl_lib_check --static=-lexpat --libname=-lexpat 'expat' '' \
+                          fail CC \
+                          '-lexpat' \
+                          '#include <expat.h>
+
+                          void *f(); void *f() {return XML_ParserCreate;}'
+}
+
 function checks {
     checks_librd
     checks_tommyds
@@ -196,6 +255,10 @@ function checks {
     # -libmicrohttpd required if HTTP enabled
     if [[ "x$WITH_HTTP" == "xy" ]]; then
         checks_libmicrohttpd
+    fi
+
+    if [[ $WITH_EXPAT == y ]]; then
+        checks_expat
     fi
 
     mkl_meta_set "libjansson" "desc" "C library for encoding, decoding and manipulating JSON data"

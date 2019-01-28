@@ -24,7 +24,13 @@
 
 #pragma once
 
+#include "config.h"
+
 #include "zz_http2k_parser_json.h"
+
+#if WITH_EXPAT
+#include "zz_http2k_parser_xml.h"
+#endif // WITH_EXPAT
 
 #include "util/kafka_message_array.h"
 #include "util/pair.h"
@@ -47,6 +53,9 @@ struct zz_session {
 
 	union {
 		zz_json_session json_session;
+#if WITH_EXPAT
+		zz_xml_session xml_session;
+#endif // WITH_EXPAT
 	};
 
 	/// Topid handler

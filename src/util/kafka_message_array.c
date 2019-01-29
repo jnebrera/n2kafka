@@ -43,6 +43,49 @@ kafka_error_to_warning_time_pos(rd_kafka_resp_err_t err) {
 	};
 }
 
+void kafka_message_array_set_payload_buffer0(kafka_message_array *array,
+					     char *payload_buffer,
+					     bool sum_offset) {
+	struct kafka_message_array_internal *karray =
+			kafka_message_array_get_internal(array);
+	karray->payload_buffer = payload_buffer;
+
+	if (!sum_offset) {
+		return;
+	}
+
+	size_t i;
+	for (i = 0; i < kafka_message_array_size(array); ++i) {
+		char *pre_buffer = karray->msgs[i].payload;
+		karray->msgs[i].payload = pre_buffer + (size_t)payload_buffer;
+	}
+}
+
+int kafka_msg_array_add(kafka_message_array *array,
+			const rd_kafka_message_t *msg) {
+	if (0 == kafka_message_array_size(array)) {
+		static const struct kafka_message_array_internal karray_init = {
+#ifdef KAFKA_MESSAGE_ARRAY_INTERNAL_MAGIC
+				.magic = KAFKA_MESSAGE_ARRAY_INTERNAL_MAGIC,
+#endif
+		};
+		const int create_rc = string_append(&array->str,
+						    (const char *)&karray_init,
+						    sizeof(karray_init));
+		if (unlikely(create_rc != 0)) {
+			return create_rc;
+		}
+	}
+
+	const int rc = string_append(
+			&array->str, (const char *)msg, sizeof(*msg));
+	if (likely(rc == 0)) {
+		kafka_message_array_get_internal(array)->count++;
+	}
+
+	return rc;
+}
+
 size_t kafka_message_array_produce(rd_kafka_topic_t *rkt,
 				   kafka_message_array *array,
 				   int rdkafka_flags,

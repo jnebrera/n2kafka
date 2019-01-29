@@ -287,7 +287,7 @@ class TestHTTP2K(TestN2kafka):
                  '{{"error":"deflated input is not conforming to the '
                  'zlib format"}}']
 
-        test_messages = [
+        test_messages_json = [
             # POST with no messages
             HTTPPostMessage(**{**base_args,
                                'data': '',
@@ -414,6 +414,144 @@ class TestHTTP2K(TestN2kafka):
                 'data': bytearray(random.getrandbits(8) for _ in range(20)),
             }),
         ]
+
+        #
+        # XML tests
+        #
+
+        # TODO: Try with application/json, text/json, text/xml
+        xml_base_args = copy.copy(base_args)
+        xml_base_args['headers'] = copy.copy(base_args['headers']) \
+            if 'headers' in base_args else {}
+
+        xml_base_args['headers']['Content-type'] = 'application/xml'
+
+        test_messages_xml = [
+          HTTPPostMessage(**{
+            **xml_base_args,
+            'data': data,
+            'expected_response_code': 200,
+            'expected_kafka_messages': [
+               {'topic': used_topic,
+                'messages': expected_kafka_messages},
+            ]}
+          ) for data, expected_kafka_messages in [
+                # No actual message
+                ('', []),
+                (' ', []),
+            ] + [
+                # Simple tag
+                (simple_data, ['{"tag":"simple"}'])
+                for simple_data in ['<simple />', '<simple></simple>']
+            ] + [
+                # One attribute
+                (one_attribute_data,
+                 ['{"tag":"attributes","attributes":{"attr1":"one"}}'])
+                for one_attribute_data in [
+                    '<attributes attr1="one" />',
+                    '<attributes attr1="one"></attributes>',
+                ]
+            ] + [
+                # One attribute, two following tags
+                (one_attribute_data,
+                 ['{"tag":"attributes","attributes":{"attr1":"one"}}',
+                  '{"tag":"attributes","attributes":{"attr2":"two"}}'])
+                for one_attribute_data in [
+                    '<attributes attr1="one" /><attributes attr2="two" />',
+                    '<attributes attr1="one"></attributes>'
+                    '<attributes attr2="two"></attributes>',
+                ]
+            ] + [
+                # Two attributes, complex punctuation
+                (two_attributes_data,
+                 ['{"tag":"attributes","attributes":'
+                  r'''{"attr1":"sq\"dq\"","attr2":"dq'sq'"}}'''])
+                for two_attributes_data in [
+                    r'''<attributes attr1='sq"dq"' attr2="dq'sq'">'''
+                    '</attributes>',
+                    r'''<attributes attr1='sq"dq"' attr2="dq'sq'" />'''
+                 ]
+            ] + [
+                # Text
+                ('<ttext>text1 text1</ttext>',
+                 ['{"tag":"ttext","text":"text1 text1"}']),
+
+                # Text + attr
+                ('<ttext attr1="1">text1 text1</ttext>',
+                 ['{"tag":"ttext","attributes":{"attr1":"1"},'
+                  '"text":"text1 text1"}']),
+
+                # Complex text
+                ('<ttext>"new" año &lt; next year &amp; all that\n'
+                 'newline and		tabs stuff</ttext>',
+                 [r'{"tag":"ttext","text":"\"new\" año < next year & all that'
+                  r'\nnewline and\t\ttabs stuff"}']),
+
+                # Text on different tags
+                ('<ttext attr1="1">text1 text1</ttext><ttext2>two</ttext2>',
+                 ['{"tag":"ttext","attributes":{"attr1":"1"},'
+                  '"text":"text1 text1"}',
+                  '{"tag":"ttext2","text":"two"}']),
+            ] + [
+                # Child
+                ('<root><child1></child1></root>',
+                 ['{"tag":"root","children":[{"tag":"child1"}]}']),
+
+                # Children
+                ('<root><child1></child1><child2></child2></root>',
+                 ['{"tag":"root","children":'
+                  '[{"tag":"child1"},{"tag":"child2"}]}']),
+
+                # Children with attributes
+                ('<root><child1 a="r" /><child2 /></root>',
+                 ['{"tag":"root","children":'
+                  '[{"tag":"child1","attributes":{"a":"r"}},'
+                  '{"tag":"child2"}]}']),
+
+                # Children with attributes and text
+                ('<root><child1 a="r">t1</child1><child2>t2</child2></root>',
+                 ['{"tag":"root","children":'
+                  '[{"tag":"child1","attributes":{"a":"r"},"text":"t1"},'
+                  '{"tag":"child2","text":"t2"}]}']),
+
+                # Children with tail text
+                ('<root><child1 a="r">t1</child1>tt<child2>t2</child2></root>',
+                 ['{"tag":"root","children":'
+                  '[{"tag":"child1","attributes":{"a":"r"},'
+                  '"text":"t1","tail":"tt"},'
+                  '{"tag":"child2","text":"t2"}]}']),
+
+                # More complex tree
+                ('<root>'
+                 '<child1 a="r">t1<gchild1 /></child1><child2>t2</child2>'
+                 '</root>',
+                 ['{"tag":"root","children":'
+                  '[{"tag":"child1","attributes":{"a":"r"},"text":"t1",'
+                  '"children":[{"tag":"gchild1"}]},'
+                  '{"tag":"child2","text":"t2"}]}']),
+            ]
+        ] + [
+            HTTPPostMessage(**{
+                **xml_base_args,
+                'data': data,
+                'expected_response_code': 400,
+                'expected_kafka_messages': [
+                   {'topic': used_topic,
+                    'messages': expected_kafka_messages},
+                ]})
+            for (data, expected_kafka_messages) in [
+                # No message should be queued
+                ('>bad<simple />', [],),
+
+                # One message is queued
+                ('<simple />>bad', ['{"tag":"simple"}'],),
+
+                # Too deep JSON
+                ('<t>'*200, []),
+            ]
+        ]
+
+        test_messages = test_messages_json + test_messages_xml
 
         if content_encoding == 'deflate':
             # deflate data sent with no dict

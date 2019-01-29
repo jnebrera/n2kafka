@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
 	bsdtar \
 	clang \
 	libev-dev \
+	libexpat1-dev \
 	libjansson-dev \
 	libmicrohttpd-dev \
 	librdkafka-dev \

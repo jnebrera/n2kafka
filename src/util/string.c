@@ -143,6 +143,12 @@ int string_append_string(string *str, const char *data) {
 	return string_append(str, data, strlen(data));
 }
 
+void string_pop_back(string *str) {
+	assert(str->buf);
+	assert(str->size > 0);
+	str->buf[--str->size] = '\0';
+}
+
 static int print_not_utf8_code(string *str, char c) {
 	return string_printf(str, "\\\\x%u", *(uint8_t *)&c);
 }
